@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light;
+  font-family: Avenir, "Avenir Next", "Helvetica Neue", sans-serif;
+  color: #241f1d;
+  background: #f6f0e7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 340px;
+  margin: 0;
+  background: #f6f0e7;
+}
+
+main {
+  padding: 20px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #d8cfc3;
+}
+
+.mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  color: #fffaf2;
+  background: #a3262f;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+header p {
+  margin: 3px 0 0;
+  color: #6f6560;
+  font-size: 12px;
+}
+
+form {
+  padding-top: 18px;
+}
+
+label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+input[type="text"] {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #bfb4a8;
+  border-radius: 7px;
+  outline: none;
+  background: #fffdf9;
+  color: inherit;
+  font: inherit;
+}
+
+input[type="text"]:focus {
+  border-color: #a3262f;
+  box-shadow: 0 0 0 3px rgb(163 38 47 / 13%);
+}
+
+.switch-row {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0;
+  font-weight: 500;
+}
+
+.switch-row input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: #a3262f;
+}
+
+.divider {
+  height: 1px;
+  margin: 16px 0;
+  background: #d8cfc3;
+}
+
+button,
+.open-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+button {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #882029;
+  color: #fff;
+  background: #a3262f;
+}
+
+button:hover {
+  background: #8e2029;
+}
+
+#status {
+  min-height: 17px;
+  margin: 8px 0 0;
+  color: #48613a;
+  text-align: center;
+  font-size: 12px;
+}
+
+.privacy-note {
+  margin: 14px 0;
+  color: #6f6560;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.open-link {
+  width: 100%;
+  border: 1px solid #bfb4a8;
+  color: #332d2a;
+  background: #fffdf9;
+}
+
+.open-link:hover {
+  border-color: #8e8176;
+}

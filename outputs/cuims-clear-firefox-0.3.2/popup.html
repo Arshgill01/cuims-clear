@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CUIMS Clear</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header class="product-header">
+        <div class="mark" aria-hidden="true"><span>//</span></div>
+        <div class="product-name">
+          <p class="eyebrow">Student utility</p>
+          <h1>CUIMS Clear</h1>
+        </div>
+        <span class="version">v0.3.2</span>
+      </header>
+
+      <form id="settings-form">
+        <fieldset class="login-fields">
+          <legend>Saved login</legend>
+
+          <label for="uid">Student UID</label>
+          <input
+            id="uid"
+            name="uid"
+            type="text"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            maxlength="15"
+          />
+
+          <label for="password">CUIMS password</label>
+          <div class="password-field">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="off"
+              aria-describedby="storage-note"
+            />
+            <button id="toggle-password" class="field-action" type="button" aria-label="Show password">
+              Show
+            </button>
+          </div>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend>Login</legend>
+          <label class="check-row">
+            <span>
+              <strong>Move past UID</strong>
+              <small>Presses Next after filling it</small>
+            </span>
+            <input id="auto-advance" type="checkbox" />
+          </label>
+        </fieldset>
+
+        <fieldset class="settings-group">
+          <legend>Quiet mode</legend>
+          <label class="check-row">
+            <span>
+              <strong>Event interruptions</strong>
+              <small>Hide promotional dialogs</small>
+            </span>
+            <input id="block-events" type="checkbox" />
+          </label>
+
+          <label class="check-row">
+            <span>
+              <strong>Feedback interruptions</strong>
+              <small>Hide survey and rating dialogs</small>
+            </span>
+            <input id="block-feedback" type="checkbox" />
+          </label>
+        </fieldset>
+
+        <button id="save-button" class="save-button" type="submit">Save changes</button>
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+
+      <section class="local-data" aria-labelledby="local-data-title">
+        <div>
+          <h2 id="local-data-title">Local by design</h2>
+          <p id="storage-note">Your login stays in this Firefox profile. CAPTCHA remains manual.</p>
+        </div>
+        <button id="clear-login" class="clear-button" type="button">Clear login</button>
+      </section>
+
+      <a class="open-link" href="https://students.cuchd.in/" target="_blank" rel="noreferrer">
+        <span>Open CUIMS</span><span aria-hidden="true">↗</span>
+      </a>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

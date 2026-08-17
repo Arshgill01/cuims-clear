@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "CUIMS Clear",
+  "version": "0.1.0",
+  "description": "Speeds up CUIMS login and suppresses event and feedback overlays.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://students.cuchd.in/*"],
+  "action": {
+    "default_title": "CUIMS Clear",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://students.cuchd.in/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

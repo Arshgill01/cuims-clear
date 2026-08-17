@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CUIMS Clear</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="mark" aria-hidden="true">CU</div>
+        <div>
+          <h1>CUIMS Clear</h1>
+          <p>Faster entry, fewer interruptions.</p>
+        </div>
+      </header>
+
+      <form id="settings-form">
+        <label for="uid">Student UID</label>
+        <input id="uid" name="uid" type="text" autocomplete="username" maxlength="15" />
+
+        <label class="switch-row">
+          <span>Continue after filling UID</span>
+          <input id="auto-advance" type="checkbox" />
+        </label>
+
+        <div class="divider"></div>
+
+        <label class="switch-row">
+          <span>Block event popups</span>
+          <input id="block-events" type="checkbox" />
+        </label>
+
+        <label class="switch-row">
+          <span>Block feedback popups</span>
+          <input id="block-feedback" type="checkbox" />
+        </label>
+
+        <button type="submit">Save settings</button>
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+
+      <p class="privacy-note">
+        Your UID stays in this browser. Passwords remain in Chrome Password Manager;
+        CAPTCHA entry stays manual.
+      </p>
+
+      <a class="open-link" href="https://students.cuchd.in/" target="_blank">Open CUIMS</a>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

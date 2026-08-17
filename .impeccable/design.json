@@ -1,0 +1,20 @@
+{
+  "northStar": "The Student Shortcut",
+  "register": "product",
+  "personality": ["fast", "trustworthy", "minimal"],
+  "palette": {
+    "canvas": "#f2f3ee",
+    "surface": "#ffffff",
+    "ink": "#181a17",
+    "muted": "#63685f",
+    "line": "#d6dad1",
+    "accent": "#b7f34a",
+    "focus": "#527f17"
+  },
+  "constraints": [
+    "No Chandigarh University branding or endorsement cues",
+    "No gradients, glass effects, oversized cards, or decorative dashboards",
+    "Use native form semantics and keyboard behavior",
+    "Keep CAPTCHA entry manual"
+  ]
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CUIMS Clear test fixture</title>
+  </head>
+  <body class="modal-open" style="overflow: hidden; padding-right: 15px">
+    <input id="txtUserId" />
+    <button id="btnNext" onclick="window.nextClicks += 1">Next</button>
+    <input id="txtPassword" type="password" />
+    <input id="captchaCode" />
+
+    <section id="event-modal" class="modal in">Register now for the coding event</section>
+    <section id="feedback-modal" role="dialog">Please share your feedback</section>
+    <section id="divSubjectFeedback" class="sidenav" style="width: 100%; z-index: 15">
+      <h2>Student Class Feedback</h2>
+      <input type="submit" value="Submit Now" />
+      <div class="closebtn">Close(X)</div>
+    </section>
+    <section id="unrelated-sidenav" class="sidenav" style="width: 100%">
+      Student profile details
+    </section>
+    <section id="legitimate-modal" role="dialog">Confirm fee payment</section>
+    <div id="backdrop" class="modal-backdrop"></div>
+
+    <script>
+      window.nextClicks = 0;
+      window.chrome = {
+        storage: {
+          local: {
+            get(defaults, callback) {
+              callback({
+                ...defaults,
+                uid: "24TEST1234",
+                password: "test-secret",
+              });
+            },
+          },
+          onChanged: {
+            addListener(listener) {
+              window.storageChangeListener = listener;
+            },
+          },
+        },
+      };
+    </script>
+    <script src="../outputs/cuims-clear-firefox-0.3.1/content.js?v=0.3.1"></script>
+  </body>
+</html>
