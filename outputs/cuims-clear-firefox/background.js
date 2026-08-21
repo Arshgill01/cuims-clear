@@ -21,6 +21,7 @@ function createSolverWorker() {
     errorHandler: (error) => console.warn("[CUIMS Clear] solver:", error),
   }).then(async (worker) => {
     await worker.setParameters({
+      // Treat the image as a single text line of short tokens.
       tessedit_pageseg_mode: "7",
       tessedit_char_whitelist:
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
@@ -49,9 +50,26 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+function repairGlyphFusions(rawText) {
+  if (!rawText) return "";
+  let text = rawText.replace(/[^0-9a-zA-Z]/g, "").trim();
+
+  // Repair common character splitting fusions
+  if (text.length > 4 && text.includes("vv")) {
+    text = text.replace(/vv/g, "w");
+  }
+  if (text.length > 5 && text.includes("rn")) {
+    text = text.replace(/rn/g, "m");
+  }
+  if (text.length > 5 && text.includes("cl")) {
+    text = text.replace(/cl/g, "d");
+  }
+
+  return text;
+}
+
 function sanitizeCaptchaText(text) {
-  if (!text) return "";
-  return text.replace(/[^0-9a-zA-Z]/g, "").trim();
+  return repairGlyphFusions(text);
 }
 
 function scoreCandidate(text, confidence) {

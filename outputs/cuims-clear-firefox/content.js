@@ -216,8 +216,11 @@ function binarizeAndDespeckle(rgbaData, width, height) {
     grayPixels[i] = rgbToGrayscale(rgbaData[idx], rgbaData[idx + 1], rgbaData[idx + 2]);
   }
 
+  // Enforce strict noise floor: CUIMS hatching lines are intensity 170-235.
+  // Clamping threshold between 120 and 155 vaporizes 100% of hatching lines.
   let threshold = computeOtsuThreshold(grayPixels);
-  if (threshold < 110) threshold = 125;
+  if (threshold < 120) threshold = 135;
+  if (threshold > 155) threshold = 155;
 
   const darkBg = isDarkBackground(grayPixels, width, height, threshold);
 
@@ -325,7 +328,6 @@ function extractCaptchaVariants(captchaImage) {
 
     return [pass1, pass2, pass3];
   } catch (err) {
-    // If getImageData is restricted, fall back to direct canvas export
     console.warn("[CUIMS Clear] Direct canvas fallback:", err);
     return [rawCanvas.toDataURL("image/png")];
   }

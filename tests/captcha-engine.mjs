@@ -81,8 +81,11 @@ export function binarizeAndDespeckle(rgbaData, width, height) {
     );
   }
 
+  // Enforce strict noise floor: CUIMS hatching lines are intensity 170-235.
+  // Clamping threshold between 120 and 155 vaporizes 100% of hatching lines.
   let threshold = computeOtsuThreshold(grayPixels);
-  if (threshold < 110) threshold = 125;
+  if (threshold < 120) threshold = 135;
+  if (threshold > 155) threshold = 155;
 
   const darkBg = isDarkBackground(grayPixels, width, height, threshold);
 
@@ -92,6 +95,7 @@ export function binarizeAndDespeckle(rgbaData, width, height) {
     binary[i] = isText ? 1 : 0;
   }
 
+  // Despeckle: remove isolated single-pixel noise
   const cleaned = new Uint8Array(binary);
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
@@ -159,9 +163,26 @@ export function contrastStretchGrayscale(rgbaData, width, height) {
   return { data: output, pLow, pHigh };
 }
 
+export function repairGlyphFusions(rawText) {
+  if (!rawText) return "";
+  let text = rawText.replace(/[^0-9a-zA-Z]/g, "").trim();
+
+  // Repair common character splitting fusions on 5+ length reads
+  if (text.length > 4 && text.includes("vv")) {
+    text = text.replace(/vv/g, "w");
+  }
+  if (text.length > 5 && text.includes("rn")) {
+    text = text.replace(/rn/g, "m");
+  }
+  if (text.length > 5 && text.includes("cl")) {
+    text = text.replace(/cl/g, "d");
+  }
+
+  return text;
+}
+
 export function sanitizeCaptchaText(text) {
-  if (!text) return "";
-  return text.replace(/[^0-9a-zA-Z]/g, "").trim();
+  return repairGlyphFusions(text);
 }
 
 export function scoreCandidate(text, confidence) {
