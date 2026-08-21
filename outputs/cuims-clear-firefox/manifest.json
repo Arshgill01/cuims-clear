@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "CUIMS Clear",
+  "version": "0.5.0",
+  "description": "Speeds up CUIMS login, solves the CAPTCHA on-device, and suppresses event and feedback overlays.",
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://students.cuchd.in/*"],
+  "background": {
+    "scripts": ["vendor/tesseract/tesseract.min.js", "background.js"]
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; upgrade-insecure-requests"
+  },
+  "action": {
+    "default_title": "CUIMS Clear",
+    "default_icon": "icons/icon.svg",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://students.cuchd.in/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "cuims-clear@arshgill01",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}
