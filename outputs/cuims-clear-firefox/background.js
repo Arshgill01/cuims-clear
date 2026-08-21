@@ -6,8 +6,7 @@
 const OEM_LSTM_ONLY = 1;
 const SOLVE_TIMEOUT_MS = 25_000;
 
-// Solver requests are serialized on one worker; tesseract.js does not support
-// concurrent recognize() calls on a shared worker.
+// Serialized queue for solver requests. Must always recover from rejections.
 let solveQueue = Promise.resolve();
 let workerPromise = null;
 
@@ -16,15 +15,12 @@ function createSolverWorker() {
     workerPath: chrome.runtime.getURL("vendor/tesseract/worker.min.js"),
     corePath: chrome.runtime.getURL("vendor/tesseract/"),
     langPath: chrome.runtime.getURL("vendor/tessdata/"),
-    // The language file ships in the package; skip IndexedDB caching.
     cacheMethod: "none",
-    // Load worker.min.js directly so the extension CSP needs no blob: access.
     workerBlobURL: false,
     logger: () => {},
     errorHandler: (error) => console.warn("[CUIMS Clear] solver:", error),
   }).then(async (worker) => {
     await worker.setParameters({
-      // Treat the image as a single text line of short tokens.
       tessedit_pageseg_mode: "7",
       tessedit_char_whitelist:
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
@@ -37,7 +33,6 @@ function createSolverWorker() {
 function getSolverWorker() {
   if (!workerPromise) {
     workerPromise = createSolverWorker().catch((error) => {
-      // Let the next login attempt try a fresh worker.
       workerPromise = null;
       throw error;
     });
@@ -101,7 +96,7 @@ async function solveCandidates(candidates) {
       };
 
       // Fast path: if strong read with valid 4-6 chars, accept immediately
-      if (confidence >= 65 && text.length >= 4 && text.length <= 6) {
+      if (confidence >= 60 && text.length >= 4 && text.length <= 6) {
         return result;
       }
 
@@ -113,7 +108,7 @@ async function solveCandidates(candidates) {
     }
   }
 
-  if (!bestCandidate) {
+  if (!bestCandidate || !bestCandidate.text) {
     throw new Error("unconvincing read across all passes");
   }
 
@@ -135,11 +130,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const candidates = message.candidates || (message.dataUrl ? [message.dataUrl] : []);
 
   solveQueue = solveQueue
+    .catch(() => {}) // Always recover the promise queue so future solves never fail
     .then(() => solveCandidates(candidates))
-    .then(sendResponse)
-    .catch((error) =>
-      sendResponse({ error: String(error?.message || error) }),
-    );
+    .then((result) => sendResponse(result))
+    .catch((error) => {
+      console.warn("[CUIMS Clear] solve error:", error);
+      sendResponse({ error: String(error?.message || error) });
+    });
 
-  return true; // keep the message channel open for the async reply
+  return true;
 });

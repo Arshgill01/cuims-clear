@@ -39,8 +39,6 @@ const FEEDBACK_WORDS = [
   "share your experience",
 ];
 
-const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
-const MAX_CAPTCHA_ATTEMPTS = 3;
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -50,6 +48,7 @@ let programmaticEdit = false;
 let prewarmed = false;
 
 function dispatchFieldEvents(field) {
+  if (!field) return;
   programmaticEdit = true;
   field.dispatchEvent(new Event("input", { bubbles: true }));
   field.dispatchEvent(new Event("change", { bubbles: true }));
@@ -111,17 +110,9 @@ function prepareLogin() {
   prepareCaptchaStep(passwordField);
 }
 
-function captchaAttempts() {
-  return Number(sessionStorage.getItem(CAPTCHA_ATTEMPTS_KEY) || 0);
-}
-
 function prepareCaptchaStep(passwordField) {
   const captchaImage = document.querySelector("#imgCaptcha, img[src*='GenerateCaptcha' i]");
-
-  if (!captchaImage) {
-    sessionStorage.removeItem(CAPTCHA_ATTEMPTS_KEY);
-    return;
-  }
+  if (!captchaImage) return;
 
   // Handle dynamic captcha refresh / image reload
   if (
@@ -137,24 +128,21 @@ function prepareCaptchaStep(passwordField) {
   );
   if (!captchaField) return;
 
-  const attemptsExhausted = captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS;
-  const canSolve = settings.autoSolveCaptcha && !attemptsExhausted;
-
-  if (!canSolve) {
-    if (attemptsExhausted && settings.autoSolveCaptcha) {
-      captchaField.placeholder = "Auto-solve gave up — please type";
-    }
+  if (!settings.autoSolveCaptcha) {
     captchaField.focus();
     return;
   }
 
-  // Ignore scans until the image has decoded
+  // Wait for the captcha image to be fully decoded
   if (!captchaImage.complete || captchaImage.naturalWidth === 0) {
     if (!captchaImage.dataset.cuimsClearWaiting) {
       captchaImage.dataset.cuimsClearWaiting = "1";
       captchaImage.addEventListener(
         "load",
-        () => queueScan(),
+        () => {
+          delete captchaImage.dataset.cuimsClearWaiting;
+          queueScan();
+        },
         { once: true },
       );
     }
@@ -228,7 +216,6 @@ function binarizeAndDespeckle(rgbaData, width, height) {
     grayPixels[i] = rgbToGrayscale(rgbaData[idx], rgbaData[idx + 1], rgbaData[idx + 2]);
   }
 
-  // Use Otsu threshold clamped to a sensible range (110 - 150) to sever diagonal hatching lines
   let threshold = computeOtsuThreshold(grayPixels);
   if (threshold < 110) threshold = 125;
 
@@ -316,26 +303,32 @@ function renderScaledAndPaddedCanvas(pixelData, width, height, scale = 3, paddin
 }
 
 function extractCaptchaVariants(captchaImage) {
-  const w = captchaImage.naturalWidth;
-  const h = captchaImage.naturalHeight;
-  if (!w || !h) return [];
+  const w = captchaImage.naturalWidth || captchaImage.width || 150;
+  const h = captchaImage.naturalHeight || captchaImage.height || 50;
 
   const rawCanvas = document.createElement("canvas");
   rawCanvas.width = w;
   rawCanvas.height = h;
   const rawCtx = rawCanvas.getContext("2d");
-  rawCtx.drawImage(captchaImage, 0, 0);
-  const rawImgData = rawCtx.getImageData(0, 0, w, h);
+  rawCtx.drawImage(captchaImage, 0, 0, w, h);
 
-  const binarizedPixels = binarizeAndDespeckle(rawImgData.data, w, h);
-  const pass1 = renderScaledAndPaddedCanvas(binarizedPixels, w, h, 3, 12);
+  try {
+    const rawImgData = rawCtx.getImageData(0, 0, w, h);
 
-  const contrastPixels = contrastStretchGrayscale(rawImgData.data, w, h);
-  const pass2 = renderScaledAndPaddedCanvas(contrastPixels, w, h, 3, 12);
+    const binarizedPixels = binarizeAndDespeckle(rawImgData.data, w, h);
+    const pass1 = renderScaledAndPaddedCanvas(binarizedPixels, w, h, 3, 12);
 
-  const pass3 = renderScaledAndPaddedCanvas(rawImgData.data, w, h, 3, 12);
+    const contrastPixels = contrastStretchGrayscale(rawImgData.data, w, h);
+    const pass2 = renderScaledAndPaddedCanvas(contrastPixels, w, h, 3, 12);
 
-  return [pass1, pass2, pass3];
+    const pass3 = renderScaledAndPaddedCanvas(rawImgData.data, w, h, 3, 12);
+
+    return [pass1, pass2, pass3];
+  } catch (err) {
+    // If getImageData is restricted, fall back to direct canvas export
+    console.warn("[CUIMS Clear] Direct canvas fallback:", err);
+    return [rawCanvas.toDataURL("image/png")];
+  }
 }
 
 async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
@@ -343,7 +336,7 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
 
   try {
     const candidates = extractCaptchaVariants(captchaImage);
-    if (!candidates.length) throw new Error("Could not extract image");
+    if (!candidates || candidates.length === 0) throw new Error("Could not extract image");
 
     const solution = await chrome.runtime.sendMessage({
       type: "cuims-clear:solve-captcha",
@@ -374,8 +367,7 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
       pwField?.value &&
       !captchaField.dataset.cuimsClearUserEdited
     ) {
-      sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, String(captchaAttempts() + 1));
-      await delay(300 + Math.random() * 200);
+      await delay(250 + Math.random() * 150);
       if (
         captchaField.value === text &&
         pwField?.value &&
@@ -387,6 +379,7 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   } catch (err) {
     console.warn("[CUIMS Clear] CAPTCHA solve error:", err);
     captchaField.placeholder = CAPTCHA_PLACEHOLDER;
+    delete captchaImage.dataset.cuimsClearSolving;
     captchaField.focus();
   }
 }
