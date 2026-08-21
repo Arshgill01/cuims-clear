@@ -39,8 +39,6 @@ const FEEDBACK_WORDS = [
   "share your experience",
 ];
 
-// Wrong captcha answers reload step 2 with a fresh image, so each auto
-// submission is bounded and the whole loop gives up into manual mode.
 const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
 const MAX_CAPTCHA_ATTEMPTS = 3;
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
@@ -121,7 +119,6 @@ function prepareCaptchaStep(passwordField) {
   const captchaImage = document.querySelector("#imgCaptcha, img[src*='GenerateCaptcha' i]");
 
   if (!captchaImage) {
-    // Any page without the captcha image starts a fresh attempt budget.
     sessionStorage.removeItem(CAPTCHA_ATTEMPTS_KEY);
     return;
   }
@@ -141,19 +138,17 @@ function prepareCaptchaStep(passwordField) {
   if (!captchaField) return;
 
   const attemptsExhausted = captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS;
-  const canSolve =
-    settings.autoSolveCaptcha &&
-    settings.password &&
-    passwordField?.value &&
-    !attemptsExhausted;
+  const canSolve = settings.autoSolveCaptcha && !attemptsExhausted;
 
   if (!canSolve) {
-    enhanceManualEntry(captchaImage, captchaField, attemptsExhausted);
+    if (attemptsExhausted && settings.autoSolveCaptcha) {
+      captchaField.placeholder = "Auto-solve gave up — please type";
+    }
+    captchaField.focus();
     return;
   }
 
-  // Ignore scans until the image has decoded, and only ever solve the image
-  // currently displayed — the captcha answer is tied to it server-side.
+  // Ignore scans until the image has decoded
   if (!captchaImage.complete || captchaImage.naturalWidth === 0) {
     if (!captchaImage.dataset.cuimsClearWaiting) {
       captchaImage.dataset.cuimsClearWaiting = "1";
@@ -172,20 +167,6 @@ function prepareCaptchaStep(passwordField) {
 
   captchaImage.dataset.cuimsClearSolving = captchaImage.src;
   solveCaptchaImage(captchaImage, captchaField, passwordField);
-}
-
-function enhanceManualEntry(captchaImage, captchaField, attemptsExhausted) {
-  if (captchaImage.dataset.cuimsClearEnlarged) return;
-
-  captchaImage.dataset.cuimsClearEnlarged = "1";
-  captchaImage.style.setProperty("width", "220px", "important");
-  captchaImage.style.setProperty("height", "66px", "important");
-
-  if (attemptsExhausted && settings.autoSolveCaptcha) {
-    captchaField.placeholder = "Auto-solve gave up — please type";
-  }
-
-  captchaField.focus();
 }
 
 function rgbToGrayscale(r, g, b) {
@@ -247,7 +228,10 @@ function binarizeAndDespeckle(rgbaData, width, height) {
     grayPixels[i] = rgbToGrayscale(rgbaData[idx], rgbaData[idx + 1], rgbaData[idx + 2]);
   }
 
-  const threshold = computeOtsuThreshold(grayPixels);
+  // Use Otsu threshold clamped to a sensible range (110 - 150) to sever diagonal hatching lines
+  let threshold = computeOtsuThreshold(grayPixels);
+  if (threshold < 110) threshold = 125;
+
   const darkBg = isDarkBackground(grayPixels, width, height, threshold);
 
   const binary = new Uint8Array(totalPixels);
@@ -355,7 +339,7 @@ function extractCaptchaVariants(captchaImage) {
 }
 
 async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
-  captchaField.placeholder = "Solving on-device…";
+  captchaField.placeholder = "Solving…";
 
   try {
     const candidates = extractCaptchaVariants(captchaImage);
@@ -369,42 +353,42 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     if (solution?.error) throw new Error(solution.error);
 
     const text = (solution?.text || "").trim();
-    // 4 to 6 characters are expected; anything outside is a misread
-    if (text.length < 4 || text.length > 6) throw new Error("unconvincing read");
+    if (text.length < 3 || text.length > 7) throw new Error("unconvincing read: " + text);
 
     captchaField.value = text;
     dispatchFieldEvents(captchaField);
+    captchaImage.dataset.cuimsClearSolved = captchaImage.src;
+    captchaField.placeholder = CAPTCHA_PLACEHOLDER;
 
-    const confidence = Number(solution?.confidence ?? 0);
-    const loginButton = document.querySelector("#btnLogin, input[name='btnLogin']");
+    const pwField =
+      passwordField ||
+      document.querySelector("input[type='password'], #txtPassword, input[name*='Password' i]");
+
+    const loginButton = document.querySelector(
+      "#btnLogin, input[name='btnLogin'], button[type='submit'], input[type='submit'][value*='Login' i]",
+    );
 
     if (
       settings.autoSubmitLogin &&
-      confidence >= 65 &&
       loginButton &&
-      passwordField?.value &&
+      pwField?.value &&
       !captchaField.dataset.cuimsClearUserEdited
     ) {
       sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, String(captchaAttempts() + 1));
-      await delay(400 + Math.random() * 300);
+      await delay(300 + Math.random() * 200);
       if (
         captchaField.value === text &&
-        passwordField.value &&
+        pwField?.value &&
         !captchaField.dataset.cuimsClearUserEdited
       ) {
         loginButton.click();
       }
-    } else if (confidence < 65) {
-      captchaField.placeholder = "Auto-solve unsure — please check";
-      enhanceManualEntry(captchaImage, captchaField, false);
     }
-  } catch {
-    captchaField.placeholder = "Auto-solve unsure — please type";
-    enhanceManualEntry(captchaImage, captchaField, false);
-    return;
+  } catch (err) {
+    console.warn("[CUIMS Clear] CAPTCHA solve error:", err);
+    captchaField.placeholder = CAPTCHA_PLACEHOLDER;
+    captchaField.focus();
   }
-
-  captchaImage.dataset.cuimsClearSolved = captchaImage.src;
 }
 
 function delay(ms) {

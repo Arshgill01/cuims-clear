@@ -54,17 +54,13 @@ export function isDarkBackground(grayPixels, width, height, threshold) {
   let totalBorderPixels = 0;
 
   for (let x = 0; x < width; x++) {
-    // top row
     if (grayPixels[x] < threshold) darkBorderPixels++;
-    // bottom row
     if (grayPixels[(height - 1) * width + x] < threshold) darkBorderPixels++;
     totalBorderPixels += 2;
   }
 
   for (let y = 1; y < height - 1; y++) {
-    // left column
     if (grayPixels[y * width] < threshold) darkBorderPixels++;
-    // right column
     if (grayPixels[y * width + (width - 1)] < threshold) darkBorderPixels++;
     totalBorderPixels += 2;
   }
@@ -85,17 +81,17 @@ export function binarizeAndDespeckle(rgbaData, width, height) {
     );
   }
 
-  const threshold = computeOtsuThreshold(grayPixels);
+  let threshold = computeOtsuThreshold(grayPixels);
+  if (threshold < 110) threshold = 125;
+
   const darkBg = isDarkBackground(grayPixels, width, height, threshold);
 
-  // Binary map: 1 for text (black foreground), 0 for background (white)
   const binary = new Uint8Array(totalPixels);
   for (let i = 0; i < totalPixels; i++) {
     const isText = darkBg ? grayPixels[i] >= threshold : grayPixels[i] < threshold;
     binary[i] = isText ? 1 : 0;
   }
 
-  // Despeckle: remove isolated 1-pixel noise specks
   const cleaned = new Uint8Array(binary);
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
@@ -112,13 +108,12 @@ export function binarizeAndDespeckle(rgbaData, width, height) {
           binary[idx + width + 1];
 
         if (neighborCount === 0) {
-          cleaned[idx] = 0; // remove isolated speck
+          cleaned[idx] = 0;
         }
       }
     }
   }
 
-  // Create RGBA output
   const output = new Uint8ClampedArray(totalPixels * 4);
   for (let i = 0; i < totalPixels; i++) {
     const outIdx = i * 4;
@@ -145,7 +140,6 @@ export function contrastStretchGrayscale(rgbaData, width, height) {
     );
   }
 
-  // Find min and max for 2nd and 98th percentile
   const sorted = Array.from(grayPixels).sort((a, b) => a - b);
   const pLow = sorted[Math.floor(totalPixels * 0.02)] || 0;
   const pHigh = sorted[Math.floor(totalPixels * 0.98)] || 255;
@@ -174,10 +168,8 @@ export function scoreCandidate(text, confidence) {
   let score = Number(confidence || 0);
   const len = (text || "").length;
 
-  if (len === 5 || len === 6) {
+  if (len >= 4 && len <= 6) {
     score += 25;
-  } else if (len === 4) {
-    score += 10;
   } else if (len > 6) {
     score -= (len - 6) * 15;
   } else if (len < 4) {

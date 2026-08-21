@@ -63,10 +63,8 @@ function scoreCandidate(text, confidence) {
   let score = Number(confidence || 0);
   const len = (text || "").length;
 
-  if (len === 5 || len === 6) {
+  if (len >= 4 && len <= 6) {
     score += 25;
-  } else if (len === 4) {
-    score += 10;
   } else if (len > 6) {
     score -= (len - 6) * 15;
   } else if (len < 4) {
@@ -102,8 +100,8 @@ async function solveCandidates(candidates) {
         passIndex: i,
       };
 
-      // Fast path: if high confidence with standard CUIMS length, accept immediately
-      if (confidence >= 82 && (text.length === 5 || text.length === 6)) {
+      // Fast path: if strong read with valid 4-6 chars, accept immediately
+      if (confidence >= 65 && text.length >= 4 && text.length <= 6) {
         return result;
       }
 

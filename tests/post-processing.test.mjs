@@ -9,24 +9,23 @@ test("sanitizeCaptchaText removes non-alphanumeric characters and whitespace", (
   assert.equal(sanitizeCaptchaText(null), "");
 });
 
-test("scoreCandidate rewards optimal length (5-6) and penalizes bad lengths", () => {
+test("scoreCandidate rewards optimal length (4-6) and penalizes bad lengths", () => {
+  const score4 = scoreCandidate("ofh7", 80); // length 4: 80 + 25 = 105
   const score5 = scoreCandidate("aB39k", 80); // length 5: 80 + 25 = 105
   const score6 = scoreCandidate("aB39kX", 80); // length 6: 80 + 25 = 105
-  const score4 = scoreCandidate("aB39", 80); // length 4: 80 + 10 = 90
   const score3 = scoreCandidate("aB3", 80); // length 3: 80 - 20 = 60
   const score8 = scoreCandidate("aB39kXYZ", 80); // length 8: 80 - 30 = 50
 
+  assert.equal(score4, 105);
   assert.equal(score5, 105);
   assert.equal(score6, 105);
-  assert.equal(score4, 90);
   assert.equal(score3, 60);
   assert.equal(score8, 50);
-  assert.ok(score5 > score4 && score4 > score3);
+  assert.ok(score5 > score3);
 });
 
 test("scoreCandidate distinguishes between high confidence and bad length", () => {
-  // A 5-letter candidate with 75% confidence should outrank an 8-letter read with 85% confidence
-  const candidateValid = scoreCandidate("K7Np2", 75);
+  const candidateValid = scoreCandidate("ofh7", 75);
   const candidateMalformed = scoreCandidate("K7Np2abc", 85);
 
   assert.ok(
