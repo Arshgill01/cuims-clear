@@ -58,9 +58,13 @@ after restart.
 
 ## Popup matching
 
-The blocker only acts on dialog-style elements whose text looks like an event or feedback request. Turn either category off from the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
+The blocker hides event and feedback interruptions, including custom full-page dimmers such as the Teaching & Learning Process survey overlay on StudentHome. It still leaves ordinary dialogs and the sidebar alone. Turn either category off from the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
 
-Because the logged-in CUIMS dashboard was not available during development, the blocker uses conservative Bootstrap, jQuery UI, and SweetAlert modal selectors. If a CUIMS popup survives, inspect it or share a screenshot/HTML sample so its exact selector can be added.
+Known interruption types:
+
+- Bootstrap, jQuery UI, SweetAlert, and ASP.NET ModalPopup dialogs whose text looks like an event or feedback request
+- The class-feedback sidenav (`#divSubjectFeedback`)
+- Custom `position: fixed` overlays that link to `frmStudentFeedbackSurvey.aspx` or say **Click here to Fill Now**
 
 ## Privacy
 
