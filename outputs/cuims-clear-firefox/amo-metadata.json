@@ -5,6 +5,9 @@
   "categories": ["other"],
   "version": {
     "license": "MPL-2.0",
-    "approval_notes": "CUIMS Clear is an independent student utility. It stores credentials only in Firefox storage.local and makes no network requests of its own. CAPTCHA images are processed on-device by a bundled copy of Tesseract.js 5.1.1 (Apache-2.0), its WASM core, and the @tesseract.js-data English model; no data leaves the browser and no remote code is loaded at runtime. The minified vendor files are published upstream builds from the tesseract.js npm package (tesseract.js, tesseract.js-core); unminified sources are available at https://github.com/naptha/tesseract.js and licenses are included in vendor/. All other source files are unminified and included directly in the package."
+    "release_notes": {
+      "en-US": "Hide the unavoidable Teaching & Learning Process feedback overlay on StudentHome. CUIMS Clear now suppresses custom full-page dimmers and \"Click here to Fill Now\" survey popups that are not Bootstrap or SweetAlert dialogs, without hiding the sidebar or ordinary confirmation dialogs."
+    },
+    "approval_notes": "CUIMS Clear is an independent student utility. It stores credentials only in Firefox storage.local and makes no network requests of its own. CAPTCHA images are processed on-device by a bundled copy of Tesseract.js 5.1.1 (Apache-2.0), its WASM core, and the @tesseract.js-data English model; no data leaves the browser and no remote code is loaded at runtime. The minified vendor files are published upstream builds from the tesseract.js npm package (tesseract.js, tesseract.js-core); unminified sources are available at https://github.com/naptha/tesseract.js and licenses are included in vendor/. All other source files are unminified and included directly in the package. Version 0.5.1 only extends the existing overlay blocker to a custom CUIMS survey dimmer; login and OCR behavior is unchanged."
   }
 }

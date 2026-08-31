@@ -98,7 +98,16 @@ test("DOM lifecycle: login automation and attempt exhaustion safety", () => {
 
 test("DOM lifecycle: modal classifier filters events and feedback while keeping essential dialogs", () => {
   const EVENT_WORDS = ["event", "workshop", "seminar", "fest", "competition", "register now"];
-  const FEEDBACK_WORDS = ["feedback", "survey", "rate your", "rating", "share your experience"];
+  const FEEDBACK_WORDS = [
+    "feedback",
+    "survey",
+    "rate your",
+    "rating",
+    "share your experience",
+    "fill now",
+    "teaching & learning",
+    "teaching and learning process",
+  ];
 
   function classifyModal(text, blockEvents = true, blockFeedback = true) {
     const lower = text.toLowerCase();
@@ -112,6 +121,12 @@ test("DOM lifecycle: modal classifier filters events and feedback while keeping 
 
   assert.equal(classifyModal("Register now for the hackathon event"), "event");
   assert.equal(classifyModal("Please fill out this semester feedback survey"), "feedback");
+  assert.equal(
+    classifyModal(
+      "Dear Student, Filling out the Feedback related to the Teaching & Learning Process and will take not more than 2 minutes. Click here to Fill Now !",
+    ),
+    "feedback",
+  );
   assert.equal(classifyModal("Confirm fee payment for semester 5"), null);
   assert.equal(classifyModal("Hostel allotment confirmation"), null);
 });

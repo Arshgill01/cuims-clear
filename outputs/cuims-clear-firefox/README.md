@@ -42,12 +42,13 @@ signed:
 2. Open the settings cog and select **Install Add-on From File**.
 3. Choose the signed XPI and approve the requested access.
 
-Mozilla signing can be requested without creating a public AMO listing:
+Mozilla signing can be requested for a public AMO listing:
 
 ```sh
 web-ext sign \
   --source-dir outputs/cuims-clear-firefox \
-  --channel unlisted \
+  --channel listed \
+  --amo-metadata outputs/cuims-clear-firefox/amo-metadata.json \
   --api-key "$WEB_EXT_API_KEY" \
   --api-secret "$WEB_EXT_API_SECRET"
 ```
@@ -58,9 +59,13 @@ after restart.
 
 ## Popup matching
 
-The blocker only acts on dialog-style elements whose text looks like an event or feedback request. Turn either category off from the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
+The blocker hides event and feedback interruptions, including custom full-page dimmers such as the Teaching & Learning Process survey overlay on StudentHome. It still leaves ordinary dialogs and the sidebar alone. Turn either category off from the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
 
-Because the logged-in CUIMS dashboard was not available during development, the blocker uses conservative Bootstrap, jQuery UI, and SweetAlert modal selectors. If a CUIMS popup survives, inspect it or share a screenshot/HTML sample so its exact selector can be added.
+Known interruption types:
+
+- Bootstrap, jQuery UI, SweetAlert, and ASP.NET ModalPopup dialogs whose text looks like an event or feedback request
+- The class-feedback sidenav (`#divSubjectFeedback`)
+- Custom `position: fixed` overlays that link to `frmStudentFeedbackSurvey.aspx` or say **Click here to Fill Now**
 
 ## Privacy
 

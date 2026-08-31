@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Speeds up CUIMS login, solves the CAPTCHA on-device, and suppresses event and feedback overlays.",
   "icons": {
     "48": "icons/icon.svg",

@@ -20,7 +20,19 @@ const MODAL_SELECTORS = [
   ".sweet-alert",
   ".swal2-container",
   "#divSubjectFeedback",
+  ".modalPopup",
+  ".ModalPopup",
+  ".modalBackground",
+  ".ModalBackground",
+  "[id$='_backgroundElement']",
 ];
+
+const INLINE_OVERLAY_SELECTOR = [
+  '[style*="position:fixed" i]',
+  '[style*="position: fixed" i]',
+  '[style*="position:absolute" i]',
+  '[style*="position: absolute" i]',
+].join(",");
 
 const EVENT_WORDS = [
   "event",
@@ -37,7 +49,26 @@ const FEEDBACK_WORDS = [
   "rate your",
   "rating",
   "share your experience",
+  "fill now",
+  "teaching & learning",
+  "teaching and learning process",
 ];
+
+const FORCED_FEEDBACK_PHRASES = [
+  "click here to fill now",
+  "will take not more than 2 minutes",
+  "filling out the feedback related to the teaching",
+];
+
+const BACKDROP_SELECTOR = [
+  ".modal-backdrop",
+  ".ui-widget-overlay",
+  ".swal2-backdrop-show",
+  ".sweet-overlay",
+  ".modalBackground",
+  ".ModalBackground",
+  "[id$='_backgroundElement']",
+].join(", ");
 
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
 
@@ -400,16 +431,168 @@ function classifyModal(element) {
   return null;
 }
 
+function viewportSize() {
+  return {
+    width: window.innerWidth || document.documentElement?.clientWidth || 0,
+    height: window.innerHeight || document.documentElement?.clientHeight || 0,
+  };
+}
+
+function isBlockingOverlay(element) {
+  if (!(element instanceof HTMLElement)) return false;
+  if (element === document.body || element === document.documentElement) return false;
+  if (element.dataset.cuimsClearSuppressed) return false;
+
+  const style = getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (Number.parseFloat(style.opacity) === 0) return false;
+
+  const position = style.position;
+  if (position !== "fixed" && position !== "absolute") return false;
+
+  const rect = element.getBoundingClientRect();
+  const { width: vw, height: vh } = viewportSize();
+  if (vw < 1 || vh < 1) {
+    return true;
+  }
+
+  const coversMostViewport = rect.width >= vw * 0.45 && rect.height >= vh * 0.3;
+  const coversFullBleed = rect.width >= vw * 0.85 && rect.height >= vh * 0.6;
+  return coversMostViewport || coversFullBleed;
+}
+
+function looksLikeNavigationMenu(element) {
+  if (!(element instanceof Element)) return false;
+  if (element.matches("nav, [role='navigation']")) return true;
+
+  const links = element.querySelectorAll("a[href]");
+  if (links.length >= 6) return true;
+
+  const rect = element.getBoundingClientRect();
+  const { width: vw, height: vh } = viewportSize();
+  if (vw < 1 || vh < 1) return false;
+
+  const sidebarShaped =
+    rect.width > 0 &&
+    rect.width < Math.min(380, vw * 0.36) &&
+    rect.height > vh * 0.45;
+  return sidebarShaped;
+}
+
+function isOverlayChrome(element) {
+  if (!(element instanceof HTMLElement)) return false;
+  if (looksLikeNavigationMenu(element)) return false;
+
+  const style = getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (style.position !== "fixed" && style.position !== "absolute") return false;
+
+  const z = Number.parseInt(style.zIndex, 10);
+  return Number.isFinite(z) && z >= 10;
+}
+
+function findOverlayRoot(start) {
+  let node = start instanceof Element ? start : start?.parentElement;
+  let covering = null;
+  let chrome = null;
+
+  while (node && node !== document.body && node !== document.documentElement) {
+    if (isBlockingOverlay(node)) covering = node;
+    else if (!chrome && isOverlayChrome(node)) chrome = node;
+    node = node.parentElement;
+  }
+
+  return covering || chrome;
+}
+
 function suppress(element, category) {
-  if (element.dataset.cuimsClearSuppressed) return;
+  if (!(element instanceof HTMLElement)) return;
 
-  suppressedElements.set(element, {
-    display: element.style.getPropertyValue("display"),
-    priority: element.style.getPropertyPriority("display"),
-  });
+  if (!element.dataset.cuimsClearSuppressed) {
+    suppressedElements.set(element, {
+      display: element.style.getPropertyValue("display"),
+      displayPriority: element.style.getPropertyPriority("display"),
+      pointerEvents: element.style.getPropertyValue("pointer-events"),
+      pointerEventsPriority: element.style.getPropertyPriority("pointer-events"),
+    });
+    element.dataset.cuimsClearSuppressed = category;
+  }
 
-  element.dataset.cuimsClearSuppressed = category;
   element.style.setProperty("display", "none", "important");
+  element.style.setProperty("pointer-events", "none", "important");
+}
+
+function suppressOverlayTree(element, category) {
+  const root = findOverlayRoot(element) || element;
+  if (!(root instanceof HTMLElement)) return;
+  if (looksLikeNavigationMenu(root)) return;
+
+  suppress(root, category);
+
+  const parent = root.parentElement;
+  if (!parent) return;
+
+  for (const sibling of parent.children) {
+    if (sibling === root || sibling.dataset.cuimsClearSuppressed) continue;
+    if (isLikelyDimmer(sibling)) suppress(sibling, "backdrop");
+  }
+}
+
+function isLikelyDimmer(element) {
+  if (!isBlockingOverlay(element)) return false;
+  const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+  return text.length === 0;
+}
+
+function findForcedFeedbackHooks() {
+  const hooks = [];
+  const controls = document.querySelectorAll(
+    "a, button, input[type='button'], input[type='submit'], input[type='image']",
+  );
+
+  for (const el of controls) {
+    if (el.dataset.cuimsClearSuppressed) continue;
+
+    const href = `${el.getAttribute("href") || ""} ${el.href || ""}`.toLowerCase();
+    if (href.includes("frmstudentfeedbacksurvey") || href.includes("studentfeedbacksurvey")) {
+      hooks.push(el);
+      continue;
+    }
+
+    const text = `${el.innerText || el.textContent || el.value || ""}`.toLowerCase();
+    if (FORCED_FEEDBACK_PHRASES.some((phrase) => text.includes(phrase))) {
+      hooks.push(el);
+    }
+  }
+
+  return hooks;
+}
+
+function scanForcedFeedbackOverlays() {
+  if (!settings.blockFeedback) return;
+
+  for (const hook of findForcedFeedbackHooks()) {
+    const root = findOverlayRoot(hook);
+    if (!root) continue;
+    suppressOverlayTree(root, "feedback");
+  }
+}
+
+function scanAnonymousOverlays() {
+  const seen = new Set();
+  const candidates = [
+    ...document.querySelectorAll(INLINE_OVERLAY_SELECTOR),
+    ...document.querySelectorAll("body > *, form > *, #form1 > *"),
+  ];
+
+  for (const element of candidates) {
+    if (seen.has(element) || element.dataset.cuimsClearSuppressed) continue;
+    seen.add(element);
+    if (!isBlockingOverlay(element) || looksLikeNavigationMenu(element)) continue;
+
+    const category = classifyModal(element);
+    if (category) suppressOverlayTree(element, category);
+  }
 }
 
 function cleanupBackdrop() {
@@ -421,20 +604,35 @@ function cleanupBackdrop() {
     ),
   );
 
-  if (visibleModal) return;
+  if (!visibleModal) {
+    document.querySelectorAll(BACKDROP_SELECTOR).forEach((backdrop) => {
+      suppress(backdrop, "backdrop");
+    });
 
-  document
-    .querySelectorAll(".modal-backdrop, .ui-widget-overlay, .swal2-backdrop-show")
-    .forEach((backdrop) => suppress(backdrop, "backdrop"));
+    for (const element of document.querySelectorAll("body > *, form > *, #form1 > *")) {
+      if (element.dataset.cuimsClearSuppressed) continue;
+      if (isLikelyDimmer(element)) suppress(element, "backdrop");
+    }
+  }
 
   document.body?.classList.remove("modal-open");
   document.body?.style.removeProperty("overflow");
   document.body?.style.removeProperty("padding-right");
+  document.documentElement?.style.removeProperty("overflow");
+}
+
+function enforceSuppressed() {
+  for (const [element] of suppressedElements) {
+    if (!element.isConnected) continue;
+    element.style.setProperty("display", "none", "important");
+    element.style.setProperty("pointer-events", "none", "important");
+  }
 }
 
 function scanPage() {
   scanQueued = false;
   prepareLogin();
+  enforceSuppressed();
 
   for (const selector of MODAL_SELECTORS) {
     document.querySelectorAll(selector).forEach((element) => {
@@ -443,6 +641,8 @@ function scanPage() {
     });
   }
 
+  scanForcedFeedbackOverlays();
+  scanAnonymousOverlays();
   cleanupBackdrop();
 }
 
@@ -458,9 +658,18 @@ function restoreSuppressed() {
 
     element.removeAttribute("data-cuims-clear-suppressed");
     if (original.display) {
-      element.style.setProperty("display", original.display, original.priority);
+      element.style.setProperty("display", original.display, original.displayPriority);
     } else {
       element.style.removeProperty("display");
+    }
+    if (original.pointerEvents) {
+      element.style.setProperty(
+        "pointer-events",
+        original.pointerEvents,
+        original.pointerEventsPriority,
+      );
+    } else {
+      element.style.removeProperty("pointer-events");
     }
   }
 
@@ -484,16 +693,36 @@ function markUserEdits() {
   );
 }
 
+function scheduleFollowUpScans() {
+  for (const delayMs of [300, 1000, 2500]) {
+    window.setTimeout(queueScan, delayMs);
+  }
+}
+
 function startExtension() {
   chrome.storage.local.get(DEFAULT_SETTINGS, (storedSettings) => {
     settings = storedSettings;
     markUserEdits();
     scanPage();
+    queueScan();
+    scheduleFollowUpScans();
 
     new MutationObserver(queueScan).observe(document.documentElement, {
       childList: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class", "hidden", "open", "aria-hidden"],
     });
+
+    document.addEventListener("DOMContentLoaded", queueScan, { once: true });
+    window.addEventListener(
+      "load",
+      () => {
+        queueScan();
+        scheduleFollowUpScans();
+      },
+      { once: true },
+    );
   });
 }
 
