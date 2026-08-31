@@ -42,12 +42,13 @@ signed:
 2. Open the settings cog and select **Install Add-on From File**.
 3. Choose the signed XPI and approve the requested access.
 
-Mozilla signing can be requested without creating a public AMO listing:
+Mozilla signing can be requested for a public AMO listing:
 
 ```sh
 web-ext sign \
   --source-dir outputs/cuims-clear-firefox \
-  --channel unlisted \
+  --channel listed \
+  --amo-metadata outputs/cuims-clear-firefox/amo-metadata.json \
   --api-key "$WEB_EXT_API_KEY" \
   --api-secret "$WEB_EXT_API_SECRET"
 ```

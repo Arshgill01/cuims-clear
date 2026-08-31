@@ -1,0 +1,8 @@
+{
+  "name": "cuims-clear-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "puppeteer-core": "^24.15.0"
+  }
+}
