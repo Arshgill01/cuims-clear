@@ -6,6 +6,8 @@ import {
   isDarkBackground,
   binarizeAndDespeckle,
   contrastStretchGrayscale,
+  findInkBounds,
+  cropRgba,
 } from "./captcha-engine.mjs";
 
 test("rgbToGrayscale correctly applies luminance weights", () => {
@@ -96,4 +98,43 @@ test("contrastStretchGrayscale expands dynamic range", () => {
   }
   assert.ok(hasNearZero, "Dynamic range should include low values");
   assert.ok(hasNearMax, "Dynamic range should include high values");
+});
+
+test("findInkBounds crops to dark glyphs and keeps padding", () => {
+  const width = 20;
+  const height = 10;
+  const rgba = new Uint8ClampedArray(width * height * 4).fill(255);
+
+  for (let y = 3; y <= 5; y++) {
+    for (let x = 8; x <= 12; x++) {
+      const idx = (y * width + x) * 4;
+      rgba[idx] = 0;
+      rgba[idx + 1] = 0;
+      rgba[idx + 2] = 0;
+    }
+  }
+
+  const bounds = findInkBounds(rgba, width, height, 2);
+  assert.equal(bounds.x, 6);
+  assert.equal(bounds.y, 1);
+  assert.equal(bounds.width, 9);
+  assert.equal(bounds.height, 7);
+});
+
+test("cropRgba copies only the ink window", () => {
+  const width = 4;
+  const height = 2;
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    rgba[i * 4] = i * 10;
+    rgba[i * 4 + 1] = i * 10;
+    rgba[i * 4 + 2] = i * 10;
+    rgba[i * 4 + 3] = 255;
+  }
+
+  const cropped = cropRgba(rgba, width, height, { x: 1, y: 0, width: 2, height: 1 });
+  assert.equal(cropped.width, 2);
+  assert.equal(cropped.height, 1);
+  assert.equal(cropped.data[0], 10);
+  assert.equal(cropped.data[4], 20);
 });

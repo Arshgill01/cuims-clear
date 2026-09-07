@@ -185,6 +185,9 @@ export function sanitizeCaptchaText(text) {
   return repairGlyphFusions(text);
 }
 
+export const FAST_PATH_CONFIDENCE = 80;
+export const CONSENSUS_BONUS = 20;
+
 export function scoreCandidate(text, confidence) {
   let score = Number(confidence || 0);
   const len = (text || "").length;
@@ -198,4 +201,97 @@ export function scoreCandidate(text, confidence) {
   }
 
   return score;
+}
+
+export function isStrongRead(text, confidence, minConfidence = FAST_PATH_CONFIDENCE) {
+  const len = (text || "").length;
+  return Number(confidence || 0) >= minConfidence && len >= 4 && len <= 6;
+}
+
+export function selectBestCandidate(results) {
+  const valid = (results || []).filter((result) => result && result.text);
+  if (valid.length === 0) return null;
+
+  const groups = new Map();
+  for (const result of valid) {
+    const group = groups.get(result.text) || { results: [] };
+    group.results.push(result);
+    groups.set(result.text, group);
+  }
+
+  let best = null;
+  for (const group of groups.values()) {
+    const representative = group.results.reduce((winner, current) =>
+      current.score > winner.score ? current : winner,
+    );
+    const score =
+      representative.score + (group.results.length >= 2 ? CONSENSUS_BONUS : 0);
+    const candidate = {
+      ...representative,
+      score,
+      agreement: group.results.length,
+    };
+    if (!best || candidate.score > best.score) {
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
+export function findInkBounds(rgbaData, width, height, padding = 3) {
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (rgbaData[(y * width + x) * 4] < 128) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX < 0) {
+    return { x: 0, y: 0, width, height };
+  }
+
+  const x = Math.max(0, minX - padding);
+  const y = Math.max(0, minY - padding);
+  const right = Math.min(width - 1, maxX + padding);
+  const bottom = Math.min(height - 1, maxY + padding);
+
+  return {
+    x,
+    y,
+    width: right - x + 1,
+    height: bottom - y + 1,
+  };
+}
+
+export function cropRgba(rgbaData, width, height, bounds) {
+  if (
+    bounds.x === 0 &&
+    bounds.y === 0 &&
+    bounds.width === width &&
+    bounds.height === height
+  ) {
+    return { data: rgbaData, width, height };
+  }
+
+  const output = new Uint8ClampedArray(bounds.width * bounds.height * 4);
+  for (let row = 0; row < bounds.height; row++) {
+    const srcOffset = ((bounds.y + row) * width + bounds.x) * 4;
+    const dstOffset = row * bounds.width * 4;
+    output.set(
+      rgbaData.subarray(srcOffset, srcOffset + bounds.width * 4),
+      dstOffset,
+    );
+  }
+
+  return { data: output, width: bounds.width, height: bounds.height };
 }

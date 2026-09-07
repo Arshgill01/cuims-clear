@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeCaptchaText, scoreCandidate } from "./captcha-engine.mjs";
+import {
+  sanitizeCaptchaText,
+  scoreCandidate,
+  isStrongRead,
+  selectBestCandidate,
+} from "./captcha-engine.mjs";
 
 test("sanitizeCaptchaText removes non-alphanumeric characters and whitespace", () => {
   assert.equal(sanitizeCaptchaText(" aB39k \n"), "aB39k");
@@ -32,4 +37,27 @@ test("scoreCandidate distinguishes between high confidence and bad length", () =
     candidateValid > candidateMalformed,
     `Valid length candidate (${candidateValid}) should outscore malformed candidate (${candidateMalformed})`,
   );
+});
+
+test("isStrongRead only accepts high-confidence 4-6 character tokens", () => {
+  assert.equal(isStrongRead("ofh7", 80), true);
+  assert.equal(isStrongRead("ofh7", 79), false);
+  assert.equal(isStrongRead("ab", 95), false);
+  assert.equal(isStrongRead("toolong", 95), false);
+});
+
+test("selectBestCandidate prefers agreeing passes over a lone high-confidence miss", () => {
+  const winner = selectBestCandidate([
+    { text: "0fh7", confidence: 72, score: scoreCandidate("0fh7", 72), passIndex: 0 },
+    { text: "ofh7", confidence: 61, score: scoreCandidate("ofh7", 61), passIndex: 1 },
+    { text: "ofh7", confidence: 58, score: scoreCandidate("ofh7", 58), passIndex: 2 },
+  ]);
+
+  assert.equal(winner.text, "ofh7");
+  assert.equal(winner.agreement, 2);
+});
+
+test("selectBestCandidate returns null when every pass is empty", () => {
+  assert.equal(selectBestCandidate([{ text: "", score: 0 }]), null);
+  assert.equal(selectBestCandidate([]), null);
 });

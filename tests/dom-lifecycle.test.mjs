@@ -91,9 +91,108 @@ test("DOM lifecycle: login automation and attempt exhaustion safety", () => {
   sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, "3");
   assert.equal(captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS, true);
 
-  // Fresh login page resets budget
+  // Fresh UID step (no password field, no captcha) resets budget
   sessionStorage.removeItem(CAPTCHA_ATTEMPTS_KEY);
   assert.equal(captchaAttempts(), 0);
+});
+
+test("DOM lifecycle: auto-solve stops once the retry budget is spent", () => {
+  const MAX_CAPTCHA_ATTEMPTS = 3;
+  let attempts = 0;
+  let autoSolve = true;
+
+  function recordAttempt() {
+    attempts += 1;
+  }
+
+  function shouldAutoSolve() {
+    return autoSolve && attempts < MAX_CAPTCHA_ATTEMPTS;
+  }
+
+  recordAttempt();
+  recordAttempt();
+  assert.equal(shouldAutoSolve(), true);
+
+  recordAttempt();
+  assert.equal(shouldAutoSolve(), false);
+});
+
+test("DOM lifecycle: Chrome width-0 sidenav still classifies as feedback", () => {
+  const FEEDBACK_WORDS = ["feedback", "survey", "rate your", "rating", "share your experience"];
+  const FEEDBACK_CONTAINER_IDS = new Set([
+    "divsubjectfeedback",
+    "divstudenthostelfedback",
+    "div_feedback",
+  ]);
+
+  function elementText(element) {
+    const visible = (element.innerText || "").trim();
+    if (visible) return visible.toLowerCase();
+    return (element.textContent || "").trim().toLowerCase();
+  }
+
+  function isKnownFeedbackContainer(element) {
+    const id = (element.id || "").toLowerCase();
+    if (FEEDBACK_CONTAINER_IDS.has(id)) return true;
+    return /feedbac?k/.test(id) && element.classList?.contains("sidenav");
+  }
+
+  function classifyModal(element, blockFeedback = true) {
+    if (blockFeedback && isKnownFeedbackContainer(element)) return "feedback";
+    const text = elementText(element);
+    if (blockFeedback && FEEDBACK_WORDS.some((word) => text.includes(word))) {
+      return "feedback";
+    }
+    return null;
+  }
+
+  // Chrome innerText on a closed sidenav is often whitespace-only.
+  const closedSidenav = {
+    id: "divSubjectFeedback",
+    innerText: "\n    \n",
+    textContent: "Student Class Feedback\nClose(X)",
+    classList: { contains: (name) => name === "sidenav" },
+  };
+
+  assert.equal(classifyModal(closedSidenav), "feedback");
+
+  const unknownClosed = {
+    id: "randomOverlay",
+    innerText: "\n",
+    textContent: "Student Class Feedback",
+    classList: { contains: () => false },
+  };
+  assert.equal(classifyModal(unknownClosed), "feedback");
+});
+
+test("DOM lifecycle: Fill Now teaching-feedback prompt is treated as feedback", () => {
+  const FEEDBACK_WORDS = [
+    "feedback",
+    "survey",
+    "rate your",
+    "rating",
+    "share your experience",
+    "fill now",
+    "teaching & learning",
+    "teaching and learning",
+  ];
+
+  function classifyText(text, blockFeedback = true) {
+    const lower = text.toLowerCase();
+    if (blockFeedback && FEEDBACK_WORDS.some((word) => lower.includes(word))) {
+      return "feedback";
+    }
+    return null;
+  }
+
+  assert.equal(
+    classifyText(
+      "Dear Student, Filling out the Feedback related to the Teaching & Learning Process and will take not more than 2 minutes. Click here to Fill Now !",
+    ),
+    "feedback",
+  );
+  assert.equal(classifyText("Click here to Fill Now !"), "feedback");
+  assert.equal(classifyText("Apply for Loan Documents"), null);
 });
 
 test("DOM lifecycle: modal classifier filters events and feedback while keeping essential dialogs", () => {

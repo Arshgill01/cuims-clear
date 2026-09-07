@@ -1,0 +1,319 @@
+:root {
+  color-scheme: light;
+  --canvas: #f2f3ee;
+  --surface: #ffffff;
+  --ink: #181a17;
+  --muted: #63685f;
+  --line: #d6dad1;
+  --line-strong: #aeb4aa;
+  --accent: #b7f34a;
+  --accent-hover: #a7e13e;
+  --focus: #527f17;
+  --success: #28633a;
+  font-family: "Avenir Next", Avenir, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 368px;
+  margin: 0;
+  background: var(--canvas);
+}
+
+main {
+  padding: 14px;
+}
+
+.product-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--ink);
+  font: 800 18px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: -4px;
+}
+
+.mark span {
+  transform: translateX(-2px);
+}
+
+.product-name {
+  min-width: 0;
+  flex: 1;
+}
+
+.eyebrow {
+  margin: 0 0 1px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.version {
+  align-self: flex-start;
+  margin-top: 3px;
+  color: var(--muted);
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+form {
+  padding-top: 10px;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+legend {
+  width: 100%;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.login-fields > label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+input[type="text"]:focus-visible,
+input[type="password"]:focus-visible {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgb(82 127 23 / 17%);
+}
+
+.login-fields > label:not(:first-of-type) {
+  margin-top: 10px;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 58px;
+}
+
+.field-action {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 48px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.field-action:hover {
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+.settings-group {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-group legend {
+  padding-top: 10px;
+}
+
+.check-row {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.check-row + .check-row {
+  border-top: 1px solid var(--line);
+}
+
+.check-row span {
+  display: grid;
+  gap: 1px;
+}
+
+.check-row strong {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.check-row small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.check-row input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--ink);
+}
+
+button,
+.open-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.save-button {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 10px;
+  border: 1px solid var(--ink);
+  color: var(--surface);
+  background: var(--ink);
+}
+
+.save-button:hover {
+  background: #30332e;
+}
+
+#status {
+  min-height: 15px;
+  margin: 6px 0 -3px;
+  color: var(--success);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.local-data {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 9px 0 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.local-data h2 {
+  margin: 0 0 2px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.local-data p {
+  max-width: 205px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.clear-button {
+  min-height: 32px;
+  padding: 0 9px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+}
+
+.clear-button:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.open-link {
+  width: 100%;
+  min-height: 40px;
+  justify-content: space-between;
+  padding: 0 15px;
+  border: 1px solid #92c62f;
+  color: #18200d;
+  background: var(--accent);
+}
+
+.open-link:hover {
+  background: var(--accent-hover);
+}
+
+button:focus-visible,
+.open-link:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 3px solid rgb(82 127 23 / 30%);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
