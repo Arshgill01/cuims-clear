@@ -15,7 +15,8 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` that:
 CAPTCHA solving happens entirely inside the extension: the OCR engine, WASM
 binary, and English model are bundled in the package, and the captcha image is
 processed in your browser. No data is sent to any server. Automatic attempts
-are capped (default 3 per login) so the loop always falls back to manual entry.
+are capped at a high retry budget so a bad read can try again, then fall back to
+manual entry if it still cannot land.
 
 CUIMS Clear is an independent student-built project. It is not affiliated with or endorsed
 by Chandigarh University.

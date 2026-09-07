@@ -15,34 +15,12 @@ const MODAL_SELECTORS = [
   '[aria-modal="true"]',
   ".modal.in",
   ".modal.show",
-  ".modal-custom",
   ".ui-dialog",
   ".swal-overlay",
   ".sweet-alert",
   ".swal2-container",
   "#divSubjectFeedback",
-  "#divStudentHostelFedback",
-  "#div_feedback",
-  ".sidenav[id*='eedback' i]",
 ];
-
-const FEEDBACK_CONTAINER_IDS = new Set([
-  "divsubjectfeedback",
-  "divstudenthostelfedback",
-  "div_feedback",
-]);
-
-const FEEDBACK_BLOCK_CSS = `
-#divSubjectFeedback,
-#divStudentHostelFedback,
-#div_feedback,
-.sidenav[id*="eedback" i] {
-  display: none !important;
-  width: 0 !important;
-  max-width: 0 !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}`;
 
 const EVENT_WORDS = [
   "event",
@@ -59,24 +37,11 @@ const FEEDBACK_WORDS = [
   "rate your",
   "rating",
   "share your experience",
-  "fill now",
-  "teaching & learning",
-  "teaching and learning",
-];
-
-const OVERLAY_SELECTORS = [
-  "[class*='modal' i]",
-  "[id*='modal' i]",
-  "[class*='popup' i]",
-  "[id*='popup' i]",
-  "[class*='overlay' i]",
-  "[id*='overlay' i]",
-  "dialog",
 ];
 
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
 const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
-const MAX_CAPTCHA_ATTEMPTS = 3;
+const MAX_CAPTCHA_ATTEMPTS = 99;
 
 let settings = { ...DEFAULT_SETTINGS };
 const suppressedElements = new Map();
@@ -560,29 +525,9 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function elementText(element) {
-  // Chrome's innerText is layout-aware. The CUIMS sidenav sits at width:0
-  // until it opens, so innerText is often "" or whitespace there. Using that
-  // value (because it is truthy) skips textContent and misses "feedback".
-  const visible = (element.innerText || "").trim();
-  if (visible) return visible.toLowerCase();
-  return (element.textContent || "").trim().toLowerCase();
-}
-
-function isKnownFeedbackContainer(element) {
-  const id = (element.id || "").toLowerCase();
-  if (FEEDBACK_CONTAINER_IDS.has(id)) return true;
-  return /feedbac?k/.test(id) && element.classList?.contains("sidenav");
-}
-
 function classifyModal(element) {
-  if (isNavigationChrome(element)) return null;
-
-  if (settings.blockFeedback && isKnownFeedbackContainer(element)) {
-    return "feedback";
-  }
-
-  const text = elementText(element);
+  // Chrome innerText is layout-aware and can miss closed/clipped nodes.
+  const text = (element.textContent || element.innerText || "").toLowerCase();
   const isEvent = EVENT_WORDS.some((word) => text.includes(word));
   const isFeedback = FEEDBACK_WORDS.some((word) => text.includes(word));
 
@@ -591,135 +536,125 @@ function classifyModal(element) {
   return null;
 }
 
-function isNavigationChrome(element) {
-  if (element.closest?.("nav, aside, header")) return true;
+const UNIQUE_FEEDBACK_PROMPTS = [
+  "filling out the feedback related to the teaching",
+  "will take not more than 2 minutes",
+  "click here to fill now",
+];
 
-  const id = (element.id || "").toLowerCase();
-  const cls = `${element.className || ""}`.toLowerCase();
-  if (/sidebar|sidemenu|leftmenu|main-menu|nav-menu|topbar/.test(`${id} ${cls}`)) {
-    return true;
-  }
+const DASHBOARD_LANDMARKS = [
+  "my course",
+  "announcements",
+  "student facilitation",
+  "mentor details",
+];
 
-  const rect = element.getBoundingClientRect?.();
-  if (!rect) return false;
-  return rect.left <= 8 && rect.width <= 380 && rect.height >= window.innerHeight * 0.45;
+function hasDashboardLandmarks(element) {
+  const text = (element.textContent || "").toLowerCase();
+  return DASHBOARD_LANDMARKS.filter((landmark) => text.includes(landmark)).length >= 2;
 }
 
-function queryAll(selector) {
-  try {
-    return [...document.querySelectorAll(selector)];
-  } catch {
-    return [];
-  }
-}
+function promptRoot(start) {
+  let current = start;
+  let best = start;
 
-function collectOverlayCandidates() {
-  const seen = new Set();
-  const nodes = [];
-
-  for (const selector of [...MODAL_SELECTORS, ...OVERLAY_SELECTORS]) {
-    for (const element of queryAll(selector)) {
-      if (seen.has(element)) continue;
-      seen.add(element);
-      nodes.push(element);
-    }
+  while (current && current !== document.body && current.tagName !== "FORM") {
+    if (hasDashboardLandmarks(current)) break;
+    best = current;
+    current = current.parentElement;
   }
 
-  if (!document.body) return nodes;
-
-  for (const element of document.body.querySelectorAll("div, section, aside, dialog")) {
-    if (seen.has(element) || element.dataset.cuimsClearSuppressed) continue;
-    if (!looksLikeOverlay(element)) continue;
-    seen.add(element);
-    nodes.push(element);
-  }
-
-  return nodes;
-}
-
-function looksLikeOverlay(element) {
-  const style = getComputedStyle(element);
-  if (style.display === "none" || style.visibility === "hidden") return false;
-
-  const position = style.position;
-  if (position !== "fixed" && position !== "absolute") return false;
-
-  const rect = element.getBoundingClientRect();
-  if (rect.width < 80 || rect.height < 40) return false;
-
-  const z = Number.parseInt(style.zIndex, 10);
-  const highZ = Number.isFinite(z) && z >= 10;
-  const named = /modal|popup|overlay|dialog|alert|swal/.test(
-    `${element.id || ""} ${element.className || ""}`.toLowerCase(),
-  );
-  const full =
-    rect.width >= window.innerWidth * 0.8 && rect.height >= window.innerHeight * 0.5;
-  const dim =
-    /rgba?\(\s*\d+,\s*\d+,\s*\d+,\s*0\./.test(style.backgroundColor || "") ||
-    Number.parseFloat(style.opacity) < 1;
-
-  return named || (highZ && (!full || dim));
-}
-
-function overlayRoot(element) {
-  let node = element;
-  let best = element;
-
-  while (node && node !== document.body) {
-    if (looksLikeOverlay(node)) best = node;
-    node = node.parentElement;
-  }
-
+  if (best === document.body || best === document.documentElement) return null;
   return best;
 }
 
-function suppressFeedbackPrompt(element) {
-  const root = overlayRoot(element);
-  suppress(root, "feedback");
-  if (root !== element) suppress(element, "feedback");
+function hideHostIframe() {
+  if (window === window.top) return;
+  try {
+    const frames = window.top.document.querySelectorAll("iframe, frame");
+    for (const frame of frames) {
+      if (frame.contentWindow !== window) continue;
+      frame.style.setProperty("display", "none", "important");
+      frame.dataset.cuimsClearSuppressed = "feedback";
+      const parent = frame.parentElement;
+      if (!parent) continue;
+      for (const sibling of parent.children) {
+        if (sibling === frame || hasDashboardLandmarks(sibling)) continue;
+        if (isCoveringLayer(sibling)) {
+          sibling.style.setProperty("display", "none", "important");
+        }
+      }
+    }
+  } catch {}
 }
 
-function scanFillNowPrompts() {
-  if (!settings.blockFeedback) return;
-
-  const controls = document.querySelectorAll(
-    "a, button, input[type='button'], input[type='submit'], [onclick]",
+function isCoveringLayer(element) {
+  const style = getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (style.position !== "fixed" && style.position !== "absolute") return false;
+  const rect = element.getBoundingClientRect();
+  return (
+    rect.width >= window.innerWidth * 0.8 &&
+    rect.height >= window.innerHeight * 0.55 &&
+    rect.top <= 80
   );
+}
 
-  for (const control of controls) {
-    const label = `${control.value || ""} ${control.innerText || ""} ${control.textContent || ""}`
-      .toLowerCase()
-      .replace(/\s+/g, " ");
-    if (!label.includes("fill now") && !label.includes("click here to fill")) continue;
-    if (isNavigationChrome(control)) continue;
-    suppressFeedbackPrompt(control);
+function hideOrphanWashes() {
+  if (!document.body) return;
+  for (const element of document.body.querySelectorAll("div, section")) {
+    if (element.dataset.cuimsClearSuppressed || hasDashboardLandmarks(element)) continue;
+    if (!isCoveringLayer(element)) continue;
+    const text = (element.textContent || "").replace(/\s+/g, "");
+    const dim = /rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0/.test(
+      getComputedStyle(element).backgroundColor || "",
+    );
+    if (text.length < 80 && dim) suppress(element, "backdrop");
   }
 }
 
-function applyFeedbackBlockerCss() {
-  const existing = document.getElementById("cuims-clear-blocker-style");
-  if (!settings.blockFeedback) {
-    existing?.remove();
-    return;
-  }
-  if (existing) return;
+function scanUniqueFeedbackPrompt() {
+  if (!settings.blockFeedback || !document.body) return;
 
-  const style = document.createElement("style");
-  style.id = "cuims-clear-blocker-style";
-  style.textContent = FEEDBACK_BLOCK_CSS;
-  (document.head || document.documentElement).appendChild(style);
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let found = false;
+
+  while (walker.nextNode()) {
+    const value = (walker.currentNode.nodeValue || "").toLowerCase().replace(/\s+/g, " ");
+    if (!UNIQUE_FEEDBACK_PROMPTS.some((prompt) => value.includes(prompt))) continue;
+
+    const host = walker.currentNode.parentElement;
+    if (!host) continue;
+    const root = promptRoot(host);
+    if (root) suppress(root, "feedback");
+    found = true;
+  }
+
+  if (found) hideHostIframe();
+  hideOrphanWashes();
 }
 
 function suppress(element, category) {
-  if (element.dataset.cuimsClearSuppressed) return;
+  if (!element) return;
+  if (element === document.body || element === document.documentElement) return;
+  if (element.tagName === "FORM") return;
 
-  suppressedElements.set(element, {
-    display: element.style.getPropertyValue("display"),
-    priority: element.style.getPropertyPriority("display"),
-  });
+  if (!suppressedElements.has(element)) {
+    suppressedElements.set(element, {
+      display: element.style.getPropertyValue("display"),
+      priority: element.style.getPropertyPriority("display"),
+    });
+  }
 
   element.dataset.cuimsClearSuppressed = category;
-  element.style.setProperty("display", "none", "important");
+  // CUIMS can reopen a modal after we hide it. Only write when needed so
+  // our style observer does not continuously trigger itself.
+  if (
+    element.style.getPropertyValue("display") !== "none" ||
+    element.style.getPropertyPriority("display") !== "important"
+  ) {
+    element.style.setProperty("display", "none", "important");
+  }
 }
 
 function cleanupBackdrop() {
@@ -742,19 +677,27 @@ function cleanupBackdrop() {
   document.body?.style.removeProperty("padding-right");
 }
 
+function clearStaleSuppress() {
+  document.getElementById("cuims-clear-blocker-style")?.remove();
+  document.querySelectorAll("[data-cuims-clear-suppressed]").forEach((element) => {
+    element.style.removeProperty("display");
+    element.removeAttribute("data-cuims-clear-suppressed");
+  });
+  suppressedElements.clear();
+}
+
 function scanPage() {
   scanQueued = false;
-  applyFeedbackBlockerCss();
   prepareLogin();
 
-  for (const element of collectOverlayCandidates()) {
-    const category = classifyModal(element);
-    if (!category) continue;
-    if (category === "feedback") suppressFeedbackPrompt(element);
-    else suppress(element, category);
+  for (const selector of MODAL_SELECTORS) {
+    document.querySelectorAll(selector).forEach((element) => {
+      const category = classifyModal(element);
+      if (category) suppress(element, category);
+    });
   }
 
-  scanFillNowPrompts();
+  scanUniqueFeedbackPrompt();
   cleanupBackdrop();
 }
 
@@ -800,7 +743,7 @@ function startExtension() {
   chrome.storage.local.get(DEFAULT_SETTINGS, (storedSettings) => {
     settings = { ...DEFAULT_SETTINGS, ...storedSettings };
     markUserEdits();
-    applyFeedbackBlockerCss();
+    clearStaleSuppress();
     scanPage();
 
     new MutationObserver(queueScan).observe(document.documentElement, {

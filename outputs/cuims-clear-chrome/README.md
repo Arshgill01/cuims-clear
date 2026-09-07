@@ -27,6 +27,9 @@ Chrome will show a developer-mode banner while this stays unpacked. That is
 normal. Reloading the extension after a code change is: `chrome://extensions`
 → CUIMS Clear → reload.
 
+Then refresh any open CUIMS tabs so they use the updated content script.
+Feedback blocking also reapplies when CUIMS tries to reopen a hidden popup.
+
 ## After Chrome restarts
 
 Unpacked extensions stay installed. If Chrome disabled it, open

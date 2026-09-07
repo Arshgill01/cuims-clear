@@ -75,7 +75,7 @@ test("DOM lifecycle: login automation and attempt exhaustion safety", () => {
   };
 
   const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
-  const MAX_CAPTCHA_ATTEMPTS = 3;
+  const MAX_CAPTCHA_ATTEMPTS = 99;
 
   function captchaAttempts() {
     return Number(sessionStorage.getItem(CAPTCHA_ATTEMPTS_KEY) || 0);
@@ -83,12 +83,11 @@ test("DOM lifecycle: login automation and attempt exhaustion safety", () => {
 
   assert.equal(captchaAttempts(), 0);
 
-  // Simulate 3 failed attempts
   sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, "1");
   assert.equal(captchaAttempts(), 1);
   assert.equal(captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS, false);
 
-  sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, "3");
+  sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, "99");
   assert.equal(captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS, true);
 
   // Fresh UID step (no password field, no captcha) resets budget
@@ -97,7 +96,7 @@ test("DOM lifecycle: login automation and attempt exhaustion safety", () => {
 });
 
 test("DOM lifecycle: auto-solve stops once the retry budget is spent", () => {
-  const MAX_CAPTCHA_ATTEMPTS = 3;
+  const MAX_CAPTCHA_ATTEMPTS = 99;
   let attempts = 0;
   let autoSolve = true;
 
@@ -113,7 +112,7 @@ test("DOM lifecycle: auto-solve stops once the retry budget is spent", () => {
   recordAttempt();
   assert.equal(shouldAutoSolve(), true);
 
-  recordAttempt();
+  attempts = MAX_CAPTCHA_ATTEMPTS;
   assert.equal(shouldAutoSolve(), false);
 });
 
@@ -163,6 +162,89 @@ test("DOM lifecycle: Chrome width-0 sidenav still classifies as feedback", () =>
     classList: { contains: () => false },
   };
   assert.equal(classifyModal(unknownClosed), "feedback");
+});
+
+test("DOM lifecycle: page shell is never treated as a feedback overlay", () => {
+  function isPageShell(element) {
+    if (!element || element.tagName === "FORM") return true;
+    const text = (element.textContent || "").toLowerCase();
+    const huge = element.width >= 800 && element.height >= 600;
+    return text.includes("my course") && text.includes("announcements") && huge;
+  }
+
+  const shell = {
+    tagName: "DIV",
+    textContent: "My Course & Attendance Announcements (ALL) Feedback related to the Teaching and Learning Process",
+    width: 1200,
+    height: 800,
+  };
+  const card = {
+    tagName: "DIV",
+    textContent: "Click here to Fill Now !",
+    width: 420,
+    height: 160,
+  };
+
+  assert.equal(isPageShell(shell), true);
+  assert.equal(isPageShell(card), false);
+});
+
+test("DOM lifecycle: unique popup copy climbs to a wrapper that is not the dashboard", () => {
+  const DASHBOARD_LANDMARKS = ["my course", "announcements", "student facilitation", "mentor details"];
+
+  function hasDashboardLandmarks(text) {
+    const lower = text.toLowerCase();
+    return DASHBOARD_LANDMARKS.filter((landmark) => lower.includes(landmark)).length >= 2;
+  }
+
+  function promptRoot(chain) {
+    let best = chain[0];
+    for (const node of chain) {
+      if (hasDashboardLandmarks(node.text)) break;
+      best = node;
+    }
+    return best;
+  }
+
+  const chain = [
+    { name: "span", text: "filling out the feedback related to the teaching" },
+    { name: "card", text: "Dear Student filling out the feedback related to the teaching" },
+    { name: "overlay", text: "Dear Student filling out the feedback related to the teaching" },
+    {
+      name: "form1",
+      text: "My Course Announcements Dear Student filling out the feedback related to the teaching",
+    },
+  ];
+
+  assert.equal(promptRoot(chain).name, "overlay");
+});
+
+test("DOM lifecycle: teaching-learning popup copy is distinct from the dashboard shell", () => {
+  const FEEDBACK_PROMPT_PHRASES = [
+    "filling out the feedback related to the teaching",
+    "teaching & learning process",
+    "will take not more than 2 minutes",
+  ];
+  const DASHBOARD_LANDMARKS = ["my course", "announcements", "student facilitation", "mentor details"];
+
+  function mentionsPrompt(text) {
+    const lower = text.toLowerCase();
+    return FEEDBACK_PROMPT_PHRASES.some((phrase) => lower.includes(phrase));
+  }
+
+  function hasDashboardLandmarks(text) {
+    const lower = text.toLowerCase();
+    return DASHBOARD_LANDMARKS.filter((landmark) => lower.includes(landmark)).length >= 2;
+  }
+
+  const popup =
+    "Dear Student, Filling out the Feedback related to the Teaching & Learning Process and will take not more than 2 minutes.";
+  const shell =
+    "My Course & Attendance Announcements (ALL) Mentor Details Feedback related to the Teaching and Learning Process";
+
+  assert.equal(mentionsPrompt(popup), true);
+  assert.equal(hasDashboardLandmarks(popup), false);
+  assert.equal(hasDashboardLandmarks(shell), true);
 });
 
 test("DOM lifecycle: Fill Now teaching-feedback prompt is treated as feedback", () => {
