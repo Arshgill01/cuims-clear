@@ -1,15 +1,21 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.5.0",
-  "description": "Speeds up CUIMS login, solves the CAPTCHA on-device, and suppresses event and feedback overlays.",
+  "version": "0.6.0",
+  "description": "Faster CUIMS login and a cleaner LMS, with syllabus materials and semester work paired by subject.",
   "icons": {
     "16": "icons/icon.svg",
     "48": "icons/icon.svg",
     "128": "icons/icon.svg"
   },
-  "permissions": ["storage", "offscreen"],
-  "host_permissions": ["https://students.cuchd.in/*"],
+  "permissions": [
+    "storage",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://students.cuchd.in/*",
+    "https://lms.cuchd.in/*"
+  ],
   "background": {
     "service_worker": "service-worker.js"
   },
@@ -18,8 +24,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["vendor/tesseract/*", "vendor/tessdata/*"],
-      "matches": ["https://students.cuchd.in/*"]
+      "resources": [
+        "vendor/tesseract/*",
+        "vendor/tessdata/*"
+      ],
+      "matches": [
+        "https://students.cuchd.in/*"
+      ]
     }
   ],
   "action": {
@@ -29,10 +40,55 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://students.cuchd.in/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
+        "lms-open-wrap.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
+        "lms-launch.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://lms.cuchd.in/*"
+      ],
+      "js": [
+        "lms-boot.js"
+      ],
+      "css": [
+        "lms.css"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://lms.cuchd.in/*"
+      ],
+      "js": [
+        "lms-model.js",
+        "lms.js"
+      ],
+      "run_at": "document_end"
     }
   ],
   "minimum_chrome_version": "120"

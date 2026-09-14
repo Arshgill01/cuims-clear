@@ -1,7 +1,8 @@
 # CUIMS Clear for Chrome
 
 Same CUIMS login helper as the Firefox build: saved UID/password, on-device
-CAPTCHA OCR, and quiet mode for event/feedback overlays.
+CAPTCHA OCR, quiet mode for event/feedback overlays, and a cleaner LMS course
+directory that pairs syllabus materials with semester work.
 
 Chrome cannot load the Firefox folder. This package is the Chrome MV3 build.
 
@@ -45,9 +46,10 @@ Until then, send them this folder and the five steps above.
 
 ## Privacy
 
-- Host access is limited to `https://students.cuchd.in/*`.
+- Host access is limited to `https://students.cuchd.in/*` and `https://lms.cuchd.in/*`.
 - UID and password are saved in Chrome `storage.local` on this device.
 - CAPTCHA images are processed on-device. Nothing is uploaded.
+- Open LMS in the popup clicks CUIMS's own CU LMS control and does not store SSO URLs or tokens.
 - Chrome extension storage is not encrypted.
 
 See [PRIVACY.md](PRIVACY.md).

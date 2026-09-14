@@ -1,3 +1,5 @@
+importScripts("lms-open.js");
+
 // Chrome MV3 cannot host Tesseract in this service worker: dedicated workers
 // and WASM need a real document. The offscreen page reuses background.js.
 

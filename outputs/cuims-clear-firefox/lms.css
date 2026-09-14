@@ -1,0 +1,295 @@
+/* Hide Moodle's directory until the clear view mounts, so the native cards never flash. */
+html.cc-lms-pending body:is(.path-my, .pagelayout-mycourses, .page-mycourses):not(.notloggedin) #region-main > :not(#cc-directory):not(#user-notifications),
+html.cc-lms-pending body:is(.path-my, .pagelayout-mycourses, .page-mycourses):not(.notloggedin) :is(#page-header, .secondary-navigation) {
+  display: none !important;
+}
+html.cc-lms-pending,
+html.cc-lms-pending body {
+  background: oklch(0.97 0.004 125) !important;
+}
+html.cc-lms-pending body:is(.moove-darkmode, [data-bs-theme="dark"]) {
+  background: oklch(0.19 0.005 125) !important;
+}
+html.cc-lms-pending body.path-course-view #page-header h1 {
+  visibility: hidden;
+}
+body.cc-lms.path-course-view #page-header h1 {
+  visibility: visible;
+}
+body.cc-lms, #cc-toolbar, .cc-sign-in {
+  --cc-bg: oklch(0.97 0.004 125);
+  --cc-surface: oklch(1 0 0);
+  --cc-ink: oklch(0.22 0.007 125);
+  --cc-muted: oklch(0.46 0.014 125);
+  --cc-line: oklch(0.85 0.012 125);
+  --cc-hover: oklch(0.94 0.01 125);
+  --cc-accent: oklch(0.89 0.21 125);
+  --cc-link: oklch(0.38 0.08 125);
+  --cc-focus: oklch(0.48 0.13 125);
+  font-family: "Avenir Next", Avenir, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+body.cc-lms:is(.moove-darkmode, [data-bs-theme="dark"]),
+body:is(.moove-darkmode, [data-bs-theme="dark"]) #cc-toolbar {
+  --cc-bg: oklch(0.19 0.005 125);
+  --cc-surface: oklch(0.23 0.006 125);
+  --cc-ink: oklch(0.95 0.006 125);
+  --cc-muted: oklch(0.75 0.014 125);
+  --cc-line: oklch(0.36 0.01 125);
+  --cc-hover: oklch(0.29 0.012 125);
+  --cc-link: oklch(0.89 0.21 125);
+  --cc-focus: oklch(0.89 0.21 125);
+}
+body.cc-lms {
+  color: var(--cc-ink) !important;
+  background: var(--cc-bg) !important;
+  --bs-body-color: var(--cc-ink);
+  --bs-body-bg: var(--cc-surface);
+  --bs-border-color: var(--cc-line);
+  --bs-link-color: var(--cc-link);
+  --bs-link-hover-color: var(--cc-link);
+}
+#cc-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 16px 24px;
+  margin: 0 0 16px;
+  color: var(--cc-ink);
+  background: var(--cc-surface);
+  border-bottom: 1px solid var(--cc-line);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#cc-toolbar a { color: var(--cc-ink); text-decoration: none; }
+#cc-toolbar a:hover { text-decoration: underline; }
+#cc-toolbar .cc-brand { margin-right: auto; font-weight: 750; }
+#cc-toolbar button, .cc-text-button {
+  border: 1px solid var(--cc-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cc-ink);
+  padding: 8px 12px;
+  min-height: 40px;
+  font: inherit;
+  cursor: pointer;
+}
+#cc-toolbar button:hover, .cc-text-button:hover { background: var(--cc-hover); }
+body.cc-lms :is(#page, #topofscroll, #page-content, #region-main-box, .main-inner, #page-header) {
+  background: var(--cc-bg) !important;
+  color: var(--cc-ink) !important;
+  box-shadow: none !important;
+}
+body.cc-lms #region-main {
+  color: var(--cc-ink) !important;
+  background: var(--cc-surface) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+body.cc-lms nav.navbar.fixed-top {
+  background: var(--cc-surface) !important;
+  border-bottom: 1px solid var(--cc-line) !important;
+  box-shadow: none !important;
+}
+body.cc-lms nav.navbar.fixed-top :is(.nav-link, .nav-link *, #usernavigation, .icon, .dropdown-toggle) {
+  color: var(--cc-ink) !important;
+}
+body.cc-lms nav.navbar.fixed-top .primary-navigation .nav-link.active {
+  border-bottom-color: var(--cc-accent) !important;
+  background: var(--cc-hover) !important;
+}
+body.cc-lms nav.navbar.fixed-top .cu-navbar-logo { max-width: 100px; height: auto; }
+body.cc-lms :is(.dropdown-menu, .drawer, .drawerheader, .drawercontent, .secondary-navigation, .secondary-navigation .moremenu) {
+  background: var(--cc-surface) !important;
+  color: var(--cc-ink) !important;
+}
+body.cc-lms :is(.dropdown-item, .courseindex-link, .secondary-navigation .nav-link) { color: var(--cc-ink) !important; }
+body.cc-lms :is(.dropdown-item:hover, .courseindex-item:hover, .secondary-navigation .nav-link:hover) { background: var(--cc-hover) !important; }
+body.cc-lms :is(#ai-lib-fab, #ai-lib-panel) { display: none !important; }
+body.cc-lms #page-footer .footer-main { display: none !important; }
+body.cc-lms #page-header h1 {
+  color: var(--cc-ink) !important;
+  font: 650 1.75rem/1.25 "Avenir Next", Avenir, sans-serif !important;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+body.cc-lms .page-header-headings {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+body.cc-lms .cc-course-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+body.cc-lms .cc-course-nav .cc-code { margin-right: 12px; }
+body.cc-lms .cc-course-nav a[aria-current="page"] {
+  background: var(--cc-accent);
+  color: oklch(0.24 0.035 125);
+  border-color: transparent;
+}
+body.cc-lms .activity-item {
+  padding: 16px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--cc-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+body.cc-lms :is(.activityname, .activityname a) {
+  font-size: 1rem !important;
+  font-weight: 600;
+  color: var(--cc-ink) !important;
+}
+body.cc-lms .activityiconcontainer {
+  background: transparent !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 0 !important;
+}
+body.cc-lms .activityiconcontainer img { filter: none !important; }
+body.cc-lms .activity-item .description {
+  color: var(--cc-muted) !important;
+  background: transparent !important;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+body.cc-lms .activity-item .description :is(h5, h6) { font-size: 0.875rem; font-weight: 400; line-height: 1.6; }
+body.cc-lms .format_onetopic-tabs .nav-link {
+  color: var(--cc-ink) !important;
+  background: transparent !important;
+  border-radius: 4px 4px 0 0 !important;
+  padding: 12px 16px !important;
+}
+body.cc-lms .format_onetopic-tabs .nav-link.active {
+  background: var(--cc-hover) !important;
+  border-bottom: 2px solid var(--cc-focus) !important;
+}
+body.cc-lms :is(.btn-primary, input[type="submit"].btn-primary) {
+  background: var(--cc-accent) !important;
+  border-color: transparent !important;
+  color: oklch(0.24 0.035 125) !important;
+  box-shadow: none !important;
+}
+body.cc-lms :is(.btn-secondary, .btn-subtle-body) {
+  background: var(--cc-hover) !important;
+  color: var(--cc-ink) !important;
+  border-color: var(--cc-line) !important;
+  box-shadow: none !important;
+}
+body.cc-lms.cc-directory-page #region-main > :not(#cc-directory):not(#user-notifications),
+body.cc-lms.cc-directory-page :is(#page-header, .secondary-navigation) { display: none !important; }
+body.cc-lms.cc-directory-page #region-main { padding: 0 !important; background: transparent !important; }
+#cc-directory, #cc-directory * { box-sizing: border-box; }
+#cc-directory {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  color: var(--cc-ink);
+  font: 400 16px/1.5 "Avenir Next", Avenir, Inter, system-ui, sans-serif;
+}
+#cc-directory[hidden], .cc-course-nav[hidden] { display: none !important; }
+#cc-directory .cc-directory-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; }
+#cc-directory h1 { margin: 0; color: var(--cc-ink); font-family: inherit; font-size: 28px; font-weight: 650; line-height: 1.25; letter-spacing: -0.025em; }
+#cc-directory .cc-count { color: var(--cc-muted); font-size: 14px; }
+#cc-directory .cc-search { max-width: 380px; margin-bottom: 24px; }
+#cc-directory label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+#cc-directory input {
+  display: block;
+  width: 100%;
+  height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-line);
+  border-radius: 6px;
+  background: var(--cc-surface);
+  color: var(--cc-ink);
+  font: inherit;
+  font-size: 14px;
+}
+#cc-directory input::placeholder { color: var(--cc-muted); opacity: 1; }
+#cc-directory :is(.cc-columns, .cc-course-row) {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+#cc-directory .cc-columns { padding: 16px 0; border-bottom: 1px solid var(--cc-line); font-size: 14px; }
+#cc-directory .cc-columns strong { display: block; font-weight: 600; }
+#cc-directory .cc-columns span { display: block; font-size: 12px; color: var(--cc-muted); margin-top: 4px; }
+#cc-directory .cc-course-list { padding: 0; margin: 0; list-style: none; }
+#cc-directory .cc-course-row { margin: 0; padding: 24px 0; border-bottom: 1px solid var(--cc-line); }
+#cc-directory h2 { margin: 0 0 6px; color: var(--cc-ink); font: 600 17px/1.4 "Avenir Next", Avenir, system-ui, sans-serif; text-wrap: balance; overflow-wrap: anywhere; }
+.cc-lms .cc-code { color: var(--cc-muted); font: 12px/1.5 ui-monospace, monospace; }
+.cc-lms .cc-course-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-line);
+  border-radius: 6px;
+  background: var(--cc-surface);
+  color: var(--cc-ink);
+  font: 550 14px/1.4 "Avenir Next", Avenir, system-ui, sans-serif;
+  text-decoration: none;
+  transition: background-color 160ms ease-out, border-color 160ms ease-out;
+}
+.cc-lms .cc-course-link:hover { background: var(--cc-hover); border-color: var(--cc-focus); color: var(--cc-ink); text-decoration: none; }
+.cc-lms .cc-arrow { color: var(--cc-muted); }
+.cc-lms .cc-unavailable, .cc-lms .cc-source { display: block; font-size: 12px; line-height: 1.6; color: var(--cc-muted); overflow-wrap: anywhere; }
+.cc-lms .cc-source { margin: 6px 0 12px; }
+#cc-directory .cc-status, #cc-directory .cc-results { margin: 12px 0; font-size: 14px; color: var(--cc-muted); }
+#cc-directory .cc-status:empty, #cc-directory .cc-results:empty { display: none; }
+#cc-directory .cc-status a { color: var(--cc-link); }
+#cc-directory .cc-empty { padding: 32px 0; color: var(--cc-muted); }
+body.cc-lms :is(a, button, input, select, summary):focus-visible,
+#cc-toolbar :is(a, button):focus-visible {
+  outline: 2px solid var(--cc-focus) !important;
+  outline-offset: 3px;
+  box-shadow: none !important;
+}
+.cc-sign-in { display: block; padding: 16px; margin-bottom: 20px; background: var(--cc-accent); color: oklch(0.24 0.035 125); border-radius: 6px; text-align: center; }
+@media (max-width: 760px) {
+  #cc-directory { padding: 16px; }
+  #cc-directory .cc-columns { display: none; }
+  #cc-directory .cc-course-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 20px 0; }
+  #cc-directory .cc-subject { grid-column: 1 / -1; }
+  #cc-directory .cc-course-link { width: 100%; }
+  #cc-toolbar { gap: 12px; padding: 12px 16px; }
+  #cc-toolbar .cc-brand { flex-basis: 100%; }
+  #cc-view-toggle { margin-left: auto; }
+  body.cc-lms .activity-item { padding: 12px 4px !important; }
+}
+@media (max-width: 380px) {
+  #cc-directory .cc-course-row { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cc-lms .cc-course-link { transition: none; }
+}
+/* CU's per-page inline theme rules outrank its own stylesheet. */
+html body.cc-lms.cc-lms[id],
+body.cc-lms[id] #page-wrapper,
+body.cc-lms[id] #page-wrapper :is(#page, #topofscroll, #page-content, #region-main-box, #region-main) {
+  background: var(--cc-bg) !important;
+  color: var(--cc-ink) !important;
+}
+body.cc-lms.cc-directory-page #topofscroll {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+#cc-directory .cc-course-row { padding-block: 16px; }
+body.cc-lms#page-my-index,
+body.cc-lms#page-my-index #page-wrapper,
+body.cc-lms#page-my-index #page-wrapper :is(#page, #topofscroll, #page-content, #region-main-box, #region-main) {
+  background: var(--cc-bg) !important;
+}
+body.cc-lms.cc-directory-page #topofscroll {
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}

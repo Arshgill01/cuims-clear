@@ -1,6 +1,7 @@
 # CUIMS Clear for Firefox
 
-A Firefox Manifest V3 extension for `https://students.cuchd.in/` that:
+A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
+`https://lms.cuchd.in/` that:
 
 - fills your student UID and optionally presses **Next**;
 - fills your CUIMS password from local Firefox extension storage;
@@ -10,6 +11,10 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` that:
   is off, unsure, or has used up its retry budget;
 - suppresses blocking event and feedback overlays while leaving other dialogs alone;
 - skips the full-page `LandingPage.aspx` promotion and opens `StudentHome.aspx` directly;
+- opens the LMS from the popup through the university's own CUIMS launch control after you are signed in;
+- shows each LMS subject once, with separate Syllabus & Materials and Semester Work links;
+- leaves native course activities, submissions, notifications, and account controls in place,
+  with an **Original view** escape on LMS pages;
 - lets you erase the saved UID and password from the popup at any time.
 
 CAPTCHA solving happens entirely inside the extension: the OCR engine, WASM
@@ -65,10 +70,13 @@ Because the logged-in CUIMS dashboard was not available during development, the 
 
 ## Privacy
 
-- Host access is limited to `https://students.cuchd.in/*`.
+- Host access is limited to `https://students.cuchd.in/*` and `https://lms.cuchd.in/*`.
 - UID and password are saved in Firefox `storage.local` on this device.
 - CAPTCHA images are processed on-device by bundled OCR code. No information is
   collected or transmitted.
+- The LMS launcher clicks the university's own CU LMS control and follows the
+  LMS URL. It does not store SSO links or tokens. Extra LMS course-list pages are
+  fetched same-origin only to pair syllabus and semester-work entries.
 - Firefox extension storage is not encrypted. Anyone with access to your Firefox profile may be able to read the saved values.
 - Use **Clear login** in the popup to remove the saved UID and password.
 

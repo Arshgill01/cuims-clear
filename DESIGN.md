@@ -11,13 +11,19 @@ graphite type on neutral paper with one high-energy acid-lime accent.
 
 A student opens the extension between classes or from a hostel desk, often in a hurry and
 on an ordinary laptop display. They need to confirm that their login is saved, silence the
-two known interruption categories, and enter CUIMS in a few seconds. The popup must remain
-legible at a glance and trustworthy around credentials.
+two known interruption categories, and enter CUIMS or the LMS in a few seconds. The popup
+must remain legible at a glance and trustworthy around credentials. On LMS pages the same
+graphite and lime system is applied as a light skin: a courses directory that pairs syllabus
+materials with semester work, and a thin toolbar with an original-view escape. Native
+activities, submissions, notifications, and account controls stay in place.
 
 ## 3. UX Architecture
 
-The popup has four zones in one continuous surface: identity and purpose, saved-login
-fields, automation controls, and actions/privacy. “Open CUIMS” is the primary action.
+The popup has four zones in one continuous surface: identity, destinations,
+saved-login fields, and automation/privacy. “Open CUIMS” and “Open LMS” sit
+directly under the header so they are reachable without scrolling. “Open CUIMS”
+is the primary action. “Open LMS” is the secondary action and uses the
+university’s own signed-in launch path.
 Saving settings is explicit. Credential deletion stays visible and local. Controls use
 native semantics and keyboard behavior; state is never conveyed through color alone.
 

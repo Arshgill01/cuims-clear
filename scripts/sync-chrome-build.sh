@@ -12,7 +12,7 @@ if [ ! -f "$FF/background.js" ] || [ ! -f "$CH/manifest.json" ]; then
   exit 1
 fi
 
-for f in content.js background.js popup.js popup.css; do
+for f in content.js background.js popup.js popup.css lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js; do
   cp "$FF/$f" "$CH/$f"
 done
 

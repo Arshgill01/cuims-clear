@@ -6,11 +6,11 @@ product
 
 ## Users
 
-Chandigarh University students who regularly use CUIMS and want to reach their student dashboard quickly without repetitive credential entry, promotional interstitials, or blocking event and feedback overlays.
+Chandigarh University students who regularly use CUIMS and the university LMS and want to reach their dashboard and courses quickly without repetitive credential entry, promotional interstitials, or blocking event and feedback overlays.
 
 ## Product Purpose
 
-CUIMS Clear is an independent student-built Firefox utility that removes friction from the CUIMS login and navigation flow. Success means opening CUIMS feels immediate, predictable, and under the student's control while the extension remains narrow in scope and easy to inspect.
+CUIMS Clear is an independent student-built Firefox utility that removes friction from the CUIMS login flow and from finding LMS coursework. Success means opening CUIMS or the LMS feels immediate, predictable, and under the student's control while the extension remains narrow in scope and easy to inspect. Each LMS subject appears once, with Syllabus & Materials and Semester Work kept as separate destinations.
 
 ## Brand Personality
 
@@ -22,7 +22,7 @@ Do not imitate Chandigarh University branding or present the extension as univer
 
 ## Design Principles
 
-- Put the primary workflow first: save credentials, choose protections, open CUIMS.
+- Put the primary workflow first: open CUIMS or the LMS immediately, then save credentials and choose protections.
 - Make privacy and scope legible without alarmist language.
 - Prefer plain, inspectable behavior over clever automation or hidden state.
 - Feel student-built and independent without becoming informal or unreliable.

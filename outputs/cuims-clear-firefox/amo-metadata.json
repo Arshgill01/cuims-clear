@@ -1,10 +1,10 @@
 {
   "summary": {
-    "en-US": "Fill CUIMS login details, solve the CAPTCHA on-device, skip promotional interstitials, and hide event or feedback interruptions."
+    "en-US": "Fill CUIMS login details, solve the CAPTCHA on-device, skip promotional interstitials, hide event or feedback interruptions, and open a cleaner LMS course directory."
   },
   "categories": ["other"],
   "version": {
     "license": "MPL-2.0",
-    "approval_notes": "CUIMS Clear is an independent student utility. It stores credentials only in Firefox storage.local and makes no network requests of its own. CAPTCHA images are processed on-device by a bundled copy of Tesseract.js 5.1.1 (Apache-2.0), its WASM core, and the @tesseract.js-data English model; no data leaves the browser and no remote code is loaded at runtime. The minified vendor files are published upstream builds from the tesseract.js npm package (tesseract.js, tesseract.js-core); unminified sources are available at https://github.com/naptha/tesseract.js and licenses are included in vendor/. All other source files are unminified and included directly in the package."
+    "approval_notes": "CUIMS Clear is an independent student utility. It stores credentials only in Firefox storage.local. CAPTCHA images are processed on-device by a bundled copy of Tesseract.js 5.1.1 (Apache-2.0), its WASM core, and the @tesseract.js-data English model; no data is uploaded and no remote code is loaded at runtime. Host access is limited to students.cuchd.in and lms.cuchd.in. The LMS launcher clicks the university's own CU LMS control and follows the LMS URL without saving it. The LMS directory may fetch additional same-origin /my/courses.php pages to pair syllabus and semester-work entries. The minified vendor files are published upstream builds from the tesseract.js npm package (tesseract.js, tesseract.js-core); unminified sources are available at https://github.com/naptha/tesseract.js and licenses are included in vendor/. All other source files are unminified and included directly in the package."
   }
 }

@@ -1,16 +1,25 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.5.0",
-  "description": "Speeds up CUIMS login, solves the CAPTCHA on-device, and suppresses event and feedback overlays.",
+  "version": "0.6.0",
+  "description": "Faster CUIMS login and a cleaner LMS, with syllabus materials and semester work paired by subject.",
   "icons": {
     "48": "icons/icon.svg",
     "96": "icons/icon.svg"
   },
-  "permissions": ["storage"],
-  "host_permissions": ["https://students.cuchd.in/*"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://students.cuchd.in/*",
+    "https://lms.cuchd.in/*"
+  ],
   "background": {
-    "scripts": ["vendor/tesseract/tesseract.min.js", "background.js"]
+    "scripts": [
+      "lms-open.js",
+      "vendor/tesseract/tesseract.min.js",
+      "background.js"
+    ]
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; upgrade-insecure-requests"
@@ -22,10 +31,55 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://students.cuchd.in/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
+        "lms-open-wrap.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
+        "lms-launch.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://lms.cuchd.in/*"
+      ],
+      "js": [
+        "lms-boot.js"
+      ],
+      "css": [
+        "lms.css"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://lms.cuchd.in/*"
+      ],
+      "js": [
+        "lms-model.js",
+        "lms.js"
+      ],
+      "run_at": "document_end"
     }
   ],
   "browser_specific_settings": {
@@ -33,7 +87,9 @@
       "id": "cuims-clear@arshgill01",
       "strict_min_version": "142.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       }
     }
   }

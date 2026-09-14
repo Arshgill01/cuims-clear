@@ -83,6 +83,15 @@ h1 {
   font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+.open-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
 form {
   padding-top: 10px;
 }
@@ -292,7 +301,7 @@ button,
   width: 100%;
   min-height: 40px;
   justify-content: space-between;
-  padding: 0 15px;
+  padding: 0 12px;
   border: 1px solid #92c62f;
   color: #18200d;
   background: var(--accent);
@@ -316,4 +325,14 @@ input[type="checkbox"]:focus-visible {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+.lms-open-link {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.lms-open-link:hover {
+  background: var(--canvas);
 }

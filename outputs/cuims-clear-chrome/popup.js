@@ -77,3 +77,9 @@ clearLogin.addEventListener("click", () => {
     uid.focus();
   });
 });
+
+document.querySelector(".lms-open-link")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  showStatus("Opening LMS…");
+  chrome.runtime.sendMessage({ type: "cuims-clear:launch-lms" }, () => window.close());
+});
