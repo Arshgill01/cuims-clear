@@ -20,13 +20,21 @@ async function focusTab(tab) {
   }
 }
 
+async function activeTab() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab || null;
+  } catch {
+    return null;
+  }
+}
+
 async function askTabToLaunch(tabId) {
   await chrome.tabs.sendMessage(tabId, { type: "cuims-clear:launch-lms" });
 }
 
 async function launchInTab(tab) {
   watched.add(tab.id);
-  await focusTab(tab);
   try {
     await askTabToLaunch(tab.id);
     return true;
@@ -40,6 +48,11 @@ async function launchInTab(tab) {
   }
 }
 
+async function openBackgroundHome() {
+  const created = await chrome.tabs.create({ url: CUIMS_HOME, active: false });
+  if (created?.id) watched.add(created.id);
+}
+
 async function requestLmsLaunch() {
   await chrome.storage.local.set({ [LAUNCH_AT]: Date.now() });
   const lmsTabs = await chrome.tabs.query({ url: "https://lms.cuchd.in/*" });
@@ -47,18 +60,20 @@ async function requestLmsLaunch() {
     await focusTab(lmsTabs[0]);
     return;
   }
+
   const cuimsTabs = await chrome.tabs.query({ url: "https://students.cuchd.in/*" });
-  const home = cuimsTabs.find((tab) => isHome(tab.url)) || cuimsTabs[0];
-  if (home?.id) {
-    if (isHome(home.url) || !home.url) {
-      if (await launchInTab(home)) return;
-    }
-    watched.add(home.id);
-    await chrome.tabs.update(home.id, { url: CUIMS_HOME, active: true });
+  const active = await activeTab();
+  const hiddenHome = cuimsTabs.find((tab) => (isHome(tab.url) || !tab.url) && tab.id !== active?.id);
+  if (hiddenHome?.id && await launchInTab(hiddenHome)) return;
+
+  const hiddenCuims = cuimsTabs.find((tab) => tab.id !== active?.id);
+  if (hiddenCuims?.id) {
+    watched.add(hiddenCuims.id);
+    await chrome.tabs.update(hiddenCuims.id, { url: CUIMS_HOME, active: false });
     return;
   }
-  const created = await chrome.tabs.create({ url: CUIMS_HOME, active: true });
-  if (created?.id) watched.add(created.id);
+
+  await openBackgroundHome();
 }
 
 async function revealLms(tabId, windowId) {
