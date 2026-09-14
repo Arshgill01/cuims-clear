@@ -8,30 +8,52 @@ function fresh(value, ms) {
   return Boolean(at && Date.now() - at <= ms);
 }
 
+function isHome(url) {
+  return /StudentHome\.aspx/i.test(url || "");
+}
+
+async function focusTab(tab) {
+  if (!tab?.id) return;
+  await chrome.tabs.update(tab.id, { active: true });
+  if (tab.windowId) {
+    try { await chrome.windows.update(tab.windowId, { focused: true }); } catch {}
+  }
+}
+
+async function askTabToLaunch(tabId) {
+  await chrome.tabs.sendMessage(tabId, { type: "cuims-clear:launch-lms" });
+}
+
+async function launchInTab(tab) {
+  watched.add(tab.id);
+  await focusTab(tab);
+  try {
+    await askTabToLaunch(tab.id);
+    return true;
+  } catch {
+    try {
+      await chrome.tabs.reload(tab.id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function requestLmsLaunch() {
   await chrome.storage.local.set({ [LAUNCH_AT]: Date.now() });
   const lmsTabs = await chrome.tabs.query({ url: "https://lms.cuchd.in/*" });
   if (lmsTabs[0]?.id) {
-    await chrome.tabs.update(lmsTabs[0].id, { active: true });
-    if (lmsTabs[0].windowId) {
-      try { await chrome.windows.update(lmsTabs[0].windowId, { focused: true }); } catch {}
-    }
+    await focusTab(lmsTabs[0]);
     return;
   }
   const cuimsTabs = await chrome.tabs.query({ url: "https://students.cuchd.in/*" });
-  const home = cuimsTabs.find((tab) => /StudentHome\.aspx/i.test(tab.url || "")) || cuimsTabs[0];
+  const home = cuimsTabs.find((tab) => isHome(tab.url)) || cuimsTabs[0];
   if (home?.id) {
-    watched.add(home.id);
-    if (/StudentHome\.aspx/i.test(home.url || "")) {
-      try {
-        await chrome.tabs.update(home.id, { active: true });
-        if (home.windowId) {
-          try { await chrome.windows.update(home.windowId, { focused: true }); } catch {}
-        }
-        await chrome.tabs.sendMessage(home.id, { type: "cuims-clear:launch-lms" });
-        return;
-      } catch {}
+    if (isHome(home.url) || !home.url) {
+      if (await launchInTab(home)) return;
     }
+    watched.add(home.id);
     await chrome.tabs.update(home.id, { url: CUIMS_HOME, active: true });
     return;
   }

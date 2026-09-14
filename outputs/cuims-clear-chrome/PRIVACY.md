@@ -13,7 +13,8 @@ extension package. The CAPTCHA image is read and processed locally in the
 browser; it is never uploaded. The extension includes no analytics, advertising,
 or remote code.
 
-When the student asks to open the LMS, the extension clicks the university's own
+When the student asks to open the LMS, the extension uses the `tabs` permission
+only to find an already-open CUIMS or LMS tab, then clicks the university's own
 CUIMS CU LMS control and follows the LMS URL that page opens. That URL is not
 saved. On `lms.cuchd.in`, the courses directory may fetch additional same-origin
 `/my/courses.php` pages so syllabus materials and semester work can be paired. No
@@ -29,4 +30,4 @@ The extension has access only to pages under `https://students.cuchd.in/*` and
 Chrome extension storage is not encrypted. Anyone with access to the user's
 Chrome profile may be able to read locally stored values.
 
-Last updated: 9 September 2026.
+Last updated: 14 September 2026.

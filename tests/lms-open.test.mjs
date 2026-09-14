@@ -6,10 +6,11 @@ import vm from "node:vm";
 const source = readFileSync(new URL("../outputs/cuims-clear-firefox/lms-open.js", import.meta.url), "utf8");
 
 function open(options = {}) {
-  const { lms = [], cuims = [], createdId = 9 } = options;
+  const { lms = [], cuims = [], createdId = 9, sendMessageError } = options;
   const messages = [];
   const created = [];
   const updated = [];
+  const reloaded = [];
   const storage = {};
   const listeners = { message: [], tabs: [] };
   const chrome = {
@@ -30,14 +31,18 @@ function open(options = {}) {
       },
       update: async (id, info) => { updated.push({ id, ...info }); },
       create: async (info) => { created.push(info); return { id: createdId }; },
-      sendMessage: async (id, message) => { messages.push({ id, message }); },
+      sendMessage: async (id, message) => {
+        if (sendMessageError) throw new Error(sendMessageError);
+        messages.push({ id, message });
+      },
+      reload: async (id) => { reloaded.push(id); },
       onUpdated: { addListener: (fn) => listeners.tabs.push(fn) },
     },
     windows: { update: async () => {} },
   };
   vm.runInContext(source, vm.createContext({ chrome, Set }));
   return {
-    storage, messages, created, updated, listeners,
+    storage, messages, created, updated, reloaded, listeners,
     async launch() {
       const send = listeners.message[0];
       await new Promise((resolve) => send({ type: "cuims-clear:launch-lms" }, {}, resolve));
@@ -91,4 +96,23 @@ test("a CUIMS login tab is sent to StudentHome so SSO can run after sign-in", as
   assert.equal(result.updated[0].id, 6);
   assert.equal(result.updated[0].url, "https://students.cuchd.in/StudentHome.aspx");
   assert.equal(result.updated[0].active, true);
+});
+
+test("reloads StudentHome when the launch script is not in the tab yet", async () => {
+  const result = open({
+    cuims: [{ id: 4, windowId: 1, url: "https://students.cuchd.in/StudentHome.aspx" }],
+    sendMessageError: "Could not establish connection. Receiving end does not exist.",
+  });
+  await result.launch();
+  assert.equal(result.created.length, 0);
+  assert.deepEqual(result.reloaded, [4]);
+});
+
+test("reloads a CUIMS tab even when Chrome hides the tab URL", async () => {
+  const result = open({
+    cuims: [{ id: 8, windowId: 1 }],
+    sendMessageError: "Could not establish connection. Receiving end does not exist.",
+  });
+  await result.launch();
+  assert.deepEqual(result.reloaded, [8]);
 });

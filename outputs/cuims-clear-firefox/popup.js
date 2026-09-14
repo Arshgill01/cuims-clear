@@ -81,5 +81,11 @@ clearLogin.addEventListener("click", () => {
 document.querySelector(".lms-open-link")?.addEventListener("click", (event) => {
   event.preventDefault();
   showStatus("Opening LMS…");
-  chrome.runtime.sendMessage({ type: "cuims-clear:launch-lms" }, () => window.close());
+  chrome.runtime.sendMessage({ type: "cuims-clear:launch-lms" }, (response) => {
+    if (chrome.runtime.lastError || response?.error) {
+      showStatus("Could not open LMS. Refresh CUIMS and try again.");
+      return;
+    }
+    window.close();
+  });
 });

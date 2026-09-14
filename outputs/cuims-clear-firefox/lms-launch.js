@@ -45,9 +45,13 @@
     try {
       return [...document.querySelectorAll("a, button, input[type='submit'], [onclick], [href*='doPostBack']")].find((el) =>
         /cu\s*lms/i.test(label(el))
-      ) || [...document.querySelectorAll("a, button, [onclick]")].find((el) =>
-        /click\s*here/i.test(label(el)) && /cu\s*lms/i.test(el.parentElement?.textContent || "")
-      ) || null;
+      ) || [...document.querySelectorAll("a, button, [onclick]")].find((el) => {
+        if (!/click\s*here/i.test(label(el))) return false;
+        for (let node = el, i = 0; node && i < 6; i++, node = node.parentElement) {
+          if (/cu\s*lms/i.test(node.textContent || "")) return true;
+        }
+        return false;
+      }) || null;
     } catch {
       return null;
     }
@@ -70,6 +74,12 @@
     const href = link.getAttribute?.("href") || link.href || "";
     if (follow(href)) return;
     const target = (link.matches?.("a, button, input") ? link : link.querySelector?.("a, button, input")) || link;
+    try { target.setAttribute("data-cc-lms-sso", "1"); } catch {}
+    try {
+      sessionStorage.removeItem("cuims-clear:lms-activated");
+      window.dispatchEvent(new CustomEvent("cuims-clear:lms-activate"));
+    } catch {}
+    if (sessionStorage.getItem("cuims-clear:lms-activated") === "1") return;
     target.click();
   }
 
@@ -120,8 +130,10 @@
   }
 
   try {
-    chrome.runtime.onMessage.addListener((message) => {
-      if (message?.type === "cuims-clear:launch-lms") launch();
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message?.type !== "cuims-clear:launch-lms") return;
+      sendResponse({ ok: true });
+      launch();
     });
   } catch {}
 

@@ -10,6 +10,7 @@
   },
   "permissions": [
     "storage",
+    "tabs",
     "offscreen"
   ],
   "host_permissions": [
