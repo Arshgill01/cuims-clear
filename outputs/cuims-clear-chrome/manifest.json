@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Faster CUIMS login and a cleaner LMS, with syllabus materials and semester work paired by subject.",
   "icons": {
     "16": "icons/icon.svg",
@@ -74,22 +74,14 @@
         "https://lms.cuchd.in/*"
       ],
       "js": [
-        "lms-boot.js"
+        "lms-boot.js",
+        "lms-model.js",
+        "lms.js"
       ],
       "css": [
         "lms.css"
       ],
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "https://lms.cuchd.in/*"
-      ],
-      "js": [
-        "lms-model.js",
-        "lms.js"
-      ],
-      "run_at": "document_end"
     }
   ],
   "minimum_chrome_version": "120"

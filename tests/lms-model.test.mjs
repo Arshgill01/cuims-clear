@@ -106,11 +106,10 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
     const manifest = JSON.parse(readFileSync(new URL('manifest.json', root)));
     assert.deepEqual(manifest.host_permissions, ['https://students.cuchd.in/*', 'https://lms.cuchd.in/*']);
     const boot = manifest.content_scripts.find((s) => s.js?.includes("lms-boot.js"));
-    const page = manifest.content_scripts.find((s) => s.js?.includes("lms.js"));
     assert.equal(boot.run_at, "document_start");
     assert.deepEqual(boot.css, ["lms.css"]);
-    assert.equal(page.run_at, "document_end");
-    assert.deepEqual(page.js, ["lms-model.js", "lms.js"]);
+    assert.deepEqual(boot.js, ["lms-boot.js", "lms-model.js", "lms.js"]);
+    assert.equal(manifest.content_scripts.filter((s) => s.js?.includes("lms.js")).length, 1);
     const wrap = manifest.content_scripts.find((s) => s.js?.includes("lms-open-wrap.js"));
     const launch = manifest.content_scripts.find((s) => s.js?.includes("lms-launch.js"));
     assert.equal(wrap.run_at, "document_start");
@@ -128,4 +127,12 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
       assert.equal(readFileSync(new URL(name, root), "utf8"), readFileSync(new URL(`../outputs/cuims-clear-firefox/${name}`, import.meta.url), "utf8"));
     }
   }
+});
+
+test("pending CSS hides the whole LMS document without Moodle body-class matching", () => {
+  const css = readFileSync(new URL("../outputs/cuims-clear-firefox/lms.css", import.meta.url), "utf8");
+  const pending = css.split("body.cc-lms")[0];
+  assert.match(pending, /html\.cc-lms-pending/);
+  assert.match(pending, /visibility:\s*hidden/);
+  assert.doesNotMatch(pending, /path-my|pagelayout-mycourses|page-mycourses|path-course-view/);
 });

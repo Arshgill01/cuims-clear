@@ -8,7 +8,7 @@ const fixtures = new URL("../tests/fixtures/lms/", import.meta.url);
 const port = Number(process.env.PORT) || 8766;
 const types = { ".css": "text/css", ".js": "text/javascript", ".html": "text/html" };
 
-const stub = `<link rel="stylesheet" href="/lms.css" />
+const head = `<link rel="stylesheet" href="/lms.css" />
 <script>
 window.chrome = {
   storage: {
@@ -27,14 +27,13 @@ window.fetch = async (url, opts) => {
   return response;
 };
 </script>
+<script src="/lms-boot.js"></script>
 <script src="/lms-model.js"></script>
 <script src="/lms.js"></script>`;
 
 function fixture(name) {
   return readFileSync(new URL(name, fixtures), "utf8")
-    .replace("<html", '<html class="cc-lms-pending"')
-    .replace("</head>", '<link rel="stylesheet" href="/lms.css" /></head>')
-    .replace("</body>", `${stub}\n</body>`);
+    .replace("</head>", `${head}\n</head>`);
 }
 
 function page(req) {
@@ -47,7 +46,7 @@ function page(req) {
     return fixture("directory.html");
   }
   const asset = url.pathname.replace(/^\//, "");
-    if (["lms.css", "lms.js", "lms-model.js", "lms-boot.js"].includes(asset)) {
+  if (["lms.css", "lms.js", "lms-model.js", "lms-boot.js"].includes(asset)) {
     return readFileSync(new URL(asset, firefox));
   }
   return null;

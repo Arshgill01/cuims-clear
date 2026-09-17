@@ -12,6 +12,7 @@
   let originalHeading;
   let heading;
   let loading = false;
+  let failsafe;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -187,9 +188,19 @@
     applyMode();
   }
 
+  function reveal() {
+    if (failsafe) {
+      clearTimeout(failsafe);
+      failsafe = 0;
+    }
+    const root = document.documentElement;
+    root.classList.remove("cc-lms-pending");
+    root.style.removeProperty("visibility");
+    root.style.removeProperty("background");
+  }
+
   function applyMode() {
     document.body.classList.toggle("cc-lms", enabled);
-    document.documentElement.classList.toggle("cc-lms-pending", false);
     document.documentElement.classList.toggle("cc-lms-original", !enabled);
     const toggle = document.querySelector("#cc-view-toggle");
     if (toggle) {
@@ -200,16 +211,17 @@
     if (courseNav) courseNav.hidden = !enabled;
     if (heading && originalHeading) heading.textContent = originalHeading;
     if (enabled) renderCourseNav();
+    if (!enabled) reveal();
   }
 
   function init(settings) {
     enabled = settings.lmsClear !== false && location.hash !== "#original";
     if (document.body.matches(".notloggedin") || document.querySelector("#login, .loginform")) {
-      document.documentElement.classList.remove("cc-lms-pending");
       if (!document.querySelector(".cc-sign-in")) {
         const login = link("Sign in through CUIMS", CUIMS, "cc-sign-in");
         document.querySelector(".loginform, #login")?.prepend(login);
       }
+      reveal();
       return;
     }
     if (enabled && HOME.has(location.pathname)) {
@@ -238,35 +250,58 @@
       originalHeading = heading?.textContent.trim();
     }
     applyMode();
-    if (directory || heading) loadCourses();
+    if (enabled && (directory || heading)) {
+      whenCoursesReadable(() => {
+        loadCourses();
+        reveal();
+      });
+    } else {
+      reveal();
+    }
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === "local" && changes.lmsClear) { enabled = changes.lmsClear.newValue !== false; applyMode(); }
     });
   }
 
   function whenReady(fn) {
+    let done = false;
+    let observer;
     const ready = () =>
       document.querySelector("#region-main, #login, .loginform") || document.body?.matches?.(".notloggedin");
+    const run = () => {
+      if (done || !document.body || !ready()) return;
+      done = true;
+      observer?.disconnect();
+      fn();
+    };
     if (document.body && ready()) {
       fn();
       return;
     }
-    const observer = new MutationObserver(() => {
-      if (document.body && ready()) {
-        observer.disconnect();
-        fn();
-      }
-    });
+    observer = new MutationObserver(run);
     observer.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener("DOMContentLoaded", run, { once: true });
+  }
+
+  function whenCoursesReadable(fn) {
+    const hasData = () =>
+      document.readyState !== "loading" ||
+      document.querySelector(".mc-card[data-name][data-url]") ||
+      document.getElementById("mc-courses-json");
+    if (hasData()) {
+      fn();
+      return;
+    }
+    document.addEventListener("DOMContentLoaded", fn, { once: true });
   }
 
   function start() {
+    failsafe = setTimeout(reveal, 1500);
     whenReady(() => {
       const hintedOff = location.hash === "#original" || document.documentElement.classList.contains("cc-lms-original");
       init({ lmsClear: !hintedOff });
       chrome.storage.local.get({ lmsClear: true }, init);
     });
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
-  else start();
+  start();
 })();

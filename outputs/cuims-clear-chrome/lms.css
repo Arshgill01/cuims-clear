@@ -1,20 +1,10 @@
-/* Hide Moodle's directory until the clear view mounts, so the native cards never flash. */
-html.cc-lms-pending body:is(.path-my, .pagelayout-mycourses, .page-mycourses):not(.notloggedin) #region-main > :not(#cc-directory):not(#user-notifications),
-html.cc-lms-pending body:is(.path-my, .pagelayout-mycourses, .page-mycourses):not(.notloggedin) :is(#page-header, .secondary-navigation) {
-  display: none !important;
+/* Cover the native LMS until clear view has mounted. Do not depend on Moodle body classes. */
+html.cc-lms-pending {
+  background: oklch(0.97 0.004 125) !important;
 }
 html.cc-lms-pending,
 html.cc-lms-pending body {
-  background: oklch(0.97 0.004 125) !important;
-}
-html.cc-lms-pending body:is(.moove-darkmode, [data-bs-theme="dark"]) {
-  background: oklch(0.19 0.005 125) !important;
-}
-html.cc-lms-pending body.path-course-view #page-header h1 {
-  visibility: hidden;
-}
-body.cc-lms.path-course-view #page-header h1 {
-  visibility: visible;
+  visibility: hidden !important;
 }
 body.cc-lms, #cc-toolbar, .cc-sign-in {
   --cc-bg: oklch(0.97 0.004 125);

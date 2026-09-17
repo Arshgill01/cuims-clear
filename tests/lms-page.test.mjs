@@ -13,7 +13,14 @@ class Node {
     this.children = [];
     this.parentElement = null;
     this.hidden = false;
-    this.style = {};
+    this.style = {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+      removeProperty(name) {
+        delete this[name];
+      },
+    };
     this.dataset = { ...(attrs.dataset || {}) };
     this.attributes = { ...attrs };
     this.id = attrs.id || "";
@@ -154,9 +161,12 @@ function mount({
   lmsClear = true,
   cards = [],
   hangFetch = false,
+  readyState = "complete",
 } = {}) {
   const body = new Node("body", { class: bodyClass + (login ? " notloggedin" : "") });
   const documentElement = new Node("html");
+  documentElement.classList.add("cc-lms-pending");
+  documentElement.style.setProperty("visibility", "hidden");
   const usernav = new Node("div", { id: "usernavigation" });
   if (signedIn) usernav.append(new Node("div", { class: "usermenu", text: "Student" }));
   const header = new Node("header", { id: "page-header" });
@@ -176,7 +186,7 @@ function mount({
   const storage = { lmsClear };
   const listeners = [];
   const document = {
-    readyState: "complete",
+    readyState,
     body,
     documentElement,
     createElement: (tag) => new Node(tag),
@@ -194,7 +204,7 @@ function mount({
     replace: (url) => { replaced = url; },
   };
   const context = vm.createContext({
-    URL, URLSearchParams, Date, AbortSignal, Set, Map,
+    URL, URLSearchParams, Date, AbortSignal, Set, Map, setTimeout, clearTimeout,
     window: {},
     globalThis: {},
     chrome: {
@@ -222,7 +232,7 @@ function mount({
 }
 
 test("directory paints enrolled courses before extra pages finish loading", () => {
-  const { body } = mount({
+  const { body, document } = mount({
     hangFetch: true,
     cards: [
       card("CONT_24CST-302 :: COMPUTER NETWORKS", href(2)),
@@ -231,6 +241,8 @@ test("directory paints enrolled courses before extra pages finish loading", () =
   });
   assert.equal(body.querySelector("h2").textContent, "Computer Networks");
   assert.equal(body.querySelectorAll(".cc-course-link").length, 2);
+  assert.equal(document.documentElement.className.includes("cc-lms-pending"), false);
+  assert.equal(document.documentElement.style.visibility, undefined);
 });
 
 test("directory pairs CONT materials with 601A work and titles the subject once", () => {
@@ -285,10 +297,21 @@ test("unsigned LMS pages offer CUIMS sign-in and never rewrite the dashboard", (
   const loggedOut = mount({ login: true, signedIn: false, path: "/login/index.php" });
   assert.match(loggedOut.body.querySelector(".cc-sign-in").href, /cuims-clear-lms/);
   assert.equal(loggedOut.body.querySelector("#cc-toolbar"), null);
+  assert.equal(loggedOut.document.documentElement.className.includes("cc-lms-pending"), false);
 
   const home = mount({ path: "/my/" });
   assert.equal(home.replaced, "https://lms.cuchd.in/my/courses.php");
 
   const keep = mount({ path: "/", hash: "#original" });
   assert.equal(keep.replaced, undefined);
+});
+
+test("clear view mounts while the document is still loading", () => {
+  const { body, document } = mount({
+    readyState: "loading",
+    cards: [card("CONT_24CST-302 :: COMPUTER NETWORKS", href(2))],
+  });
+  assert.ok(body.querySelector("#cc-directory"));
+  assert.equal(body.querySelector("h2").textContent, "Computer Networks");
+  assert.equal(document.documentElement.className.includes("cc-lms-pending"), false);
 });
