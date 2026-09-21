@@ -27,7 +27,7 @@ Works only on students.cuchd.in and lms.cuchd.in. A valid university account is 
 CUIMS Clear is not affiliated with, endorsed by, or an official product of Chandigarh University.
 
 ## Single purpose
-Help Chandigarh University students access and navigate their CUIMS and LMS portals with saved-login assistance, fewer on-page interruptions, and a clearer course directory.
+Help Chandigarh University students access and navigate their CUIMS and LMS portals with login assistance, fewer on-page interruptions, and a clearer course directory.
 
 ## Permission justifications
 
@@ -41,7 +41,7 @@ Find and reuse existing CUIMS and LMS tabs when the student selects Open LMS, co
 Run the bundled Tesseract OCR worker and WebAssembly engine in a Chrome offscreen document because the Manifest V3 service worker cannot run this document-based OCR workflow. CAPTCHA images are processed locally.
 
 ### Host permissions
-students.cuchd.in: fill the university login form, process its CAPTCHA locally, apply the student's optional quiet-mode settings, and launch the university's own LMS SSO control.
+students.cuchd.in: assist with the login form after Chrome’s password manager or the student fills credentials, process its CAPTCHA locally, apply the student's optional quiet-mode settings, and launch the university's own LMS SSO control.
 lms.cuchd.in: display a cleaner course directory and course navigation, including fetching same-origin course directory pages to pair syllabus materials with semester work.
 
 ### Remote code
@@ -54,7 +54,9 @@ Full portal functionality requires a valid Chandigarh University student account
 ## URLs
 Homepage: https://github.com/Arshgill01/cuims-clear
 Support: https://github.com/Arshgill01/cuims-clear/issues
-Privacy policy candidate (verify public content before submission): https://github.com/Arshgill01/cuims-clear/blob/main/outputs/cuims-clear-chrome/PRIVACY.md
+Privacy policy: https://github.com/Arshgill01/cuims-clear/blob/main/outputs/cuims-clear-chrome/PRIVACY.md
 
 ## Submission status
-Package prepared; dashboard upload not yet verified. Data-use declarations must accurately include locally handled credentials and page content where the form asks about handling, not only developer-side collection. Required store images remain to be uploaded.
+Chrome 0.6.2 uploaded. Listing text, logo, screenshot, promo tile, privacy declarations, and reviewer instructions saved. Contact email verified. Submitted for review on 21 September 2026; Google confirmation verified. Automatic publication after approval is enabled. Free, public, all regions. Not yet live.
+
+Reviewer instructions explicitly note that full portal testing requires a university-issued student account; no personal credentials were shared.
