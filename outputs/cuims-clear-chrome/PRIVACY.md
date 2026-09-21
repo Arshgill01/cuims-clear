@@ -1,33 +1,49 @@
 # CUIMS Clear Privacy
 
-CUIMS Clear does not collect, transmit, sell, or share user data.
+CUIMS Clear processes portal data on your device to help you sign in to CUIMS,
+reduce interruptions, and navigate LMS courses. The developer does not receive,
+sell, or share your personal data. There is no developer-operated server,
+analytics, advertising, or remote executable code.
 
-The student UID, CUIMS password, and extension preferences are stored only in
-Chrome's local extension storage in the user's current browser profile. They
-are used only to fill the CUIMS login page and control the extension's on-page
-behavior, including the optional LMS clear view.
+## Login and preferences
 
-CAPTCHA solving runs entirely on the user's device. The OCR engine (Tesseract.js),
-its WebAssembly binary, and the English language model are bundled inside the
-extension package. The CAPTCHA image is read and processed locally in the
-browser; it is never uploaded. The extension includes no analytics, advertising,
-or remote code.
+CUIMS Clear does not save your UID or password. Use Chrome's password manager
+or enter your credentials directly on the university's HTTPS login page. The
+extension checks the login fields to advance or submit the form when your
+chosen automation settings allow it. Credentials are submitted to the
+university's CUIMS service as part of that login, not to the developer.
+Credentials saved by older Chrome builds are removed on installation or update.
+Chrome's own saved passwords are managed separately in Chrome's password manager.
 
-When the student asks to open the LMS, the extension uses the `tabs` permission
-only to find an already-open CUIMS or LMS tab, then clicks the university's own
-CUIMS CU LMS control and follows the LMS URL that page opens. That URL is not
-saved. On `lms.cuchd.in`, the courses directory may fetch additional same-origin
-`/my/courses.php` pages so syllabus materials and semester work can be paired. No
-SSO tokens are written to extension storage.
+Only extension preferences are stored in chrome.storage.local. These include
+login automation, quiet-mode, and LMS-view settings. Uninstalling the extension
+removes these preferences. Temporary login-attempt counters are kept in the
+portal tab's session storage; they do not contain credentials.
 
-The user can delete the stored UID and password at any time with **Clear login**
-in the extension popup, or remove all stored settings by uninstalling the
-extension.
+## On-device page processing
 
-The extension has access only to pages under `https://students.cuchd.in/*` and
-`https://lms.cuchd.in/*`.
+CAPTCHA images and text are processed locally with the bundled Tesseract.js
+engine, WebAssembly core, and English language model. Images are not uploaded.
+The extension reads page text and structure to hide optional event and feedback
+overlays and to organize LMS course names and links. This content is not sent
+to the developer or saved in extension storage.
 
-Chrome extension storage is not encrypted. Anyone with access to the user's
-Chrome profile may be able to read locally stored values.
+When you select Open LMS, the extension locates an existing CUIMS or LMS tab
+and uses the university's CU LMS control to follow its SSO flow. SSO URLs and
+tokens are not saved in extension storage. The LMS course directory may fetch
+additional same-origin /my/courses.php pages using your existing university
+session to pair syllabus materials with semester work.
 
-Last updated: 14 September 2026.
+Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
+The extension does not maintain a browsing-history record.
+
+## Limited use
+
+Data is used only to provide the portal features described above, in accordance
+with the Chrome Web Store User Data Policy, including its Limited Use
+requirements. It is not used for advertising, unrelated purposes, creditworthiness,
+or lending. The developer does not have access to your portal data.
+
+Contact: arshgill6120@gmail.com
+
+Last updated: 21 September 2026.

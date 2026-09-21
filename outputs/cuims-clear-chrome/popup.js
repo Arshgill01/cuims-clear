@@ -1,6 +1,4 @@
 const DEFAULT_SETTINGS = {
-  uid: "",
-  password: "",
   autoAdvanceUid: true,
   autoSolveCaptcha: true,
   autoSubmitLogin: true,
@@ -9,16 +7,12 @@ const DEFAULT_SETTINGS = {
 };
 
 const form = document.querySelector("#settings-form");
-const uid = document.querySelector("#uid");
-const password = document.querySelector("#password");
 const autoAdvance = document.querySelector("#auto-advance");
 const autoSolveCaptcha = document.querySelector("#auto-solve-captcha");
 const autoSubmitLogin = document.querySelector("#auto-submit-login");
 const blockEvents = document.querySelector("#block-events");
 const blockFeedback = document.querySelector("#block-feedback");
 const status = document.querySelector("#status");
-const togglePassword = document.querySelector("#toggle-password");
-const clearLogin = document.querySelector("#clear-login");
 
 let statusTimer;
 
@@ -31,8 +25,6 @@ function showStatus(message) {
 }
 
 chrome.storage.local.get(DEFAULT_SETTINGS, (settings) => {
-  uid.value = settings.uid;
-  password.value = settings.password;
   autoAdvance.checked = settings.autoAdvanceUid;
   autoSolveCaptcha.checked = settings.autoSolveCaptcha;
   autoSubmitLogin.checked = settings.autoSubmitLogin;
@@ -45,8 +37,6 @@ form.addEventListener("submit", (event) => {
 
   chrome.storage.local.set(
     {
-      uid: uid.value.trim(),
-      password: password.value,
       autoAdvanceUid: autoAdvance.checked,
       autoSolveCaptcha: autoSolveCaptcha.checked,
       autoSubmitLogin: autoSubmitLogin.checked,
@@ -57,25 +47,6 @@ form.addEventListener("submit", (event) => {
       showStatus("Changes saved");
     },
   );
-});
-
-togglePassword.addEventListener("click", () => {
-  const isHidden = password.type === "password";
-  password.type = isHidden ? "text" : "password";
-  togglePassword.textContent = isHidden ? "Hide" : "Show";
-  togglePassword.setAttribute("aria-label", isHidden ? "Hide password" : "Show password");
-});
-
-clearLogin.addEventListener("click", () => {
-  chrome.storage.local.remove(["uid", "password"], () => {
-    uid.value = "";
-    password.value = "";
-    password.type = "password";
-    togglePassword.textContent = "Show";
-    togglePassword.setAttribute("aria-label", "Show password");
-    showStatus("Saved login cleared");
-    uid.focus();
-  });
 });
 
 document.querySelector(".lms-open-link")?.addEventListener("click", (event) => {

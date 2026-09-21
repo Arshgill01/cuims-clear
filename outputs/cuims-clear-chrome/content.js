@@ -1,6 +1,4 @@
 const DEFAULT_SETTINGS = {
-  uid: "",
-  password: "",
   autoAdvanceUid: true,
   autoSolveCaptcha: true,
   autoSubmitLogin: true,
@@ -98,6 +96,7 @@ function bindCaptchaReload(captchaImage) {
   captchaImage.dataset.cuimsClearBound = "1";
   captchaImage.addEventListener("load", () => {
     solveGeneration += 1;
+    delete captchaImage.dataset.cuimsClearSubmitted;
     delete captchaImage.dataset.cuimsClearSolved;
     delete captchaImage.dataset.cuimsClearSolving;
     delete captchaImage.dataset.cuimsClearWaiting;
@@ -116,19 +115,13 @@ function prepareLogin() {
   if (uidField) {
     uidField.autocomplete = "username";
 
-    if (settings.uid && uidField.value !== settings.uid) {
-      uidField.value = settings.uid;
-      dispatchFieldEvents(uidField);
-    }
-
     const advancedAt = Number(sessionStorage.getItem("cuimsClearAdvancedAt") || 0);
     const canAdvanceAgain = Date.now() - advancedAt > 10_000;
 
     if (
-      settings.uid &&
       settings.autoAdvanceUid &&
       nextButton &&
-      uidField.value === settings.uid &&
+      uidField.value.trim() &&
       canAdvanceAgain
     ) {
       sessionStorage.setItem("cuimsClearAdvancedAt", String(Date.now()));
@@ -148,11 +141,6 @@ function prepareLogin() {
 
   if (passwordField) {
     passwordField.autocomplete = "current-password";
-
-    if (settings.password && passwordField.value !== settings.password) {
-      passwordField.value = settings.password;
-      dispatchFieldEvents(passwordField);
-    }
   }
 
   prepareCaptchaStep(passwordField);
@@ -169,6 +157,7 @@ function prepareCaptchaStep(passwordField) {
     captchaImage.dataset.cuimsClearSolved &&
     captchaImage.dataset.cuimsClearSolved !== captchaImage.src
   ) {
+    delete captchaImage.dataset.cuimsClearSubmitted;
     delete captchaImage.dataset.cuimsClearSolved;
     delete captchaImage.dataset.cuimsClearSolving;
   }
@@ -202,7 +191,11 @@ function prepareCaptchaStep(passwordField) {
 
   const solved = captchaImage.dataset.cuimsClearSolved === captchaImage.src;
   const solving = captchaImage.dataset.cuimsClearSolving === captchaImage.src;
-  if (solved || solving) return;
+  if (solved) {
+    submitSolvedLogin(captchaImage, captchaField, passwordField);
+    return;
+  }
+  if (solving) return;
 
   captchaImage.dataset.cuimsClearSolving = captchaImage.src;
   solveCaptchaImage(captchaImage, captchaField, passwordField);
@@ -488,29 +481,7 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     captchaField.placeholder = CAPTCHA_PLACEHOLDER;
     recordCaptchaAttempt();
 
-    const pwField =
-      passwordField ||
-      document.querySelector("input[type='password'], #txtPassword, input[name*='Password' i]");
-
-    const loginButton = document.querySelector(
-      "#btnLogin, input[name='btnLogin'], button[type='submit'], input[type='submit'][value*='Login' i]",
-    );
-
-    if (
-      settings.autoSubmitLogin &&
-      loginButton &&
-      pwField?.value &&
-      !captchaField.dataset.cuimsClearUserEdited
-    ) {
-      await delay(250 + Math.random() * 150);
-      if (
-        captchaField.value === text &&
-        pwField?.value &&
-        !captchaField.dataset.cuimsClearUserEdited
-      ) {
-        loginButton.click();
-      }
-    }
+    submitSolvedLogin(captchaImage, captchaField, passwordField);
   } catch (err) {
     if (generation !== solveGeneration) return;
     console.warn("[CUIMS Clear] CAPTCHA solve error:", err);
@@ -521,8 +492,22 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   }
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function submitSolvedLogin(captchaImage, captchaField, passwordField) {
+  const loginButton = document.querySelector(
+    "#btnLogin, input[name='btnLogin'], button[type='submit'], input[type='submit'][value*='Login' i]",
+  );
+  if (
+    settings.autoSubmitLogin &&
+    loginButton &&
+    passwordField?.value &&
+    captchaField.value &&
+    !captchaField.dataset.cuimsClearUserEdited &&
+    captchaImage.dataset.cuimsClearSolved === captchaImage.src &&
+    captchaImage.dataset.cuimsClearSubmitted !== captchaImage.src
+  ) {
+    captchaImage.dataset.cuimsClearSubmitted = captchaImage.src;
+    loginButton.click();
+  }
 }
 
 function classifyModal(element) {
@@ -740,6 +725,11 @@ function markUserEdits() {
 }
 
 function startExtension() {
+  document.addEventListener("change", (event) => {
+    if (event.target?.matches("#txtUserId, input[name='txtUserId'], input[type='password']")) {
+      queueScan();
+    }
+  }, true);
   chrome.storage.local.get(DEFAULT_SETTINGS, (storedSettings) => {
     settings = { ...DEFAULT_SETTINGS, ...storedSettings };
     markUserEdits();

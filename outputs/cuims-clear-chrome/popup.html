@@ -14,7 +14,7 @@
           <p class="eyebrow">Student utility</p>
           <h1>CUIMS Clear</h1>
         </div>
-        <span class="version">v0.6.1</span>
+        <span class="version">v0.6.2</span>
       </header>
 
       <nav class="open-nav" aria-label="Open portals">
@@ -27,41 +27,14 @@
       </nav>
 
       <form id="settings-form">
-        <fieldset class="login-fields">
-          <legend>Saved login</legend>
-
-          <label for="uid">Student UID</label>
-          <input
-            id="uid"
-            name="uid"
-            type="text"
-            autocomplete="username"
-            autocapitalize="none"
-            spellcheck="false"
-            maxlength="15"
-          />
-
-          <label for="password">CUIMS password</label>
-          <div class="password-field">
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autocomplete="off"
-              aria-describedby="storage-note"
-            />
-            <button id="toggle-password" class="field-action" type="button" aria-label="Show password">
-              Show
-            </button>
-          </div>
-        </fieldset>
+        <p class="login-note">Use Chrome’s password manager to fill your UID and password on CUIMS, or enter them there yourself. CUIMS Clear does not save your login.</p>
 
         <fieldset class="settings-group">
           <legend>Login</legend>
           <label class="check-row">
             <span>
               <strong>Move past UID</strong>
-              <small>Presses Next after filling it</small>
+              <small>Presses Next after your UID is filled</small>
             </span>
             <input id="auto-advance" type="checkbox" />
           </label>
@@ -109,9 +82,8 @@
       <section class="local-data" aria-labelledby="local-data-title">
         <div>
           <h2 id="local-data-title">Local by design</h2>
-          <p id="storage-note">Your login stays in this Chrome profile. CAPTCHA is solved on-device.</p>
+          <p id="storage-note">Only preferences are saved by this extension. CAPTCHA is solved on-device.</p>
         </div>
-        <button id="clear-login" class="clear-button" type="button">Clear login</button>
       </section>
     </main>
     <script src="popup.js"></script>
