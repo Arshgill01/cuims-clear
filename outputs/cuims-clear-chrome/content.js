@@ -51,9 +51,8 @@ const MIN_CAPTCHA_FILL_LEN = 3;
 const MAX_CAPTCHA_FILL_LEN = 7;
 const MIN_AUTO_SUBMIT_LEN = 4;
 const MAX_AUTO_SUBMIT_LEN = 6;
-const MIN_AUTO_SUBMIT_CONFIDENCE = 65;
-const MIN_CONSENSUS_CONFIDENCE = 55;
-const MIN_AUTO_SUBMIT_SCORE = 90;
+// Confidence ranks multi-pass OCR; it must not withhold Login on the happy path.
+const CAPTCHA_CHARSET_RE = /^[A-Za-z0-9]+$/;
 
 const LOCKOUT_PATTERNS = [
   /try\s+after\s+\d+\s*min/i,
@@ -218,15 +217,9 @@ function mayAutoSubmitSolution(solution) {
   if (!solution || solution.error) return false;
   const text = String(solution.text || "").trim();
   const len = text.length;
+  // Happy path: valid length + charset → submit. Multi-pass raises accuracy.
   if (len < MIN_AUTO_SUBMIT_LEN || len > MAX_AUTO_SUBMIT_LEN) return false;
-  const confidence = Number(solution.confidence || 0);
-  const score = Number(solution.score || 0);
-  const agreement = Number(solution.agreement || 1);
-  if (agreement >= 2 && confidence >= MIN_CONSENSUS_CONFIDENCE) return true;
-  if (confidence >= MIN_AUTO_SUBMIT_CONFIDENCE && score >= MIN_AUTO_SUBMIT_SCORE) {
-    return true;
-  }
-  return false;
+  return CAPTCHA_CHARSET_RE.test(text);
 }
 
 function loginPageHaystack() {
@@ -288,13 +281,17 @@ function clearLoginStatus() {
   document.getElementById(STATUS_ID)?.remove();
 }
 
-function formatLockoutMessage(lockoutUntil, now = Date.now()) {
-  const minutes = Math.max(1, Math.ceil(Math.max(0, lockoutUntil - now) / 60_000));
-  return `CUIMS may lock accounts after repeated failed logins. Auto-submit paused for ~${minutes} min. Enter the captcha manually when ready.`;
+function formatLockoutMessage(_lockoutUntil, _now = Date.now()) {
+  return "Auto-login paused. Enter the captcha and click Login when ready.";
 }
 
 function formatBudgetMessage(failures) {
-  return `Auto-submit stopped after ${failures} attempt${failures === 1 ? "" : "s"} to avoid account lockout. Check the captcha and click Login yourself.`;
+  const n = Number(failures) || 0;
+  return `Auto-login paused after ${n} ${n === 1 ? "try" : "tries"}. Check the captcha, then Login.`;
+}
+
+function formatRejectMessage() {
+  return "Login rejected. Check UID, password, and captcha.";
 }
 
 function hasLoginControls() {
@@ -381,12 +378,8 @@ function prepareLogin() {
 
   scanPortalFailureSignals();
 
-  const gate = canAutoSubmit();
-  if (gate.reason === "lockout") {
-    showLoginStatus(formatLockoutMessage(gate.state.lockoutUntil), "danger");
-  } else if (gate.reason === "budget") {
-    showLoginStatus(formatBudgetMessage(gate.state.failures), "warn");
-  }
+  // Stay quiet on the happy path — status only appears after real failures
+  // (portal reject / lockout) or when a submit is actually blocked.
 
   if (passwordField) {
     passwordField.autocomplete = "current-password";
@@ -410,7 +403,7 @@ function scanPortalFailureSignals() {
 
   if (detected.kind === "lockout") {
     const state = recordDetectedFailure({ lockout: true });
-    showLoginStatus(formatLockoutMessage(state.lockoutUntil), "danger");
+    showLoginStatus(formatLockoutMessage(state.lockoutUntil), "warn");
     return;
   }
 
@@ -420,15 +413,12 @@ function scanPortalFailureSignals() {
       state.locked
         ? formatLockoutMessage(state.lockoutUntil)
         : formatBudgetMessage(state.failures),
-      state.locked ? "danger" : "warn",
+      "warn",
     );
     return;
   }
 
-  showLoginStatus(
-    `Login was rejected (${state.failures}/${MAX_AUTO_SUBMIT_ATTEMPTS} auto-submits used). Check UID, password, and captcha.`,
-    "warn",
-  );
+  showLoginStatus(formatRejectMessage(), "warn");
 }
 
 function prepareCaptchaStep(passwordField) {
@@ -772,31 +762,33 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     );
 
     const gate = canAutoSubmit();
-    const confident = mayAutoSubmitSolution(solution);
+    const canSubmit = mayAutoSubmitSolution(solution);
 
     if (!gate.ok) {
       enlargeCaptcha(captchaImage);
-      if (gate.reason === "lockout") {
-        showLoginStatus(formatLockoutMessage(gate.state.lockoutUntil), "danger");
-      } else if (gate.reason === "budget") {
-        showLoginStatus(formatBudgetMessage(gate.state.failures), "warn");
+      // Only surface a status when we would have submitted but the circuit is open.
+      if (canSubmit && (gate.reason === "lockout" || gate.reason === "budget")) {
+        showLoginStatus(
+          gate.reason === "lockout"
+            ? formatLockoutMessage(gate.state.lockoutUntil)
+            : formatBudgetMessage(gate.state.failures),
+          "warn",
+        );
       }
       captchaField.focus();
       return;
     }
 
-    if (!confident) {
+    if (!canSubmit) {
+      // Junk length/charset — fill only, stay quiet (no confidence lectures).
       enlargeCaptcha(captchaImage);
-      showLoginStatus(
-        "CAPTCHA read is uncertain — filled for you, but Login was not pressed. Check the code, then submit.",
-        "warn",
-      );
       captchaField.focus();
       return;
     }
 
     if (loginButton && pwField?.value && !captchaField.dataset.cuimsClearUserEdited) {
-      await delay(250 + Math.random() * 150);
+      clearLoginStatus();
+      // Zero catch on the happy path: submit as soon as the field is filled.
       if (
         captchaField.value === text &&
         pwField?.value &&
@@ -804,16 +796,8 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
         canAutoSubmit().ok
       ) {
         // Count before the click so a fast portal reject cannot race past the budget.
-        const after = recordAutoSubmit();
+        recordAutoSubmit();
         loginButton.click();
-        if (after.budgetExhausted || after.locked) {
-          showLoginStatus(
-            after.locked
-              ? formatLockoutMessage(after.lockoutUntil)
-              : formatBudgetMessage(after.failures),
-            after.locked ? "danger" : "warn",
-          );
-        }
       }
     }
   } catch (err) {
@@ -826,8 +810,8 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   }
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(_ms) {
+  return Promise.resolve();
 }
 
 function classifyModal(element) {

@@ -54,20 +54,23 @@ test("captcha length gate accepts fillable tokens and rejects junk", () => {
   assert.equal(captchaLengthAcceptable("abcdefgh"), false);
 });
 
-test("mayAutoSubmitSolution requires confident 4-6 char reads", () => {
+test("mayAutoSubmitSolution accepts valid length/charset without confidence gating", () => {
+  // Real CUIMS sample often lands ~67 confidence — must still auto-submit.
+  assert.equal(
+    mayAutoSubmitSolution({ text: "ofh7", confidence: 67, score: 92, agreement: 1 }),
+    true,
+  );
+  assert.equal(
+    mayAutoSubmitSolution({ text: "ofh7", confidence: 40, score: 65, agreement: 1 }),
+    true,
+  );
+  assert.equal(
+    mayAutoSubmitSolution({ text: "ofh7", confidence: 10, score: 35, agreement: 1 }),
+    true,
+  );
   assert.equal(mayAutoSubmitSolution({ text: "ab", confidence: 99, score: 99 }), false);
-  assert.equal(
-    mayAutoSubmitSolution({ text: "ofh7", confidence: 66, score: 91, agreement: 1 }),
-    true,
-  );
-  assert.equal(
-    mayAutoSubmitSolution({ text: "ofh7", confidence: 50, score: 75, agreement: 1 }),
-    false,
-  );
-  assert.equal(
-    mayAutoSubmitSolution({ text: "ofh7", confidence: 58, score: 83, agreement: 2 }),
-    true,
-  );
+  assert.equal(mayAutoSubmitSolution({ text: "abcdefg", confidence: 99, score: 99 }), false);
+  assert.equal(mayAutoSubmitSolution({ text: "ofh!", confidence: 99, score: 99 }), false);
   assert.equal(mayAutoSubmitSolution({ error: "solver timeout" }), false);
 });
 
@@ -115,7 +118,7 @@ test("lockout banner forces cool-down even on first sighting", () => {
   const state = recordDetectedFailure(store, { lockout: true }, t0);
   assert.equal(state.locked, true);
   assert.equal(state.failures, MAX_AUTO_SUBMIT_ATTEMPTS);
-  assert.match(formatLockoutMessage(state.lockoutUntil, t0), /paused for ~/);
+  assert.match(formatLockoutMessage(state.lockoutUntil, t0), /Auto-login paused/);
 });
 
 test("UID-style reset clears failure keys", () => {
@@ -129,9 +132,9 @@ test("UID-style reset clears failure keys", () => {
   assert.equal(store.getItem(LOCKOUT_UNTIL_KEY), null);
 });
 
-test("budget messaging mentions attempt count", () => {
-  assert.match(formatBudgetMessage(3), /3 attempts/);
-  assert.match(formatBudgetMessage(1), /1 attempt/);
+test("budget messaging stays calm and mentions try count", () => {
+  assert.match(formatBudgetMessage(3), /3 tries/);
+  assert.match(formatBudgetMessage(1), /1 try/);
 });
 
 test("solver message sender allowlist rejects foreign pages", () => {

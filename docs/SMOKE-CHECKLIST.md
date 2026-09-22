@@ -8,19 +8,24 @@ Run after packaging changes. Do **not** commit real CUIMS credentials.
 - [ ] Firefox temporary add-on: `outputs/cuims-clear-firefox`
 - [ ] After shared solver edits, ran `scripts/sync-chrome-build.sh`
 
-## Login circuit breaker
+## Happy path (zero catch)
 
-- [ ] Auto-submit helper text mentions confident read + 3-try stop
-- [ ] Uncertain OCR fills captcha but does not click Login
-- [ ] Third auto-submit opens cool-down banner; fourth does not auto-click
+- [ ] Valid OCR (4–6 alnum) auto-fills **and** auto-clicks Login immediately
+- [ ] No status banner / cool-down copy during a clean success
+- [ ] No artificial pause before Login on the happy path
+
+## Quiet safety (failures only)
+
+- [ ] Third auto-submit exhausts budget; fourth does not auto-click
+- [ ] Calm pause copy appears only when a submit is blocked or portal rejects
 - [ ] Lockout / invalid-login banners pause automation
 - [ ] Successful StudentHome visit clears the budget
+- [ ] Junk-length OCR fills (if any) without a confidence lecture
 
 ## CAPTCHA (on-device only)
 
 - [ ] Prewarm: first captcha after install is slower; second is faster
 - [ ] No outbound OCR/provider requests in network panel
-- [ ] Enlarge-on-uncertainty still readable on mobile-width window
 
 ## Parity / regressions
 

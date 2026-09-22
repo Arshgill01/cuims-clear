@@ -95,11 +95,20 @@ test("Chrome fills OCR result and submits only when automatic submission is enab
   assert.equal(state.loginClicks(), 1);
 });
 
-test("Chrome does not auto-submit a low-confidence OCR read", async () => {
+test("Chrome auto-submits a valid-length OCR read even at low confidence", async () => {
+  // Real CUIMS samples often land ~65–70 confidence — must not withhold Login.
   const state = login({ text: "abcd", confidence: 40, score: 65, agreement: 1 });
   vm.runInContext("prepareLogin()", state.context);
   await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
   assert.equal(state.answer.value, "abcd");
+  assert.equal(state.loginClicks(), 1);
+});
+
+test("Chrome does not auto-submit a junk-length OCR read", async () => {
+  const state = login({ text: "ab", confidence: 99, score: 99, agreement: 1 });
+  vm.runInContext("prepareLogin()", state.context);
+  await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
+  // Fill gate rejects length < 3 entirely, so field stays empty and Login is not pressed.
   assert.equal(state.loginClicks(), 0);
 });
 

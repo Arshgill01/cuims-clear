@@ -7,9 +7,9 @@ export const MIN_CAPTCHA_FILL_LEN = 3;
 export const MAX_CAPTCHA_FILL_LEN = 7;
 export const MIN_AUTO_SUBMIT_LEN = 4;
 export const MAX_AUTO_SUBMIT_LEN = 6;
-export const MIN_AUTO_SUBMIT_CONFIDENCE = 65;
-export const MIN_CONSENSUS_CONFIDENCE = 55;
-export const MIN_AUTO_SUBMIT_SCORE = 90;
+// Confidence is used by the multi-pass solver to pick a better read — not to
+// withhold Login on the happy path. Real CUIMS samples often land ~65–70.
+export const CAPTCHA_CHARSET_RE = /^[A-Za-z0-9]+$/;
 
 export const LOGIN_FAILURE_KEY = "cuimsClear.loginFailures";
 export const LOCKOUT_UNTIL_KEY = "cuimsClear.lockoutUntil";
@@ -54,17 +54,10 @@ export function mayAutoSubmitSolution(solution) {
   if (!solution || solution.error) return false;
   const text = String(solution.text || "").trim();
   const len = text.length;
+  // Happy path: valid length + charset → auto-submit immediately.
+  // Multi-pass OCR raises accuracy of `text`; do not gate Login on confidence.
   if (len < MIN_AUTO_SUBMIT_LEN || len > MAX_AUTO_SUBMIT_LEN) return false;
-
-  const confidence = Number(solution.confidence || 0);
-  const score = Number(solution.score || 0);
-  const agreement = Number(solution.agreement || 1);
-
-  if (agreement >= 2 && confidence >= MIN_CONSENSUS_CONFIDENCE) return true;
-  if (confidence >= MIN_AUTO_SUBMIT_CONFIDENCE && score >= MIN_AUTO_SUBMIT_SCORE) {
-    return true;
-  }
-  return false;
+  return CAPTCHA_CHARSET_RE.test(text);
 }
 
 export function readFailureState(store, now = Date.now()) {
@@ -144,18 +137,17 @@ export function canAutoSubmit(store, settings, now = Date.now()) {
   return { ok: true, reason: "ok", state };
 }
 
-export function formatLockoutMessage(lockoutUntil, now = Date.now()) {
-  const ms = Math.max(0, lockoutUntil - now);
-  const minutes = Math.max(1, Math.ceil(ms / 60_000));
-  return `CUIMS may lock accounts after repeated failed logins. Auto-submit paused for ~${minutes} min. Enter the captcha manually when ready.`;
+export function formatLockoutMessage(_lockoutUntil, _now = Date.now()) {
+  return "Auto-login paused. Enter the captcha and click Login when ready.";
 }
 
 export function formatBudgetMessage(failures) {
-  return `Auto-submit stopped after ${failures} attempt${failures === 1 ? "" : "s"} to avoid account lockout. Solve the captcha and click Login yourself.`;
+  const n = Number(failures) || 0;
+  return `Auto-login paused after ${n} ${n === 1 ? "try" : "tries"}. Check the captcha, then Login.`;
 }
 
-export function formatLowConfidenceMessage() {
-  return "CAPTCHA read is uncertain — filled for you, but Login was not pressed. Check the code, then submit.";
+export function formatRejectMessage() {
+  return "Login rejected. Check UID, password, and captcha.";
 }
 
 export function isTrustedCuimsSender(sender, extensionId) {
