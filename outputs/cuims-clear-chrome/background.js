@@ -12,6 +12,19 @@ const CONSENSUS_BONUS = 20;
 let solveQueue = Promise.resolve();
 let workerPromise = null;
 
+function isTrustedSolverSender(sender) {
+  if (!sender) return false;
+  const extensionId = chrome.runtime?.id;
+  if (sender.id && extensionId && sender.id !== extensionId) return false;
+  const url = String(sender.url || "");
+  if (extensionId && url.startsWith(`chrome-extension://${extensionId}`)) return true;
+  if (extensionId && url.startsWith(`moz-extension://${extensionId}`)) return true;
+  if (/^https:\/\/students\.cuchd\.in\//i.test(url)) return true;
+  // Extension pages (popup / offscreen) may omit url.
+  if (sender.id === extensionId && !sender.tab) return true;
+  return Boolean(sender.tab && /^https:\/\/students\.cuchd\.in\//i.test(url));
+}
+
 function createSolverWorker() {
   return Tesseract.createWorker("eng", OEM_LSTM_ONLY, {
     workerPath: chrome.runtime.getURL("vendor/tesseract/worker.min.js"),
@@ -153,9 +166,9 @@ async function solveCandidates(candidates) {
       };
       results.push(result);
 
-      // Only skip later passes on a genuinely strong first read.
+      // Only skip later passes on a genuinely strong first read (latency win).
       if (i === 0 && isStrongRead(text, confidence)) {
-        return result;
+        return { ...result, agreement: 1 };
       }
 
       // If two passes already agree on a legal token, skip the remainder.
@@ -178,7 +191,9 @@ async function solveCandidates(candidates) {
   return bestCandidate;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isTrustedSolverSender(sender)) return;
+
   if (message?.type === "cuims-clear:prewarm") {
     getSolverWorker()
       .then(() => sendResponse({ prewarmed: true }))

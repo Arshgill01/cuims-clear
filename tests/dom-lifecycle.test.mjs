@@ -74,46 +74,46 @@ test("DOM lifecycle: login automation and attempt exhaustion safety", () => {
     },
   };
 
-  const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
-  const MAX_CAPTCHA_ATTEMPTS = 99;
+  const LOGIN_FAILURE_KEY = "cuimsClear.loginFailures";
+  const MAX_AUTO_SUBMIT_ATTEMPTS = 3;
 
-  function captchaAttempts() {
-    return Number(sessionStorage.getItem(CAPTCHA_ATTEMPTS_KEY) || 0);
+  function loginFailures() {
+    return Number(sessionStorage.getItem(LOGIN_FAILURE_KEY) || 0);
   }
 
-  assert.equal(captchaAttempts(), 0);
+  assert.equal(loginFailures(), 0);
 
-  sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, "1");
-  assert.equal(captchaAttempts(), 1);
-  assert.equal(captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS, false);
+  sessionStorage.setItem(LOGIN_FAILURE_KEY, "1");
+  assert.equal(loginFailures(), 1);
+  assert.equal(loginFailures() >= MAX_AUTO_SUBMIT_ATTEMPTS, false);
 
-  sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, "99");
-  assert.equal(captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS, true);
+  sessionStorage.setItem(LOGIN_FAILURE_KEY, "3");
+  assert.equal(loginFailures() >= MAX_AUTO_SUBMIT_ATTEMPTS, true);
 
   // Fresh UID step (no password field, no captcha) resets budget
-  sessionStorage.removeItem(CAPTCHA_ATTEMPTS_KEY);
-  assert.equal(captchaAttempts(), 0);
+  sessionStorage.removeItem(LOGIN_FAILURE_KEY);
+  assert.equal(loginFailures(), 0);
 });
 
-test("DOM lifecycle: auto-solve stops once the retry budget is spent", () => {
-  const MAX_CAPTCHA_ATTEMPTS = 99;
+test("DOM lifecycle: auto-submit stops once the retry budget is spent", () => {
+  const MAX_AUTO_SUBMIT_ATTEMPTS = 3;
   let attempts = 0;
-  let autoSolve = true;
+  let autoSubmit = true;
 
   function recordAttempt() {
     attempts += 1;
   }
 
-  function shouldAutoSolve() {
-    return autoSolve && attempts < MAX_CAPTCHA_ATTEMPTS;
+  function shouldAutoSubmit() {
+    return autoSubmit && attempts < MAX_AUTO_SUBMIT_ATTEMPTS;
   }
 
   recordAttempt();
   recordAttempt();
-  assert.equal(shouldAutoSolve(), true);
+  assert.equal(shouldAutoSubmit(), true);
 
-  attempts = MAX_CAPTCHA_ATTEMPTS;
-  assert.equal(shouldAutoSolve(), false);
+  attempts = MAX_AUTO_SUBMIT_ATTEMPTS;
+  assert.equal(shouldAutoSubmit(), false);
 });
 
 test("DOM lifecycle: Chrome width-0 sidenav still classifies as feedback", () => {

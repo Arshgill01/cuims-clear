@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CUIMS login lockout fixture</title>
+  </head>
+  <body>
+    <form id="loginForm">
+      <label>User Id <input id="txtUserId" name="txtUserId" /></label>
+      <label>Password <input id="txtPassword" name="txtPassword" type="password" /></label>
+      <label>Captcha <input id="captchaCode" name="captchaCode" /></label>
+      <img id="imgCaptcha" src="GenerateCaptcha.aspx?id=lockout" width="120" height="40" alt="captcha" />
+      <input id="btnLogin" name="btnLogin" type="submit" value="Login" />
+      <span id="lblMessage">Your account is locked. Please try after 20 minutes.</span>
+    </form>
+  </body>
+</html>

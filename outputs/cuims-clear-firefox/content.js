@@ -40,8 +40,40 @@ const FEEDBACK_WORDS = [
 ];
 
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
-const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
-const MAX_CAPTCHA_ATTEMPTS = 99;
+// Hard stop auto-submit well before CUIMS's ~5-fail / ~20-min lockout.
+const MAX_AUTO_SUBMIT_ATTEMPTS = 3;
+const LOCKOUT_COOLDOWN_MS = 20 * 60 * 1000;
+const LOGIN_FAILURE_KEY = "cuimsClear.loginFailures";
+const LOCKOUT_UNTIL_KEY = "cuimsClear.lockoutUntil";
+const LAST_SUBMIT_AT_KEY = "cuimsClear.lastAutoSubmitAt";
+const STATUS_ID = "cuims-clear-login-status";
+const MIN_CAPTCHA_FILL_LEN = 3;
+const MAX_CAPTCHA_FILL_LEN = 7;
+const MIN_AUTO_SUBMIT_LEN = 4;
+const MAX_AUTO_SUBMIT_LEN = 6;
+const MIN_AUTO_SUBMIT_CONFIDENCE = 65;
+const MIN_CONSENSUS_CONFIDENCE = 55;
+const MIN_AUTO_SUBMIT_SCORE = 90;
+
+const LOCKOUT_PATTERNS = [
+  /try\s+after\s+\d+\s*min/i,
+  /try\s+again\s+after\s+\d+/i,
+  /account\s+(has\s+been\s+)?lock/i,
+  /locked\s+(out|for\s+\d+)/i,
+  /too\s+many\s+(failed\s+)?(login|attempt)/i,
+  /temporarily\s+(disabled|locked|blocked)/i,
+  /login\s+disabled\s+for/i,
+];
+
+const LOGIN_ERROR_PATTERNS = [
+  /invalid\s+(user(\s*id)?|uid|password|captcha|login|credentials)/i,
+  /incorrect\s+(user(\s*id)?|uid|password|captcha|credentials)/i,
+  /wrong\s+(password|captcha|uid|user)/i,
+  /login\s+failed/i,
+  /authentication\s+failed/i,
+  /captcha\s+(code\s+)?(is\s+)?(invalid|incorrect|wrong|mismatch)/i,
+  /user\s*id\s+or\s+password/i,
+];
 
 let settings = { ...DEFAULT_SETTINGS };
 const suppressedElements = new Map();
@@ -49,6 +81,7 @@ let scanQueued = false;
 let programmaticEdit = false;
 let prewarmed = false;
 let solveGeneration = 0;
+let lastErrorFingerprint = "";
 
 function dispatchFieldEvents(field) {
   if (!field) return;
@@ -66,20 +99,214 @@ function prewarmSolver() {
   } catch {}
 }
 
-function captchaAttempts() {
-  return Number(sessionStorage.getItem(CAPTCHA_ATTEMPTS_KEY) || 0);
+// Prefer origin-shared localStorage so all_frames cannot amplify the budget.
+// Fall back for restricted / test VM contexts without a Window.
+function failureStore() {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage) return localStorage;
+  } catch {}
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch {}
+  try {
+    if (typeof sessionStorage !== "undefined" && sessionStorage) return sessionStorage;
+  } catch {}
+  const root = typeof globalThis !== "undefined" ? globalThis : {};
+  if (!root.__cuimsClearFailureMemory) {
+    const map = new Map();
+    root.__cuimsClearFailureMemory = {
+      getItem(key) {
+        return map.has(key) ? map.get(key) : null;
+      },
+      setItem(key, value) {
+        map.set(key, String(value));
+      },
+      removeItem(key) {
+        map.delete(key);
+      },
+    };
+  }
+  return root.__cuimsClearFailureMemory;
 }
 
-function recordCaptchaAttempt() {
-  sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, String(captchaAttempts() + 1));
+function readFailureState(now = Date.now()) {
+  const store = failureStore();
+  const lockoutUntil = Number(store.getItem(LOCKOUT_UNTIL_KEY) || 0);
+  const failures = Number(store.getItem(LOGIN_FAILURE_KEY) || 0);
+  const locked = lockoutUntil > now;
+  return {
+    failures: Number.isFinite(failures) ? Math.max(0, failures) : 0,
+    lockoutUntil: Number.isFinite(lockoutUntil) ? lockoutUntil : 0,
+    locked,
+    budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
+  };
 }
 
-function resetCaptchaAttempts() {
-  sessionStorage.removeItem(CAPTCHA_ATTEMPTS_KEY);
+function recordAutoSubmit(now = Date.now()) {
+  const store = failureStore();
+  const state = readFailureState(now);
+  const failures = state.failures + 1;
+  store.setItem(LOGIN_FAILURE_KEY, String(failures));
+  store.setItem(LAST_SUBMIT_AT_KEY, String(now));
+  // Soft cool-down once the circuit opens — do not wait for CUIMS lockout text.
+  if (failures >= MAX_AUTO_SUBMIT_ATTEMPTS) {
+    const until = now + LOCKOUT_COOLDOWN_MS;
+    store.setItem(LOCKOUT_UNTIL_KEY, String(Math.max(state.lockoutUntil, until)));
+    return { failures, lockoutUntil: Math.max(state.lockoutUntil, until), locked: true, budgetExhausted: true };
+  }
+  return {
+    failures,
+    lockoutUntil: state.lockoutUntil,
+    locked: state.locked,
+    budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
+  };
 }
 
-function captchaBudgetExhausted() {
-  return captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS;
+function recordDetectedFailure({ lockout = false } = {}, now = Date.now()) {
+  const store = failureStore();
+  const state = readFailureState(now);
+  const lastSubmit = Number(store.getItem(LAST_SUBMIT_AT_KEY) || 0);
+  const recentSubmit = lastSubmit > 0 && now - lastSubmit < 20_000;
+
+  if (lockout) {
+    const until = Math.max(state.lockoutUntil, now + LOCKOUT_COOLDOWN_MS);
+    store.setItem(LOCKOUT_UNTIL_KEY, String(until));
+    const failures = Math.max(state.failures, MAX_AUTO_SUBMIT_ATTEMPTS);
+    store.setItem(LOGIN_FAILURE_KEY, String(failures));
+    return { failures, lockoutUntil: until, locked: true, budgetExhausted: true, counted: true };
+  }
+
+  // Auto-submit already reserved a budget slot; only surface messaging.
+  if (recentSubmit) {
+    return { ...state, counted: false };
+  }
+
+  // Manual Login (or undetected prior submit) still consumes budget once we see a reject.
+  const failures = state.failures + 1;
+  store.setItem(LOGIN_FAILURE_KEY, String(failures));
+  if (failures >= MAX_AUTO_SUBMIT_ATTEMPTS) {
+    const until = now + LOCKOUT_COOLDOWN_MS;
+    store.setItem(LOCKOUT_UNTIL_KEY, String(until));
+    return { failures, lockoutUntil: until, locked: true, budgetExhausted: true, counted: true };
+  }
+  return {
+    failures,
+    lockoutUntil: state.lockoutUntil,
+    locked: false,
+    budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
+    counted: true,
+  };
+}
+
+function resetFailureState() {
+  const store = failureStore();
+  store.removeItem(LOGIN_FAILURE_KEY);
+  store.removeItem(LOCKOUT_UNTIL_KEY);
+  store.removeItem(LAST_SUBMIT_AT_KEY);
+  lastErrorFingerprint = "";
+}
+
+function canAutoSubmit(now = Date.now()) {
+  if (!settings.autoSubmitLogin) return { ok: false, reason: "disabled" };
+  const state = readFailureState(now);
+  if (state.locked) return { ok: false, reason: "lockout", state };
+  if (state.budgetExhausted) return { ok: false, reason: "budget", state };
+  return { ok: true, reason: "ok", state };
+}
+
+function mayAutoSubmitSolution(solution) {
+  if (!solution || solution.error) return false;
+  const text = String(solution.text || "").trim();
+  const len = text.length;
+  if (len < MIN_AUTO_SUBMIT_LEN || len > MAX_AUTO_SUBMIT_LEN) return false;
+  const confidence = Number(solution.confidence || 0);
+  const score = Number(solution.score || 0);
+  const agreement = Number(solution.agreement || 1);
+  if (agreement >= 2 && confidence >= MIN_CONSENSUS_CONFIDENCE) return true;
+  if (confidence >= MIN_AUTO_SUBMIT_CONFIDENCE && score >= MIN_AUTO_SUBMIT_SCORE) {
+    return true;
+  }
+  return false;
+}
+
+function loginPageHaystack() {
+  const nodes = document.querySelectorAll(
+    "#lblMessage, #lblError, #lblErrorMessage, .error, .errormessage, .validation-summary-errors, [id*='error' i], [id*='message' i], [class*='error' i], [class*='alert' i]",
+  );
+  const chunks = [];
+  for (const node of nodes) {
+    const text = (node.textContent || "").trim();
+    if (text) chunks.push(text);
+  }
+  if (chunks.length === 0 && document.body) {
+    chunks.push((document.body.innerText || document.body.textContent || "").slice(0, 4000));
+  }
+  return chunks.join("\n");
+}
+
+function detectPortalFailure() {
+  const haystack = loginPageHaystack();
+  if (!haystack) return null;
+  if (LOCKOUT_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { kind: "lockout", haystack };
+  }
+  if (LOGIN_ERROR_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { kind: "error", haystack };
+  }
+  return null;
+}
+
+function showLoginStatus(message, tone = "info") {
+  if (!document.body || !message) return;
+  let el = document.getElementById(STATUS_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = STATUS_ID;
+    el.setAttribute("role", "status");
+    el.style.cssText = [
+      "position:fixed",
+      "left:16px",
+      "right:16px",
+      "bottom:16px",
+      "z-index:2147483646",
+      "max-width:420px",
+      "margin:0 auto",
+      "padding:12px 14px",
+      "border-radius:8px",
+      "font:600 13px/1.4 system-ui,sans-serif",
+      "box-shadow:0 8px 24px rgba(0,0,0,.18)",
+    ].join(";");
+    document.body.appendChild(el);
+  }
+  el.dataset.tone = tone;
+  el.style.background = tone === "danger" ? "#3b1418" : tone === "warn" ? "#3a2a10" : "#142033";
+  el.style.color = tone === "danger" ? "#ffd7dc" : tone === "warn" ? "#ffe6b8" : "#d7e7ff";
+  el.textContent = message;
+}
+
+function clearLoginStatus() {
+  document.getElementById(STATUS_ID)?.remove();
+}
+
+function formatLockoutMessage(lockoutUntil, now = Date.now()) {
+  const minutes = Math.max(1, Math.ceil(Math.max(0, lockoutUntil - now) / 60_000));
+  return `CUIMS may lock accounts after repeated failed logins. Auto-submit paused for ~${minutes} min. Enter the captcha manually when ready.`;
+}
+
+function formatBudgetMessage(failures) {
+  return `Auto-submit stopped after ${failures} attempt${failures === 1 ? "" : "s"} to avoid account lockout. Check the captcha and click Login yourself.`;
+}
+
+function hasLoginControls() {
+  return Boolean(
+    document.querySelector(
+      "#imgCaptcha, img[src*='GenerateCaptcha' i], #btnLogin, input[name='btnLogin'], #txtPassword, #captchaCode",
+    ),
+  );
+}
+
+function shouldRunLoginAutomation() {
+  return hasLoginControls();
 }
 
 function enlargeCaptcha(captchaImage) {
@@ -106,6 +333,11 @@ function bindCaptchaReload(captchaImage) {
 }
 
 function prepareLogin() {
+  if (!shouldRunLoginAutomation()) {
+    scanPortalFailureSignals();
+    return;
+  }
+
   const uidField = document.querySelector("#txtUserId, input[name='txtUserId']");
   const nextButton = document.querySelector("#btnNext, input[name='btnNext']");
 
@@ -143,7 +375,17 @@ function prepareLogin() {
 
   // UID-only step starts a new login, so the retry budget resets.
   if (uidField && nextButton && !passwordField && !captchaImage) {
-    resetCaptchaAttempts();
+    resetFailureState();
+    clearLoginStatus();
+  }
+
+  scanPortalFailureSignals();
+
+  const gate = canAutoSubmit();
+  if (gate.reason === "lockout") {
+    showLoginStatus(formatLockoutMessage(gate.state.lockoutUntil), "danger");
+  } else if (gate.reason === "budget") {
+    showLoginStatus(formatBudgetMessage(gate.state.failures), "warn");
   }
 
   if (passwordField) {
@@ -156,6 +398,37 @@ function prepareLogin() {
   }
 
   prepareCaptchaStep(passwordField);
+}
+
+function scanPortalFailureSignals() {
+  const detected = detectPortalFailure();
+  if (!detected) return;
+
+  const fingerprint = `${detected.kind}:${detected.haystack.slice(0, 180)}`;
+  if (fingerprint === lastErrorFingerprint) return;
+  lastErrorFingerprint = fingerprint;
+
+  if (detected.kind === "lockout") {
+    const state = recordDetectedFailure({ lockout: true });
+    showLoginStatus(formatLockoutMessage(state.lockoutUntil), "danger");
+    return;
+  }
+
+  const state = recordDetectedFailure({ lockout: false });
+  if (state.locked || state.budgetExhausted) {
+    showLoginStatus(
+      state.locked
+        ? formatLockoutMessage(state.lockoutUntil)
+        : formatBudgetMessage(state.failures),
+      state.locked ? "danger" : "warn",
+    );
+    return;
+  }
+
+  showLoginStatus(
+    `Login was rejected (${state.failures}/${MAX_AUTO_SUBMIT_ATTEMPTS} auto-submits used). Check UID, password, and captcha.`,
+    "warn",
+  );
 }
 
 function prepareCaptchaStep(passwordField) {
@@ -178,7 +451,8 @@ function prepareCaptchaStep(passwordField) {
   );
   if (!captchaField) return;
 
-  if (!settings.autoSolveCaptcha || captchaBudgetExhausted()) {
+  const state = readFailureState();
+  if (!settings.autoSolveCaptcha || state.locked) {
     enlargeCaptcha(captchaImage);
     captchaField.focus();
     return;
@@ -480,13 +754,14 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     if (solution?.error) throw new Error(solution.error);
 
     const text = (solution?.text || "").trim();
-    if (text.length < 3 || text.length > 7) throw new Error("unconvincing read: " + text);
+    if (text.length < MIN_CAPTCHA_FILL_LEN || text.length > MAX_CAPTCHA_FILL_LEN) {
+      throw new Error("unconvincing read: " + text);
+    }
 
     captchaField.value = text;
     dispatchFieldEvents(captchaField);
     captchaImage.dataset.cuimsClearSolved = captchaImage.src;
     captchaField.placeholder = CAPTCHA_PLACEHOLDER;
-    recordCaptchaAttempt();
 
     const pwField =
       passwordField ||
@@ -496,19 +771,49 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
       "#btnLogin, input[name='btnLogin'], button[type='submit'], input[type='submit'][value*='Login' i]",
     );
 
-    if (
-      settings.autoSubmitLogin &&
-      loginButton &&
-      pwField?.value &&
-      !captchaField.dataset.cuimsClearUserEdited
-    ) {
+    const gate = canAutoSubmit();
+    const confident = mayAutoSubmitSolution(solution);
+
+    if (!gate.ok) {
+      enlargeCaptcha(captchaImage);
+      if (gate.reason === "lockout") {
+        showLoginStatus(formatLockoutMessage(gate.state.lockoutUntil), "danger");
+      } else if (gate.reason === "budget") {
+        showLoginStatus(formatBudgetMessage(gate.state.failures), "warn");
+      }
+      captchaField.focus();
+      return;
+    }
+
+    if (!confident) {
+      enlargeCaptcha(captchaImage);
+      showLoginStatus(
+        "CAPTCHA read is uncertain — filled for you, but Login was not pressed. Check the code, then submit.",
+        "warn",
+      );
+      captchaField.focus();
+      return;
+    }
+
+    if (loginButton && pwField?.value && !captchaField.dataset.cuimsClearUserEdited) {
       await delay(250 + Math.random() * 150);
       if (
         captchaField.value === text &&
         pwField?.value &&
-        !captchaField.dataset.cuimsClearUserEdited
+        !captchaField.dataset.cuimsClearUserEdited &&
+        canAutoSubmit().ok
       ) {
+        // Count before the click so a fast portal reject cannot race past the budget.
+        const after = recordAutoSubmit();
         loginButton.click();
+        if (after.budgetExhausted || after.locked) {
+          showLoginStatus(
+            after.locked
+              ? formatLockoutMessage(after.lockoutUntil)
+              : formatBudgetMessage(after.failures),
+            after.locked ? "danger" : "warn",
+          );
+        }
       }
     }
   } catch (err) {
@@ -688,6 +993,13 @@ function clearStaleSuppress() {
 
 function scanPage() {
   scanQueued = false;
+
+  // Successful landing clears the login circuit so the next session starts fresh.
+  if (/studenthome\.aspx$/i.test(location.pathname)) {
+    resetFailureState();
+    clearLoginStatus();
+  }
+
   prepareLogin();
 
   for (const selector of MODAL_SELECTORS) {

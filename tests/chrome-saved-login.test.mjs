@@ -5,40 +5,73 @@ import { readFileSync } from "node:fs";
 
 const source = (name) => readFileSync(new URL(`../outputs/cuims-clear-chrome/${name}`, import.meta.url), "utf8");
 
-function login() {
+function memoryStorage() {
+  const map = new Map();
+  return {
+    getItem: (key) => (map.has(key) ? map.get(key) : null),
+    setItem: (key, value) => map.set(key, String(value)),
+    removeItem: (key) => map.delete(key),
+  };
+}
+
+function login(solveResult = { text: "abcd", confidence: 88, score: 113, agreement: 1 }) {
   let nextClicks = 0;
   let loginClicks = 0;
   const uid = { value: "", dispatchEvent() {} };
-  const password = { value: "", dispatchEvent() {} };
-  const image = { src: "fixture.png", dataset: {} };
-  const answer = { value: "", dataset: {}, dispatchEvent() {} };
+  const password = { value: "", dispatchEvent() {}, focus() {} };
+  const image = {
+    src: "fixture.png",
+    dataset: {},
+    naturalHeight: 40,
+    height: 40,
+    complete: true,
+    naturalWidth: 120,
+    style: {},
+    addEventListener() {},
+  };
+  const answer = { value: "", dataset: {}, placeholder: "", dispatchEvent() {}, focus() {} };
   const session = new Map();
+  const local = memoryStorage();
   const context = vm.createContext({
     document: {
       documentElement: null,
+      body: { appendChild() {} },
       addEventListener() {},
+      getElementById() { return null; },
+      createElement() {
+        return { style: {}, setAttribute() {}, dataset: {} };
+      },
       querySelector(selector) {
         if (selector.includes("txtUserId")) return uid;
         if (selector.includes("btnNext")) return { click() { nextClicks++; } };
         if (selector.includes("type='password'")) return password;
         if (selector.includes("btnLogin")) return { click() { loginClicks++; } };
+        if (selector.includes("imgCaptcha") || selector.includes("GenerateCaptcha")) return image;
+        if (selector.includes("captcha")) return answer;
         return null;
       },
+      querySelectorAll() { return []; },
     },
     chrome: {
       storage: { onChanged: { addListener() {} } },
-      runtime: { async sendMessage() { return { text: "abcd" }; } },
+      runtime: { async sendMessage() { return solveResult; } },
     },
     location: { pathname: "/" },
-    sessionStorage: { getItem: (key) => session.get(key), setItem: (key, value) => session.set(key, value), removeItem: (key) => session.delete(key) },
+    localStorage: local,
+    sessionStorage: {
+      getItem: (key) => session.get(key),
+      setItem: (key, value) => session.set(key, value),
+      removeItem: (key) => session.delete(key),
+    },
     Event: class { constructor(type) { this.type = type; } },
     setTimeout(fn) { fn(); },
+    Math,
     console,
     image, answer, password,
   });
   vm.runInContext(source("content.js"), context);
   vm.runInContext('settings.uid = "TEST123"; settings.password = "fixture-password"; settings.autoSolveCaptcha = false; extractCaptchaVariants = () => ["fixture"];', context);
-  return { context, uid, password, image, answer, nextClicks: () => nextClicks, loginClicks: () => loginClicks };
+  return { context, uid, password, image, answer, nextClicks: () => nextClicks, loginClicks: () => loginClicks, local };
 }
 
 test("Chrome fills saved UID/password and advances without a browser password manager", () => {
@@ -60,6 +93,29 @@ test("Chrome fills OCR result and submits only when automatic submission is enab
   vm.runInContext("settings.autoSubmitLogin = false", state.context);
   await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
   assert.equal(state.loginClicks(), 1);
+});
+
+test("Chrome does not auto-submit a low-confidence OCR read", async () => {
+  const state = login({ text: "abcd", confidence: 40, score: 65, agreement: 1 });
+  vm.runInContext("prepareLogin()", state.context);
+  await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
+  assert.equal(state.answer.value, "abcd");
+  assert.equal(state.loginClicks(), 0);
+});
+
+test("Chrome stops auto-submit after three attempts", async () => {
+  const state = login();
+  vm.runInContext("prepareLogin()", state.context);
+  for (let i = 0; i < 3; i++) {
+    state.answer.dataset = {};
+    state.image.dataset = {};
+    await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
+  }
+  assert.equal(state.loginClicks(), 3);
+  state.answer.dataset = {};
+  state.image.dataset = {};
+  await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
+  assert.equal(state.loginClicks(), 3, "circuit breaker blocks the fourth auto-submit");
 });
 
 test("Chrome preserves a manually edited CAPTCHA instead of replacing or submitting it", async () => {
