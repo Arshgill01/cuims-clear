@@ -48,3 +48,5 @@ Scope: restore content.js, popup.js, popup.css, popup.html, service-worker.js an
 This is an explicit rollback, not an investigation claiming to reproduce the user's live login issue. Baseline equivalence and executable saved-login tests are the validation signals. Live CAPTCHA/login verification remains separate.
 
 0.6.3 validation: `node --test tests/*.test.mjs` passed 69/69; `git diff --check` passed. Runtime baseline byte-equivalence (popup version excepted), manifest file references and ZIP integrity passed. Rendered 1280×800 screenshot checked. ZIP SHA-256: 25b3710358fff0c3699c80e7924cf0d1a96c90e45d9d97820f54870a3445e01d.
+
+Upload blocked: Firefox opened the Select file flow, then native computer-use calls repeatedly failed with ScreenCaptureKit SCStreamErrorDomain -3812 (invalid parameter), including reconnect and Escape recovery. 0.6.3 is not confirmed uploaded or submitted. Code/privacy/assets committed and pushed as da246d8. Resume at Package → Upload new package, then update listing, screenshot, privacy permission explanations and reviewer instructions before submission.
