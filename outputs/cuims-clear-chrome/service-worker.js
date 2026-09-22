@@ -1,8 +1,3 @@
-// Remove credentials saved by older unpacked Chrome builds.
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.remove(["uid", "password"]);
-});
-
 importScripts("lms-open.js");
 
 // Chrome MV3 cannot host Tesseract in this service worker: dedicated workers

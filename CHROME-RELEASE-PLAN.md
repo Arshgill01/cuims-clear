@@ -35,3 +35,16 @@ Chrome 0.6.2 ZIP uploaded successfully. 69 tests passed with `node --test tests/
 
 Release ZIP SHA-256: bbcb4de5493e1bf9761e0386b25aea78902f5c5fa70102bbb69aeab21cb3262c.
 Validation limits: regression suite and rendered popup checked; Chrome password-manager filling against a live university login was not exercised during this release. Reviewer access may require follow-up because no university test account is available.
+
+## 0.6.3 restoration — 22 September 2026
+User reports published 0.6.2 password-manager/CAPTCHA flow does not match intended behavior and explicitly requests the pre-session version and a published update explaining the restoration.
+
+Scope: restore content.js, popup.js, popup.css, popup.html, service-worker.js and sync script from 5bcede2. Keep store-compatible PNG icons and increase version to 0.6.3. Restore accurate local credential-storage disclosures; do not claim encryption or conceal the change. Replace tests for superseded behavior with saved-login regression coverage. Update listing screenshot, release notes and reviewer instructions. Submit update and verify review status.
+
+- [x] Restore and validate original behavior against 5bcede2.
+- [x] Update release package, privacy documentation, listing text and screenshot.
+- [ ] Upload 0.6.3, submit review with automatic publication, verify confirmation.
+
+This is an explicit rollback, not an investigation claiming to reproduce the user's live login issue. Baseline equivalence and executable saved-login tests are the validation signals. Live CAPTCHA/login verification remains separate.
+
+0.6.3 validation: `node --test tests/*.test.mjs` passed 69/69; `git diff --check` passed. Runtime baseline byte-equivalence (popup version excepted), manifest file references and ZIP integrity passed. Rendered 1280×800 screenshot checked. ZIP SHA-256: 25b3710358fff0c3699c80e7924cf0d1a96c90e45d9d97820f54870a3445e01d.

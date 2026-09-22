@@ -114,11 +114,65 @@ legend {
   text-transform: uppercase;
 }
 
-.login-note {
-  margin: 0;
-  color: var(--muted);
+.login-fields > label {
+  display: block;
+  margin: 0 0 6px;
   font-size: 12px;
-  line-height: 1.5;
+  font-weight: 700;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+input[type="text"]:focus-visible,
+input[type="password"]:focus-visible {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgb(82 127 23 / 17%);
+}
+
+.login-fields > label:not(:first-of-type) {
+  margin-top: 10px;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 58px;
+}
+
+.field-action {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 48px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.field-action:hover {
+  color: var(--ink);
+  background: var(--canvas);
 }
 
 .settings-group {
@@ -221,11 +275,26 @@ button,
 }
 
 .local-data p {
-  max-width: 100%;
+  max-width: 205px;
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.clear-button {
+  min-height: 32px;
+  padding: 0 9px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 10px;
+}
+
+.clear-button:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
 }
 
 .open-link {

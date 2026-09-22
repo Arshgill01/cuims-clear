@@ -1,6 +1,6 @@
 #!/bin/sh
 # Copy the shared Firefox solver into the Chrome package.
-# Chrome-only files (manifest, service-worker, offscreen, content, popup) are left alone.
+# Chrome-only files (manifest, service-worker, offscreen, popup copy) are left alone.
 
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,7 +12,7 @@ if [ ! -f "$FF/background.js" ] || [ ! -f "$CH/manifest.json" ]; then
   exit 1
 fi
 
-for f in background.js lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js; do
+for f in content.js background.js popup.js popup.css lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js; do
   cp "$FF/$f" "$CH/$f"
 done
 

@@ -7,18 +7,22 @@ analytics, advertising, or remote executable code.
 
 ## Login and preferences
 
-CUIMS Clear does not save your UID or password. Use Chrome's password manager
-or enter your credentials directly on the university's HTTPS login page. The
-extension checks the login fields to advance or submit the form when your
-chosen automation settings allow it. Credentials are submitted to the
-university's CUIMS service as part of that login, not to the developer.
-Credentials saved by older Chrome builds are removed on installation or update.
-Chrome's own saved passwords are managed separately in Chrome's password manager.
+Saving a login in the extension popup stores your student UID and CUIMS password
+in chrome.storage.local on this device. These values are not encrypted by the
+extension and are not synchronized through Chrome Sync. Saving credentials is
+optional. Use Clear login in the popup to remove the stored UID and password,
+or uninstall the extension to remove its local storage.
 
-Only extension preferences are stored in chrome.storage.local. These include
-login automation, quiet-mode, and LMS-view settings. Uninstalling the extension
-removes these preferences. Temporary login-attempt counters are kept in the
-portal tab's session storage; they do not contain credentials.
+The extension fills saved credentials into the university login form and can
+advance or submit it according to your automation settings. Credentials are
+submitted to the university's CUIMS service as part of login, not to the developer.
+You can instead enter credentials directly on the portal without saving them.
+Chrome's password manager is managed separately by Chrome.
+
+Local storage also holds login automation, quiet-mode, and LMS-view preferences.
+Temporary login-attempt counters are kept in the portal tab's session storage;
+they do not contain credentials. Version 0.6.2 deleted previously saved extension
+credentials; version 0.6.3 cannot recover those values and requires saving them again.
 
 ## On-device page processing
 
@@ -46,4 +50,4 @@ or lending. The developer does not have access to your portal data.
 
 Contact: arshgill6120@gmail.com
 
-Last updated: 21 September 2026.
+Last updated: 22 September 2026.
