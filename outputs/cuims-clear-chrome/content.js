@@ -74,6 +74,15 @@ const LOGIN_ERROR_PATTERNS = [
   /user\s*id\s+or\s+password/i,
 ];
 
+const SERVER_ERROR_PATTERNS = [
+  /service\s+(is\s+)?temporarily\s+unavailable/i,
+  /internal\s+server\s+error/i,
+  /request\s+(has\s+)?timed?\s*out/i,
+  /server\s+(is\s+)?(busy|unavailable|not\s+responding)/i,
+  /under\s+maintenance/i,
+  /please\s+try\s+again\s+later/i,
+];
+
 let settings = { ...DEFAULT_SETTINGS };
 const suppressedElements = new Map();
 let scanQueued = false;
@@ -147,12 +156,6 @@ function recordAutoSubmit(now = Date.now()) {
   const failures = state.failures + 1;
   store.setItem(LOGIN_FAILURE_KEY, String(failures));
   store.setItem(LAST_SUBMIT_AT_KEY, String(now));
-  // Soft cool-down once the circuit opens — do not wait for CUIMS lockout text.
-  if (failures >= MAX_AUTO_SUBMIT_ATTEMPTS) {
-    const until = now + LOCKOUT_COOLDOWN_MS;
-    store.setItem(LOCKOUT_UNTIL_KEY, String(Math.max(state.lockoutUntil, until)));
-    return { failures, lockoutUntil: Math.max(state.lockoutUntil, until), locked: true, budgetExhausted: true };
-  }
   return {
     failures,
     lockoutUntil: state.lockoutUntil,
@@ -183,11 +186,6 @@ function recordDetectedFailure({ lockout = false } = {}, now = Date.now()) {
   // Manual Login (or undetected prior submit) still consumes budget once we see a reject.
   const failures = state.failures + 1;
   store.setItem(LOGIN_FAILURE_KEY, String(failures));
-  if (failures >= MAX_AUTO_SUBMIT_ATTEMPTS) {
-    const until = now + LOCKOUT_COOLDOWN_MS;
-    store.setItem(LOCKOUT_UNTIL_KEY, String(until));
-    return { failures, lockoutUntil: until, locked: true, budgetExhausted: true, counted: true };
-  }
   return {
     failures,
     lockoutUntil: state.lockoutUntil,
@@ -195,6 +193,16 @@ function recordDetectedFailure({ lockout = false } = {}, now = Date.now()) {
     budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
     counted: true,
   };
+}
+
+function releaseRecentAutoSubmit(now = Date.now()) {
+  const store = failureStore();
+  const state = readFailureState(now);
+  const lastSubmit = Number(store.getItem(LAST_SUBMIT_AT_KEY) || 0);
+  if (lastSubmit <= 0 || now - lastSubmit >= 20_000 || state.failures <= 0) return state;
+  store.setItem(LOGIN_FAILURE_KEY, String(state.failures - 1));
+  store.removeItem(LAST_SUBMIT_AT_KEY);
+  return readFailureState(now);
 }
 
 function resetFailureState() {
@@ -243,6 +251,9 @@ function detectPortalFailure() {
   if (LOCKOUT_PATTERNS.some((pattern) => pattern.test(haystack))) {
     return { kind: "lockout", haystack };
   }
+  if (SERVER_ERROR_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { kind: "server", haystack };
+  }
   if (LOGIN_ERROR_PATTERNS.some((pattern) => pattern.test(haystack))) {
     return { kind: "error", haystack };
   }
@@ -282,7 +293,7 @@ function clearLoginStatus() {
 }
 
 function formatLockoutMessage(_lockoutUntil, _now = Date.now()) {
-  return "Auto-login paused. Enter the captcha and click Login when ready.";
+  return "CUIMS has temporarily locked login. Wait before trying again.";
 }
 
 function formatBudgetMessage(failures) {
@@ -297,7 +308,7 @@ function formatRejectMessage() {
 function hasLoginControls() {
   return Boolean(
     document.querySelector(
-      "#imgCaptcha, img[src*='GenerateCaptcha' i], #btnLogin, input[name='btnLogin'], #txtPassword, #captchaCode",
+      "#txtUserId, input[name='txtUserId'], #btnNext, input[name='btnNext'], #imgCaptcha, img[src*='GenerateCaptcha' i], #btnLogin, input[name='btnLogin'], #txtPassword, #captchaCode",
     ),
   );
 }
@@ -370,12 +381,6 @@ function prepareLogin() {
   );
   const captchaImage = document.querySelector("#imgCaptcha, img[src*='GenerateCaptcha' i]");
 
-  // UID-only step starts a new login, so the retry budget resets.
-  if (uidField && nextButton && !passwordField && !captchaImage) {
-    resetFailureState();
-    clearLoginStatus();
-  }
-
   scanPortalFailureSignals();
 
   // Stay quiet on the happy path — status only appears after real failures
@@ -404,6 +409,12 @@ function scanPortalFailureSignals() {
   if (detected.kind === "lockout") {
     const state = recordDetectedFailure({ lockout: true });
     showLoginStatus(formatLockoutMessage(state.lockoutUntil), "warn");
+    return;
+  }
+
+  if (detected.kind === "server") {
+    releaseRecentAutoSubmit();
+    showLoginStatus("CUIMS is temporarily unavailable. Try again in a moment.", "warn");
     return;
   }
 
@@ -441,8 +452,7 @@ function prepareCaptchaStep(passwordField) {
   );
   if (!captchaField) return;
 
-  const state = readFailureState();
-  if (!settings.autoSolveCaptcha || state.locked) {
+  if (!settings.autoSolveCaptcha) {
     enlargeCaptcha(captchaImage);
     captchaField.focus();
     return;
@@ -808,10 +818,6 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     enlargeCaptcha(captchaImage);
     captchaField.focus();
   }
-}
-
-function delay(_ms) {
-  return Promise.resolve();
 }
 
 function classifyModal(element) {

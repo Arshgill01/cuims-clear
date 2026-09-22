@@ -2,6 +2,15 @@
 
 Run after packaging changes. Do **not** commit real CUIMS credentials.
 
+## Automated evidence (2026-09-22)
+
+- [x] Chrome 153 loaded `outputs/cuims-clear-chrome` unpacked as version 0.6.4
+- [x] Popup rendered; live CUIMS UID page received the content script
+- [x] Isolated test UID filled with `autocomplete=username`; test value was removed afterward
+- [x] MV3 service worker started and offscreen Tesseract document prewarmed
+- [x] Chrome and Firefox shipped content scripts passed the same login-safety regression tests
+- [x] No login or CAPTCHA was submitted during live smoke testing
+
 ## Package
 
 - [ ] Chrome unpacked: `outputs/cuims-clear-chrome` (manifest version matches popup)

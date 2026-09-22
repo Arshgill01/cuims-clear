@@ -39,25 +39,26 @@ Source inventory: `uploads/HARDENING-PROBLEM-LIST.md` (starting audit). This doc
 - `MAX_AUTO_SUBMIT_ATTEMPTS = 3` (stop well before ~5)
 - Budget in **`localStorage`** (shared across same-origin frames)
 - Count **auto-submit clicks**, not bare OCR fills
-- Soft cool-down `LOCKOUT_COOLDOWN_MS = 20 * 60 * 1000` when budget opens
-- Reset on UID-only step and on `StudentHome.aspx`
+- Three automatic submits open the circuit until a confirmed `StudentHome.aspx` landing
+- Returning to the UID page does not clear the circuit
+- A detected portal lockout adds a 20-minute wait window; CAPTCHA solving remains available for manual review
 - **No proactive banners** while the circuit is merely open — status appears only after a portal reject/lockout or when a submit is actually blocked
 
 **Paths:** `outputs/cuims-clear-firefox/content.js` (source of truth), synced to Chrome via `scripts/sync-chrome-build.sh`.
 
 ### 2. No lockout / server-error detection — **FIXED** (heuristic, calm UI)
 
-**Fix:** Pattern match on `#lblMessage`, `#lblError`, validation summaries, and body text. Messaging is short (`Auto-login paused…` / `Login rejected…`) — no lockout lectures on success.
+**Fix:** Pattern match on `#lblMessage`, `#lblError`, validation summaries, and body text. Lockout, rejected-login, maintenance, timeout, and unavailable-service messages are handled separately. A transient CUIMS server error releases the most recent reserved auto-submit slot instead of treating the outage as a bad credential or CAPTCHA.
 
 **Fixtures:** `tests/fixtures/login/{lockout,invalid-captcha,invalid-password}.html`  
-**Tests:** `tests/login-fixtures.test.mjs`, `tests/login-safety.test.mjs`
+**Tests:** `tests/login-safety.test.mjs` executes both shipped content scripts against the fixtures.
 
 ### 3. Attempt counter ignored portal rejects — **FIXED**
 
 - Auto-submit click consumes one budget slot
 - Portal error after a **recent** auto-submit does **not** double-count
 - Manual Login rejects still consume budget when error UI is seen
-- Lockout UI forces cool-down immediately
+- Lockout UI blocks automatic submission immediately
 
 ---
 
@@ -93,7 +94,9 @@ Login automation only when login controls exist; shared `localStorage` budget.
 - Auto-submit: valid charset + length 4–6 → submit immediately
 - Artificial pre-Login delay removed on the happy path
 
-**Deferred:** Larger labeled captcha corpus; 90–95% remains a target, not a CI-proven metric.
+**Measured 2026-09-22:** 53 manually labelled, freshly fetched public CUIMS CAPTCHA images were split before tuning (26 exploration, 27 holdout). Chrome's actual canvas preprocessing plus the shipped Tesseract ranking produced 19/26 exact matches on exploration and **16/27 (59.3%)** on holdout, at about **25 ms warmed mean OCR time** in the local Node/Tesseract harness. A fixed-threshold single-pass candidate scored 22/26 on exploration but regressed to 16/27 on holdout, so it was rejected. `tessdata_best` reached 18/27 but adds roughly 12 MB compressed and remains far below target, so it was rejected too. Case-sensitive exact match is the metric.
+
+**Deferred:** 90–95% remains a target, not a claim. Reaching it likely needs a purpose-trained local character model and a committed, independently labelled train/validation/test corpus. No unvalidated OCR experiment was shipped.
 
 ### 9. Cold-start OCR latency — **KEPT**
 
@@ -121,11 +124,12 @@ See earlier notes; lockout-safety scope unchanged.
 
 ### 16. Circuit breaker / lockout fixtures — **FIXED**
 
-- `tests/login-safety.mjs` + `tests/login-safety.test.mjs` (happy-path accepts ~67 confidence)
-- `tests/fixtures/login/*.html` + `tests/login-fixtures.test.mjs`
+- `tests/login-safety.test.mjs` executes the shipped Chrome and Firefox content scripts directly, including the UID-only page, retry persistence, lockout copy, transient server errors, and login fixtures
 - `tests/dom-lifecycle.test.mjs` off the old `MAX=99` contract
 
-### 17–18. OCR corpus / dual-browser CI — **DEFERRED** (manual checklist)
+### 17–18. OCR corpus / dual-browser CI — **PARTIAL**
+
+The one-off 53-image benchmark established an honest baseline but is not committed as a permanent corpus. Chrome 153 was exercised with the unpacked 0.6.4 build: extension load, popup render, real CUIMS UID-page injection, saved test UID fill, service-worker startup, and offscreen Tesseract prewarm passed. Firefox behavior is covered by direct shipped-script tests; temporary-addon browser smoke remains manual.
 
 ---
 
