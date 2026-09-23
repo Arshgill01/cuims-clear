@@ -33,6 +33,7 @@ for (const build of ["chrome", "firefox"]) {
         documentElement: null,
         body,
         addEventListener() {},
+        getElementById() { return null; },
         querySelector: () => null,
         querySelectorAll: (selector) => selector === ".modal.in" ? [modal] : [],
         createTreeWalker: () => ({ nextNode: () => false }),
@@ -42,6 +43,18 @@ for (const build of ["chrome", "firefox"]) {
         runtime: { sendMessage() {} },
       },
       location: { pathname: "/StudentHome.aspx" },
+      localStorage: {
+        store: new Map(),
+        getItem(key) { return this.store.has(key) ? this.store.get(key) : null; },
+        setItem(key, value) { this.store.set(key, String(value)); },
+        removeItem(key) { this.store.delete(key); },
+      },
+      sessionStorage: {
+        store: new Map(),
+        getItem(key) { return this.store.has(key) ? this.store.get(key) : null; },
+        setItem(key, value) { this.store.set(key, String(value)); },
+        removeItem(key) { this.store.delete(key); },
+      },
       NodeFilter: { SHOW_TEXT: 4 },
       getComputedStyle: (element) => ({ display: element.style.getPropertyValue("display") }),
     });

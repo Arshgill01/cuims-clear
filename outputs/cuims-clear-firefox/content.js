@@ -40,8 +40,52 @@ const FEEDBACK_WORDS = [
 ];
 
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
-const CAPTCHA_ATTEMPTS_KEY = "cuimsClearCaptchaAttempts";
-const MAX_CAPTCHA_ATTEMPTS = 99;
+// Hard stop auto-submit well before CUIMS's ~5-fail / ~20-min lockout.
+const MAX_AUTO_SUBMIT_ATTEMPTS = 3;
+const LOCKOUT_COOLDOWN_MS = 20 * 60 * 1000;
+const LOGIN_FAILURE_KEY = "cuimsClear.loginFailures";
+const LOCKOUT_UNTIL_KEY = "cuimsClear.lockoutUntil";
+const LAST_SUBMIT_AT_KEY = "cuimsClear.lastAutoSubmitAt";
+// A run of failures that is this old is treated as a new session and cleared, so
+// yesterday's misfires never silently disable today's auto-submit. Well under
+// CUIMS's own lockout window, which only cares about rapid consecutive failures.
+const FAILURE_STALE_MS = 20 * 60 * 1000;
+const STATUS_ID = "cuims-clear-login-status";
+const MIN_CAPTCHA_FILL_LEN = 3;
+const MAX_CAPTCHA_FILL_LEN = 7;
+const MIN_AUTO_SUBMIT_LEN = 4;
+const MAX_AUTO_SUBMIT_LEN = 6;
+// Confidence ranks multi-pass OCR; it must not withhold Login on the happy path.
+const CAPTCHA_CHARSET_RE = /^[A-Za-z0-9]+$/;
+
+const LOCKOUT_PATTERNS = [
+  /try\s+after\s+\d+\s*min/i,
+  /try\s+again\s+after\s+\d+/i,
+  /account\s+(has\s+been\s+)?lock/i,
+  /locked\s+(out|for\s+\d+)/i,
+  /too\s+many\s+(failed\s+)?(login|attempt)/i,
+  /temporarily\s+(disabled|locked|blocked)/i,
+  /login\s+disabled\s+for/i,
+];
+
+const LOGIN_ERROR_PATTERNS = [
+  /invalid\s+(user(\s*id)?|uid|password|captcha|login|credentials)/i,
+  /incorrect\s+(user(\s*id)?|uid|password|captcha|credentials)/i,
+  /wrong\s+(password|captcha|uid|user)/i,
+  /login\s+failed/i,
+  /authentication\s+failed/i,
+  /captcha\s+(code\s+)?(is\s+)?(invalid|incorrect|wrong|mismatch)/i,
+  /user\s*id\s+or\s+password/i,
+];
+
+const SERVER_ERROR_PATTERNS = [
+  /service\s+(is\s+)?temporarily\s+unavailable/i,
+  /internal\s+server\s+error/i,
+  /request\s+(has\s+)?timed?\s*out/i,
+  /server\s+(is\s+)?(busy|unavailable|not\s+responding)/i,
+  /under\s+maintenance/i,
+  /please\s+try\s+again\s+later/i,
+];
 
 let settings = { ...DEFAULT_SETTINGS };
 const suppressedElements = new Map();
@@ -49,6 +93,7 @@ let scanQueued = false;
 let programmaticEdit = false;
 let prewarmed = false;
 let solveGeneration = 0;
+let lastErrorFingerprint = "";
 
 function dispatchFieldEvents(field) {
   if (!field) return;
@@ -66,20 +111,226 @@ function prewarmSolver() {
   } catch {}
 }
 
-function captchaAttempts() {
-  return Number(sessionStorage.getItem(CAPTCHA_ATTEMPTS_KEY) || 0);
+// Prefer origin-shared localStorage so all_frames cannot amplify the budget.
+// Fall back for restricted / test VM contexts without a Window.
+function failureStore() {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage) return localStorage;
+  } catch {}
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch {}
+  try {
+    if (typeof sessionStorage !== "undefined" && sessionStorage) return sessionStorage;
+  } catch {}
+  const root = typeof globalThis !== "undefined" ? globalThis : {};
+  if (!root.__cuimsClearFailureMemory) {
+    const map = new Map();
+    root.__cuimsClearFailureMemory = {
+      getItem(key) {
+        return map.has(key) ? map.get(key) : null;
+      },
+      setItem(key, value) {
+        map.set(key, String(value));
+      },
+      removeItem(key) {
+        map.delete(key);
+      },
+    };
+  }
+  return root.__cuimsClearFailureMemory;
 }
 
-function recordCaptchaAttempt() {
-  sessionStorage.setItem(CAPTCHA_ATTEMPTS_KEY, String(captchaAttempts() + 1));
+function readFailureState(now = Date.now()) {
+  const store = failureStore();
+  const lockoutUntil = Number(store.getItem(LOCKOUT_UNTIL_KEY) || 0);
+  let failures = Number(store.getItem(LOGIN_FAILURE_KEY) || 0);
+  const locked = lockoutUntil > now;
+
+  // Decay a stale failure run (previous session) once its lockout has elapsed,
+  // so a fresh login attempt is not blocked by old misfires.
+  if (!locked && failures > 0) {
+    const lastSubmit = Number(store.getItem(LAST_SUBMIT_AT_KEY) || 0);
+    if (lastSubmit > 0 && now - lastSubmit > FAILURE_STALE_MS) {
+      store.removeItem(LOGIN_FAILURE_KEY);
+      store.removeItem(LAST_SUBMIT_AT_KEY);
+      failures = 0;
+    }
+  }
+
+  return {
+    failures: Number.isFinite(failures) ? Math.max(0, failures) : 0,
+    lockoutUntil: Number.isFinite(lockoutUntil) ? lockoutUntil : 0,
+    locked,
+    budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
+  };
 }
 
-function resetCaptchaAttempts() {
-  sessionStorage.removeItem(CAPTCHA_ATTEMPTS_KEY);
+function recordAutoSubmit(now = Date.now()) {
+  const store = failureStore();
+  const state = readFailureState(now);
+  const failures = state.failures + 1;
+  store.setItem(LOGIN_FAILURE_KEY, String(failures));
+  store.setItem(LAST_SUBMIT_AT_KEY, String(now));
+  return {
+    failures,
+    lockoutUntil: state.lockoutUntil,
+    locked: state.locked,
+    budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
+  };
 }
 
-function captchaBudgetExhausted() {
-  return captchaAttempts() >= MAX_CAPTCHA_ATTEMPTS;
+function recordDetectedFailure({ lockout = false } = {}, now = Date.now()) {
+  const store = failureStore();
+  const state = readFailureState(now);
+  const lastSubmit = Number(store.getItem(LAST_SUBMIT_AT_KEY) || 0);
+  const recentSubmit = lastSubmit > 0 && now - lastSubmit < 20_000;
+
+  if (lockout) {
+    const until = Math.max(state.lockoutUntil, now + LOCKOUT_COOLDOWN_MS);
+    store.setItem(LOCKOUT_UNTIL_KEY, String(until));
+    const failures = Math.max(state.failures, MAX_AUTO_SUBMIT_ATTEMPTS);
+    store.setItem(LOGIN_FAILURE_KEY, String(failures));
+    return { failures, lockoutUntil: until, locked: true, budgetExhausted: true, counted: true };
+  }
+
+  // Auto-submit already reserved a budget slot; only surface messaging.
+  if (recentSubmit) {
+    return { ...state, counted: false };
+  }
+
+  // Manual Login (or undetected prior submit) still consumes budget once we see a reject.
+  const failures = state.failures + 1;
+  store.setItem(LOGIN_FAILURE_KEY, String(failures));
+  return {
+    failures,
+    lockoutUntil: state.lockoutUntil,
+    locked: false,
+    budgetExhausted: failures >= MAX_AUTO_SUBMIT_ATTEMPTS,
+    counted: true,
+  };
+}
+
+function releaseRecentAutoSubmit(now = Date.now()) {
+  const store = failureStore();
+  const state = readFailureState(now);
+  const lastSubmit = Number(store.getItem(LAST_SUBMIT_AT_KEY) || 0);
+  if (lastSubmit <= 0 || now - lastSubmit >= 20_000 || state.failures <= 0) return state;
+  store.setItem(LOGIN_FAILURE_KEY, String(state.failures - 1));
+  store.removeItem(LAST_SUBMIT_AT_KEY);
+  return readFailureState(now);
+}
+
+function resetFailureState() {
+  const store = failureStore();
+  store.removeItem(LOGIN_FAILURE_KEY);
+  store.removeItem(LOCKOUT_UNTIL_KEY);
+  store.removeItem(LAST_SUBMIT_AT_KEY);
+  lastErrorFingerprint = "";
+}
+
+function canAutoSubmit(now = Date.now()) {
+  if (!settings.autoSubmitLogin) return { ok: false, reason: "disabled" };
+  const state = readFailureState(now);
+  if (state.locked) return { ok: false, reason: "lockout", state };
+  if (state.budgetExhausted) return { ok: false, reason: "budget", state };
+  return { ok: true, reason: "ok", state };
+}
+
+function mayAutoSubmitSolution(solution) {
+  if (!solution || solution.error) return false;
+  const text = String(solution.text || "").trim();
+  const len = text.length;
+  // Happy path: valid length + charset → submit. Multi-pass raises accuracy.
+  if (len < MIN_AUTO_SUBMIT_LEN || len > MAX_AUTO_SUBMIT_LEN) return false;
+  return CAPTCHA_CHARSET_RE.test(text);
+}
+
+function loginPageHaystack() {
+  const nodes = document.querySelectorAll(
+    "#lblMessage, #lblError, #lblErrorMessage, .error, .errormessage, .validation-summary-errors, [id*='error' i], [id*='message' i], [class*='error' i], [class*='alert' i]",
+  );
+  const chunks = [];
+  for (const node of nodes) {
+    const text = (node.textContent || "").trim();
+    if (text) chunks.push(text);
+  }
+  if (chunks.length === 0 && document.body) {
+    chunks.push((document.body.innerText || document.body.textContent || "").slice(0, 4000));
+  }
+  return chunks.join("\n");
+}
+
+function detectPortalFailure() {
+  const haystack = loginPageHaystack();
+  if (!haystack) return null;
+  if (LOCKOUT_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { kind: "lockout", haystack };
+  }
+  if (SERVER_ERROR_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { kind: "server", haystack };
+  }
+  if (LOGIN_ERROR_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { kind: "error", haystack };
+  }
+  return null;
+}
+
+function showLoginStatus(message, tone = "info") {
+  if (!document.body || !message) return;
+  let el = document.getElementById(STATUS_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = STATUS_ID;
+    el.setAttribute("role", "status");
+    el.style.cssText = [
+      "position:fixed",
+      "left:16px",
+      "right:16px",
+      "bottom:16px",
+      "z-index:2147483646",
+      "max-width:420px",
+      "margin:0 auto",
+      "padding:12px 14px",
+      "border-radius:8px",
+      "font:600 13px/1.4 system-ui,sans-serif",
+      "box-shadow:0 8px 24px rgba(0,0,0,.18)",
+    ].join(";");
+    document.body.appendChild(el);
+  }
+  el.dataset.tone = tone;
+  el.style.background = tone === "danger" ? "#3b1418" : tone === "warn" ? "#3a2a10" : "#142033";
+  el.style.color = tone === "danger" ? "#ffd7dc" : tone === "warn" ? "#ffe6b8" : "#d7e7ff";
+  el.textContent = message;
+}
+
+function clearLoginStatus() {
+  document.getElementById(STATUS_ID)?.remove();
+}
+
+function formatLockoutMessage(_lockoutUntil, _now = Date.now()) {
+  return "CUIMS has temporarily locked login. Wait before trying again.";
+}
+
+function formatBudgetMessage(failures) {
+  const n = Number(failures) || 0;
+  return `Auto-login paused after ${n} ${n === 1 ? "try" : "tries"}. Check the captcha, then Login.`;
+}
+
+function formatRejectMessage() {
+  return "Login rejected. Check UID, password, and captcha.";
+}
+
+function hasLoginControls() {
+  return Boolean(
+    document.querySelector(
+      "#txtUserId, input[name='txtUserId'], #btnNext, input[name='btnNext'], #imgCaptcha, img[src*='GenerateCaptcha' i], #btnLogin, input[name='btnLogin'], #txtPassword, #captchaCode",
+    ),
+  );
+}
+
+function shouldRunLoginAutomation() {
+  return hasLoginControls();
 }
 
 function enlargeCaptcha(captchaImage) {
@@ -106,6 +357,11 @@ function bindCaptchaReload(captchaImage) {
 }
 
 function prepareLogin() {
+  if (!shouldRunLoginAutomation()) {
+    scanPortalFailureSignals();
+    return;
+  }
+
   const uidField = document.querySelector("#txtUserId, input[name='txtUserId']");
   const nextButton = document.querySelector("#btnNext, input[name='btnNext']");
 
@@ -141,10 +397,10 @@ function prepareLogin() {
   );
   const captchaImage = document.querySelector("#imgCaptcha, img[src*='GenerateCaptcha' i]");
 
-  // UID-only step starts a new login, so the retry budget resets.
-  if (uidField && nextButton && !passwordField && !captchaImage) {
-    resetCaptchaAttempts();
-  }
+  scanPortalFailureSignals();
+
+  // Stay quiet on the happy path — status only appears after real failures
+  // (portal reject / lockout) or when a submit is actually blocked.
 
   if (passwordField) {
     passwordField.autocomplete = "current-password";
@@ -156,6 +412,40 @@ function prepareLogin() {
   }
 
   prepareCaptchaStep(passwordField);
+}
+
+function scanPortalFailureSignals() {
+  const detected = detectPortalFailure();
+  if (!detected) return;
+
+  const fingerprint = `${detected.kind}:${detected.haystack.slice(0, 180)}`;
+  if (fingerprint === lastErrorFingerprint) return;
+  lastErrorFingerprint = fingerprint;
+
+  if (detected.kind === "lockout") {
+    const state = recordDetectedFailure({ lockout: true });
+    showLoginStatus(formatLockoutMessage(state.lockoutUntil), "warn");
+    return;
+  }
+
+  if (detected.kind === "server") {
+    releaseRecentAutoSubmit();
+    showLoginStatus("CUIMS is temporarily unavailable. Try again in a moment.", "warn");
+    return;
+  }
+
+  const state = recordDetectedFailure({ lockout: false });
+  if (state.locked || state.budgetExhausted) {
+    showLoginStatus(
+      state.locked
+        ? formatLockoutMessage(state.lockoutUntil)
+        : formatBudgetMessage(state.failures),
+      "warn",
+    );
+    return;
+  }
+
+  showLoginStatus(formatRejectMessage(), "warn");
 }
 
 function prepareCaptchaStep(passwordField) {
@@ -178,7 +468,7 @@ function prepareCaptchaStep(passwordField) {
   );
   if (!captchaField) return;
 
-  if (!settings.autoSolveCaptcha || captchaBudgetExhausted()) {
+  if (!settings.autoSolveCaptcha) {
     enlargeCaptcha(captchaImage);
     captchaField.focus();
     return;
@@ -462,6 +752,237 @@ function extractCaptchaVariants(captchaImage) {
   }
 }
 
+// ---- Fixed-font glyph geometry correction ----
+// The CUIMS CAPTCHA uses a fixed bold serif font. Tesseract reads glyph shapes
+// well but confuses case for height-ambiguous letters (V/v, C/c, S/s, ...) and
+// the letter O versus the digit 0. We rebuild a colour-aware ink mask, split it
+// into per-glyph columns, and use each glyph's height and width to correct only
+// those specific cases — every other character is left exactly as Tesseract read
+// it, so a correct read is never made worse.
+const GEOM_CASELESS = new Set("cCoOsSuUvVwWxXzZ".split(""));
+
+function buildCaptchaMask(img) {
+  const w = img.naturalWidth || img.width || 100;
+  const h = img.naturalHeight || img.height || 30;
+  if (!w || !h) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext && canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx || typeof ctx.drawImage !== "function") return null;
+
+  let data;
+  try {
+    ctx.drawImage(img, 0, 0, w, h);
+    data = ctx.getImageData(0, 0, w, h).data;
+  } catch {
+    return null;
+  }
+  if (!data || data.length < w * h * 4) return null;
+
+  const total = w * h;
+  const lum = new Float32Array(total);
+  const hist = new Array(256).fill(0);
+  let lowSat = 0;
+
+  // Text is near-black (low luminance) and unsaturated; background noise is
+  // usually coloured. Build the Otsu threshold only from low-saturation pixels
+  // so coloured hatching/checkerboards do not drag the threshold around.
+  for (let i = 0; i < total; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const L = 0.299 * r + 0.587 * g + 0.114 * b;
+    const S = Math.max(r, g, b) - Math.min(r, g, b);
+    lum[i] = L;
+    if (S < 70) {
+      hist[Math.round(L)]++;
+      lowSat++;
+    }
+  }
+  if (lowSat === 0) return null;
+
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = 0;
+  let thr = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = lowSat - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > maxVar) {
+      maxVar = v;
+      thr = t;
+    }
+  }
+  if (thr < 120) thr = 135;
+  if (thr > 170) thr = 170;
+
+  const mask = new Uint8Array(total);
+  for (let i = 0; i < total; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const S = Math.max(r, g, b) - Math.min(r, g, b);
+    mask[i] = lum[i] < thr && S < 80 ? 1 : 0;
+  }
+
+  // Despeckle: drop connected components smaller than 8 px (isolated noise).
+  const seen = new Uint8Array(total);
+  const stack = [];
+  for (let i = 0; i < total; i++) {
+    if (!mask[i] || seen[i]) continue;
+    stack.length = 0;
+    stack.push(i);
+    seen[i] = 1;
+    const comp = [i];
+    while (stack.length) {
+      const p = stack.pop();
+      const x = p % w;
+      const y = (p / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const np = ny * w + nx;
+          if (mask[np] && !seen[np]) {
+            seen[np] = 1;
+            stack.push(np);
+            comp.push(np);
+          }
+        }
+      }
+    }
+    if (comp.length < 8) for (const p of comp) mask[p] = 0;
+  }
+
+  return { w, h, mask };
+}
+
+function segmentGlyphColumns(w, h, mask, target) {
+  const col = new Int32Array(w);
+  let minx = w;
+  let maxx = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (mask[y * w + x]) {
+        col[x]++;
+        if (x < minx) minx = x;
+        if (x > maxx) maxx = x;
+      }
+    }
+  }
+  if (maxx < 0) return null;
+
+  const segs = [];
+  let s = -1;
+  for (let x = minx; x <= maxx; x++) {
+    if (col[x] > 0) {
+      if (s < 0) s = x;
+    } else if (s >= 0) {
+      segs.push([s, x - 1]);
+      s = -1;
+    }
+  }
+  if (s >= 0) segs.push([s, maxx]);
+
+  // Bold glyphs frequently touch, so a whole-word blob can hold several
+  // characters. Split the widest segment at its lightest interior column until
+  // the segment count matches the number of characters Tesseract reported.
+  let guard = 0;
+  while (segs.length < target && guard++ < 20) {
+    let wi = 0;
+    for (let i = 1; i < segs.length; i++) {
+      if (segs[i][1] - segs[i][0] > segs[wi][1] - segs[wi][0]) wi = i;
+    }
+    const [a, b] = segs[wi];
+    if (b - a < 6) break;
+    let best = -1;
+    let bv = Infinity;
+    for (let x = a + 3; x <= b - 3; x++) {
+      if (col[x] < bv) {
+        bv = col[x];
+        best = x;
+      }
+    }
+    if (best < 0) break;
+    segs.splice(wi, 1, [a, best - 1], [best, b]);
+  }
+  if (segs.length !== target) return null;
+
+  return segs.map(([a, b]) => {
+    const rows = new Int32Array(h);
+    let x0 = w;
+    let x1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = a; x <= b; x++) {
+        if (mask[y * w + x]) {
+          rows[y]++;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+        }
+      }
+    }
+    let peak = 0;
+    for (let y = 0; y < h; y++) if (rows[y] > peak) peak = rows[y];
+    const rthr = Math.max(1, peak * 0.15);
+    let y0 = h;
+    let y1 = -1;
+    for (let y = 0; y < h; y++) {
+      if (rows[y] >= rthr) {
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+    if (y1 < 0) {
+      y0 = 0;
+      y1 = 0;
+    }
+    return { x0, y0, x1, y1 };
+  });
+}
+
+function correctCaptchaCase(text, img) {
+  if (!/^[0-9A-Za-z]+$/.test(text)) return text;
+  const built = buildCaptchaMask(img);
+  if (!built) return text;
+  const boxes = segmentGlyphColumns(built.w, built.h, built.mask, text.length);
+  if (!boxes) return text;
+
+  const capH = Math.max(...boxes.map((b) => b.y1 - b.y0 + 1));
+  if (capH < 8) return text;
+  // A segment far wider than a glyph means the split failed; skip correction.
+  for (const b of boxes) if (b.x1 - b.x0 + 1 > built.w * 0.5) return text;
+
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    let c = text[i];
+    const b = boxes[i];
+    const gh = b.y1 - b.y0 + 1;
+    const gw = b.x1 - b.x0 + 1;
+    const rel = gh / capH;
+    const asp = gw / gh;
+    if ("oO0".includes(c)) {
+      if (rel <= 0.7) c = "o";
+      else if (rel >= 0.85) c = asp >= 0.78 ? "O" : "0";
+    } else if (GEOM_CASELESS.has(c)) {
+      const upper = c.toUpperCase();
+      if (rel >= 0.9) c = upper;
+      else if (rel <= 0.7) c = upper.toLowerCase();
+    }
+    out += c;
+  }
+  return out;
+}
+
 async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   const generation = ++solveGeneration;
   captchaField.placeholder = "Solving…";
@@ -470,7 +991,7 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     const candidates = extractCaptchaVariants(captchaImage);
     if (!candidates || candidates.length === 0) throw new Error("Could not extract image");
 
-    const solution = await chrome.runtime.sendMessage({
+    let solution = await chrome.runtime.sendMessage({
       type: "cuims-clear:solve-captcha",
       candidates,
     });
@@ -479,14 +1000,19 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     if (captchaField.dataset.cuimsClearUserEdited) return;
     if (solution?.error) throw new Error(solution.error);
 
-    const text = (solution?.text || "").trim();
-    if (text.length < 3 || text.length > 7) throw new Error("unconvincing read: " + text);
+    let text = (solution?.text || "").trim();
+    if (text.length < MIN_CAPTCHA_FILL_LEN || text.length > MAX_CAPTCHA_FILL_LEN) {
+      throw new Error("unconvincing read: " + text);
+    }
+
+    // Fixed-font geometry pass: fix only case (V/v, C/c, ...) and O vs 0.
+    text = correctCaptchaCase(text, captchaImage);
+    solution = { ...solution, text };
 
     captchaField.value = text;
     dispatchFieldEvents(captchaField);
     captchaImage.dataset.cuimsClearSolved = captchaImage.src;
     captchaField.placeholder = CAPTCHA_PLACEHOLDER;
-    recordCaptchaAttempt();
 
     const pwField =
       passwordField ||
@@ -496,18 +1022,42 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
       "#btnLogin, input[name='btnLogin'], button[type='submit'], input[type='submit'][value*='Login' i]",
     );
 
-    if (
-      settings.autoSubmitLogin &&
-      loginButton &&
-      pwField?.value &&
-      !captchaField.dataset.cuimsClearUserEdited
-    ) {
-      await delay(250 + Math.random() * 150);
+    const gate = canAutoSubmit();
+    const canSubmit = mayAutoSubmitSolution(solution);
+
+    if (!gate.ok) {
+      enlargeCaptcha(captchaImage);
+      // Only surface a status when we would have submitted but the circuit is open.
+      if (canSubmit && (gate.reason === "lockout" || gate.reason === "budget")) {
+        showLoginStatus(
+          gate.reason === "lockout"
+            ? formatLockoutMessage(gate.state.lockoutUntil)
+            : formatBudgetMessage(gate.state.failures),
+          "warn",
+        );
+      }
+      captchaField.focus();
+      return;
+    }
+
+    if (!canSubmit) {
+      // Junk length/charset — fill only, stay quiet (no confidence lectures).
+      enlargeCaptcha(captchaImage);
+      captchaField.focus();
+      return;
+    }
+
+    if (loginButton && pwField?.value && !captchaField.dataset.cuimsClearUserEdited) {
+      clearLoginStatus();
+      // Zero catch on the happy path: submit as soon as the field is filled.
       if (
         captchaField.value === text &&
         pwField?.value &&
-        !captchaField.dataset.cuimsClearUserEdited
+        !captchaField.dataset.cuimsClearUserEdited &&
+        canAutoSubmit().ok
       ) {
+        // Count before the click so a fast portal reject cannot race past the budget.
+        recordAutoSubmit();
         loginButton.click();
       }
     }
@@ -519,10 +1069,6 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     enlargeCaptcha(captchaImage);
     captchaField.focus();
   }
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function classifyModal(element) {
@@ -688,6 +1234,13 @@ function clearStaleSuppress() {
 
 function scanPage() {
   scanQueued = false;
+
+  // Successful landing clears the login circuit so the next session starts fresh.
+  if (/studenthome\.aspx$/i.test(location.pathname)) {
+    resetFailureState();
+    clearLoginStatus();
+  }
+
   prepareLogin();
 
   for (const selector of MODAL_SELECTORS) {

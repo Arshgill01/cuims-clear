@@ -32,6 +32,8 @@ function ensureOffscreen() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Content scripts have a tab. The offscreen page and popup do not.
   if (!sender.tab) return;
+  const tabUrl = String(sender.tab.url || sender.url || "");
+  if (tabUrl && !/^https:\/\/students\.cuchd\.in\//i.test(tabUrl)) return;
 
   if (
     message?.type !== "cuims-clear:solve-captcha" &&

@@ -2,3 +2,14 @@
 node_modules/
 work/tesseract-build/node_modules/
 .playwright-cli/
+work/harness/node_modules/
+work/corpus/sheet_*.png
+work/corpus/hsheet_*.png
+work/corpus/sess_*.png
+work/corpus/clusreps.png
+work/corpus/clusters.json
+work/corpus/fonts.png
+work/corpus/ozoom.png
+work/corpus/zoom.png
+work/corpus/grid.png
+work/corpus/__pycache__/
