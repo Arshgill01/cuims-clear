@@ -46,6 +46,10 @@ const LOCKOUT_COOLDOWN_MS = 20 * 60 * 1000;
 const LOGIN_FAILURE_KEY = "cuimsClear.loginFailures";
 const LOCKOUT_UNTIL_KEY = "cuimsClear.lockoutUntil";
 const LAST_SUBMIT_AT_KEY = "cuimsClear.lastAutoSubmitAt";
+// A run of failures that is this old is treated as a new session and cleared, so
+// yesterday's misfires never silently disable today's auto-submit. Well under
+// CUIMS's own lockout window, which only cares about rapid consecutive failures.
+const FAILURE_STALE_MS = 15 * 60 * 1000;
 const STATUS_ID = "cuims-clear-login-status";
 const MIN_CAPTCHA_FILL_LEN = 3;
 const MAX_CAPTCHA_FILL_LEN = 7;
@@ -140,8 +144,20 @@ function failureStore() {
 function readFailureState(now = Date.now()) {
   const store = failureStore();
   const lockoutUntil = Number(store.getItem(LOCKOUT_UNTIL_KEY) || 0);
-  const failures = Number(store.getItem(LOGIN_FAILURE_KEY) || 0);
+  let failures = Number(store.getItem(LOGIN_FAILURE_KEY) || 0);
   const locked = lockoutUntil > now;
+
+  // Decay a stale failure run (previous session) once its lockout has elapsed,
+  // so a fresh login attempt is not blocked by old misfires.
+  if (!locked && failures > 0) {
+    const lastSubmit = Number(store.getItem(LAST_SUBMIT_AT_KEY) || 0);
+    if (lastSubmit > 0 && now - lastSubmit > FAILURE_STALE_MS) {
+      store.removeItem(LOGIN_FAILURE_KEY);
+      store.removeItem(LAST_SUBMIT_AT_KEY);
+      failures = 0;
+    }
+  }
+
   return {
     failures: Number.isFinite(failures) ? Math.max(0, failures) : 0,
     lockoutUntil: Number.isFinite(lockoutUntil) ? lockoutUntil : 0,
@@ -736,6 +752,237 @@ function extractCaptchaVariants(captchaImage) {
   }
 }
 
+// ---- Fixed-font glyph geometry correction ----
+// The CUIMS CAPTCHA uses a fixed bold serif font. Tesseract reads glyph shapes
+// well but confuses case for height-ambiguous letters (V/v, C/c, S/s, ...) and
+// the letter O versus the digit 0. We rebuild a colour-aware ink mask, split it
+// into per-glyph columns, and use each glyph's height and width to correct only
+// those specific cases — every other character is left exactly as Tesseract read
+// it, so a correct read is never made worse.
+const GEOM_CASELESS = new Set("cCoOsSuUvVwWxXzZ".split(""));
+
+function buildCaptchaMask(img) {
+  const w = img.naturalWidth || img.width || 100;
+  const h = img.naturalHeight || img.height || 30;
+  if (!w || !h) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext && canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx || typeof ctx.drawImage !== "function") return null;
+
+  let data;
+  try {
+    ctx.drawImage(img, 0, 0, w, h);
+    data = ctx.getImageData(0, 0, w, h).data;
+  } catch {
+    return null;
+  }
+  if (!data || data.length < w * h * 4) return null;
+
+  const total = w * h;
+  const lum = new Float32Array(total);
+  const hist = new Array(256).fill(0);
+  let lowSat = 0;
+
+  // Text is near-black (low luminance) and unsaturated; background noise is
+  // usually coloured. Build the Otsu threshold only from low-saturation pixels
+  // so coloured hatching/checkerboards do not drag the threshold around.
+  for (let i = 0; i < total; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const L = 0.299 * r + 0.587 * g + 0.114 * b;
+    const S = Math.max(r, g, b) - Math.min(r, g, b);
+    lum[i] = L;
+    if (S < 70) {
+      hist[Math.round(L)]++;
+      lowSat++;
+    }
+  }
+  if (lowSat === 0) return null;
+
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = 0;
+  let thr = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = lowSat - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > maxVar) {
+      maxVar = v;
+      thr = t;
+    }
+  }
+  if (thr < 120) thr = 135;
+  if (thr > 170) thr = 170;
+
+  const mask = new Uint8Array(total);
+  for (let i = 0; i < total; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    const S = Math.max(r, g, b) - Math.min(r, g, b);
+    mask[i] = lum[i] < thr && S < 80 ? 1 : 0;
+  }
+
+  // Despeckle: drop connected components smaller than 8 px (isolated noise).
+  const seen = new Uint8Array(total);
+  const stack = [];
+  for (let i = 0; i < total; i++) {
+    if (!mask[i] || seen[i]) continue;
+    stack.length = 0;
+    stack.push(i);
+    seen[i] = 1;
+    const comp = [i];
+    while (stack.length) {
+      const p = stack.pop();
+      const x = p % w;
+      const y = (p / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const np = ny * w + nx;
+          if (mask[np] && !seen[np]) {
+            seen[np] = 1;
+            stack.push(np);
+            comp.push(np);
+          }
+        }
+      }
+    }
+    if (comp.length < 8) for (const p of comp) mask[p] = 0;
+  }
+
+  return { w, h, mask };
+}
+
+function segmentGlyphColumns(w, h, mask, target) {
+  const col = new Int32Array(w);
+  let minx = w;
+  let maxx = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (mask[y * w + x]) {
+        col[x]++;
+        if (x < minx) minx = x;
+        if (x > maxx) maxx = x;
+      }
+    }
+  }
+  if (maxx < 0) return null;
+
+  const segs = [];
+  let s = -1;
+  for (let x = minx; x <= maxx; x++) {
+    if (col[x] > 0) {
+      if (s < 0) s = x;
+    } else if (s >= 0) {
+      segs.push([s, x - 1]);
+      s = -1;
+    }
+  }
+  if (s >= 0) segs.push([s, maxx]);
+
+  // Bold glyphs frequently touch, so a whole-word blob can hold several
+  // characters. Split the widest segment at its lightest interior column until
+  // the segment count matches the number of characters Tesseract reported.
+  let guard = 0;
+  while (segs.length < target && guard++ < 20) {
+    let wi = 0;
+    for (let i = 1; i < segs.length; i++) {
+      if (segs[i][1] - segs[i][0] > segs[wi][1] - segs[wi][0]) wi = i;
+    }
+    const [a, b] = segs[wi];
+    if (b - a < 6) break;
+    let best = -1;
+    let bv = Infinity;
+    for (let x = a + 3; x <= b - 3; x++) {
+      if (col[x] < bv) {
+        bv = col[x];
+        best = x;
+      }
+    }
+    if (best < 0) break;
+    segs.splice(wi, 1, [a, best - 1], [best, b]);
+  }
+  if (segs.length !== target) return null;
+
+  return segs.map(([a, b]) => {
+    const rows = new Int32Array(h);
+    let x0 = w;
+    let x1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = a; x <= b; x++) {
+        if (mask[y * w + x]) {
+          rows[y]++;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+        }
+      }
+    }
+    let peak = 0;
+    for (let y = 0; y < h; y++) if (rows[y] > peak) peak = rows[y];
+    const rthr = Math.max(1, peak * 0.15);
+    let y0 = h;
+    let y1 = -1;
+    for (let y = 0; y < h; y++) {
+      if (rows[y] >= rthr) {
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+    if (y1 < 0) {
+      y0 = 0;
+      y1 = 0;
+    }
+    return { x0, y0, x1, y1 };
+  });
+}
+
+function correctCaptchaCase(text, img) {
+  if (!/^[0-9A-Za-z]+$/.test(text)) return text;
+  const built = buildCaptchaMask(img);
+  if (!built) return text;
+  const boxes = segmentGlyphColumns(built.w, built.h, built.mask, text.length);
+  if (!boxes) return text;
+
+  const capH = Math.max(...boxes.map((b) => b.y1 - b.y0 + 1));
+  if (capH < 8) return text;
+  // A segment far wider than a glyph means the split failed; skip correction.
+  for (const b of boxes) if (b.x1 - b.x0 + 1 > built.w * 0.5) return text;
+
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    let c = text[i];
+    const b = boxes[i];
+    const gh = b.y1 - b.y0 + 1;
+    const gw = b.x1 - b.x0 + 1;
+    const rel = gh / capH;
+    const asp = gw / gh;
+    if ("oO0".includes(c)) {
+      if (rel <= 0.7) c = "o";
+      else if (rel >= 0.85) c = asp >= 0.78 ? "O" : "0";
+    } else if (GEOM_CASELESS.has(c)) {
+      const upper = c.toUpperCase();
+      if (rel >= 0.9) c = upper;
+      else if (rel <= 0.7) c = upper.toLowerCase();
+    }
+    out += c;
+  }
+  return out;
+}
+
 async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   const generation = ++solveGeneration;
   captchaField.placeholder = "Solving…";
@@ -744,7 +991,7 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     const candidates = extractCaptchaVariants(captchaImage);
     if (!candidates || candidates.length === 0) throw new Error("Could not extract image");
 
-    const solution = await chrome.runtime.sendMessage({
+    let solution = await chrome.runtime.sendMessage({
       type: "cuims-clear:solve-captcha",
       candidates,
     });
@@ -753,10 +1000,14 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     if (captchaField.dataset.cuimsClearUserEdited) return;
     if (solution?.error) throw new Error(solution.error);
 
-    const text = (solution?.text || "").trim();
+    let text = (solution?.text || "").trim();
     if (text.length < MIN_CAPTCHA_FILL_LEN || text.length > MAX_CAPTCHA_FILL_LEN) {
       throw new Error("unconvincing read: " + text);
     }
+
+    // Fixed-font geometry pass: fix only case (V/v, C/c, ...) and O vs 0.
+    text = correctCaptchaCase(text, captchaImage);
+    solution = { ...solution, text };
 
     captchaField.value = text;
     dispatchFieldEvents(captchaField);

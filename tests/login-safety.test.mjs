@@ -70,7 +70,10 @@ for (const browser of ["chrome", "firefox"]) {
     app.call("prepareLogin(); prepareLogin()");
     assert.equal(app.call("readFailureState(1003).failures"), 3);
     assert.equal(app.call("canAutoSubmit(1003).reason"), "budget");
-    assert.equal(app.call("readFailureState(1000 + 21 * 60 * 1000).budgetExhausted"), true);
+    // Budget stays exhausted while the attempts are recent (within CUIMS's window).
+    assert.equal(app.call("readFailureState(1000 + 10 * 60 * 1000).budgetExhausted"), true);
+    // A stale run (older than the lockout window) is cleared so a new session is not blocked.
+    assert.equal(app.call("readFailureState(1000 + 21 * 60 * 1000).budgetExhausted"), false);
   });
 
   test(`${browser}: UID-only page is recognized and advances a saved login`, () => {
