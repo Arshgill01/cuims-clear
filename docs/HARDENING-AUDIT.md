@@ -1,5 +1,52 @@
 # CUIMS Clear hardening audit
 
+## 0.6.5 / 0.6.3 update — CAPTCHA accuracy + retry-budget decay (2026-09-23)
+
+Follow-up on `cursor/harden-and-boost-captcha-ocr-3723` (supersedes PR #2).
+
+**CAPTCHA accuracy — measured, not asserted.** Built a committed benchmark of
+130 hand-labelled real CUIMS CAPTCHA images (`work/corpus`) and a Puppeteer
+harness (`work/harness`) that runs the *actual shipped* preprocessing and
+Tesseract solver in headless Chrome. Baseline shipped pipeline scored 71.4%
+(dev) / 58.3% (holdout), with errors dominated by (a) case of height-ambiguous
+letters (V/v, C/c, S/s, …) and (b) letter O vs digit 0.
+
+Added an on-device **fixed-font glyph geometry corrector** (`correctCaptchaCase`
+in `content.js`): rebuilds a colour-aware ink mask, splits it into per-glyph
+columns (splitting touching glyphs at projection valleys, guided by the reported
+character count), and corrects *only* those two confusion classes — case via
+glyph height, O/0 via aspect ratio. Every other character is passed through
+untouched, and it falls back to the raw read if canvas/geometry is unavailable,
+so a correct read is never corrupted.
+
+Result (case-sensitive exact match, real shipped code path):
+
+| Set | Baseline | With corrector |
+|---|---|---|
+| dev (70) | 71.4% | **90.0%** |
+| holdout (60) | 58.3% | **70.0%** |
+
+~30 ms/image, fully local. Honest limit: universal 90–95% single-shot is not
+reached — dense checkerboard/cross-hatch backgrounds still cause raw Tesseract
+shape errors (f→E, j→J, L→l) the geometry pass cannot fix. Closing that needs a
+purpose-trained local font model (proposed follow-up). This change is a
+strictly-safe improvement over the shipped baseline.
+
+**Retry-budget decay.** The auto-submit failure budget now decays once it is
+older than CUIMS's ~20-minute window, so stale misfires from a previous session
+no longer silently disable auto-submit, while runaway submits within a session
+are still stopped before the ~5-fail lockout.
+
+**Testing.** 96 unit tests pass (added `tests/captcha-correction.test.mjs`;
+updated the budget-persistence test). Content-script injection + UID autofill
+verified live against the real origin via request interception; solver/corrector
+accuracy verified on real images. MV3 service-worker→offscreen plumbing is
+unchanged from the published build.
+
+---
+
+# CUIMS Clear hardening audit (PR #2 baseline)
+
 Date: 2026-09-22  
 Branch: `cursor/hardening-lockout-ocr-06ce`  
 Trees reviewed: `outputs/cuims-clear-chrome` (was 0.6.3 → **0.6.4**), `outputs/cuims-clear-firefox` (was 0.6.1 → **0.6.2**)
