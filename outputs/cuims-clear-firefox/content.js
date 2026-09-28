@@ -99,6 +99,7 @@ let lastErrorFingerprint = "";
 // the background never submit at the same time or ignore each other's failures.
 const SHARED_LOGIN_DEFAULTS = { bgSignInUntil: 0, bgSignInOkAt: 0, loginGuard: null };
 let sharedLogin = { ...SHARED_LOGIN_DEFAULTS };
+let sessionShared = false;
 
 function sharedFailures(now = Date.now()) {
   const failures = sharedLogin.loginGuard?.failures;
@@ -799,6 +800,11 @@ function scanPage() {
   if (/studenthome\.aspx$/i.test(location.pathname)) {
     resetFailureState();
     clearLoginStatus();
+    // Lets the class-hours keep-alive hold a session the student signed in to here.
+    if (!sessionShared && (typeof window === "undefined" || window === window.top)) {
+      sessionShared = true;
+      shareLocalStorageWrite({ sessionAlive: true, sessionCheckedAt: Date.now() });
+    }
   }
 
   prepareLogin();

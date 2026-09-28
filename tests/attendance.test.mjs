@@ -401,15 +401,26 @@ test("a success clears the backoff", async () => {
   assert.equal(storage.data.attendanceBackoffUntil, 0);
 });
 
+test("a GetReport-only refresh does not claim the CUIMS session is alive", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  storage.data.sessionAlive = false;
+  bg.advance(60_000);
+  await bg.refresh("manual");
+  assert.equal(storage.data.sessionAlive, false);
+});
+
 // ---- the CUIMS tab defers to the background ----
 
-function contentRuntime() {
+function contentRuntime(pathname = "/Login.aspx") {
   const store = new Map();
   const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: (key) => store.delete(key) };
   const writes = [];
   const context = vm.createContext({
     document: { documentElement: null, body: null, addEventListener() {}, getElementById() { return null; }, querySelector() { return null; }, querySelectorAll() { return []; } },
-    location: { pathname: "/Login.aspx" },
+    location: { pathname },
     localStorage: storage,
     sessionStorage: storage,
     chrome: { storage: { onChanged: { addListener() {} }, local: { set: (values) => writes.push(values) } }, runtime: { sendMessage() {} } },
@@ -440,4 +451,13 @@ test("a page auto-submit tells the background a tab login is in flight", () => {
   const page = contentRuntime();
   page.call("recordAutoSubmit(1234)");
   assert.equal(JSON.stringify(page.writes.at(-1)), JSON.stringify({ pageLoginAt: 1234 }));
+});
+
+test("landing on StudentHome tells the background the session is alive, once", () => {
+  const page = contentRuntime("/StudentHome.aspx");
+  page.call("requestAnimationFrame = () => {}; getComputedStyle = () => ({ display: 'block' }); NodeFilter = { SHOW_TEXT: 4 };");
+  page.call("document.createTreeWalker = () => ({ nextNode: () => false }); scanPage(); scanPage();");
+  const marks = page.writes.filter((values) => "sessionAlive" in values);
+  assert.equal(marks.length, 1);
+  assert.equal(marks[0].sessionAlive, true);
 });

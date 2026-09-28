@@ -213,7 +213,8 @@
       try {
         // The report ids from the attendance page stay valid, so a normal
         // refresh is one GetReport call. The heavy page is reopened only when
-        // the ids are missing or stop working.
+        // the ids are missing or stop working. GetReport answers without a
+        // signed-in session, so only the page read says the session is alive.
         let meta = state.attendanceMeta?.reportId ? state.attendanceMeta : null;
         let subjects = null;
         if (meta) {
@@ -238,10 +239,11 @@
               throw again;
             }
           }
+          await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
           await onStep("Reading attendance…");
           subjects = await client.readSummary(request, meta);
         }
-        await storage.set({ sessionAlive: true, sessionCheckedAt: now(), attendanceMeta: { reportId: meta.reportId, sessionId: meta.sessionId } });
+        await storage.set({ attendanceMeta: { reportId: meta.reportId, sessionId: meta.sessionId } });
         const campus = client.campusParts(new Date(now()));
         const slots = await readTimetable(state, request, campus.key);
         await readTodaysMarks(state, request, meta, subjects, slots, campus);
