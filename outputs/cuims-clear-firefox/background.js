@@ -191,6 +191,12 @@ async function solveCandidates(candidates) {
   return bestCandidate;
 }
 
+function enqueueSolve(candidates) {
+  const run = solveQueue.catch(() => {}).then(() => solveCandidates(candidates));
+  solveQueue = run.catch(() => {});
+  return run;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!isTrustedSolverSender(sender)) return;
 
@@ -207,9 +213,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   const candidates = message.candidates || (message.dataUrl ? [message.dataUrl] : []);
 
-  solveQueue = solveQueue
-    .catch(() => {}) // Always recover the promise queue so future solves never fail
-    .then(() => solveCandidates(candidates))
+  enqueueSolve(candidates)
     .then((result) => sendResponse(result))
     .catch((error) => {
       console.warn("[CUIMS Clear] solve error:", error);
@@ -217,4 +221,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
 
   return true;
+});
+
+// Background sign-in reads the captcha the same way the login page does:
+// the shared cleanup passes, the same OCR queue, then the case correction.
+async function solveCaptchaBytes(bytes) {
+  const src = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
+  try {
+    const image = new Image();
+    image.src = src;
+    await image.decode();
+    const result = await enqueueSolve(extractCaptchaVariants(image));
+    return correctCaptchaCase(String(result?.text || "").trim(), image);
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+const ATTENDANCE_ALARM = "cuims-clear-attendance";
+
+const attendance = CuimsAttendance.createDaemon({
+  storage: {
+    get: (defaults) => chrome.storage.local.get(defaults),
+    set: (values) => chrome.storage.local.set(values),
+  },
+  fetchImpl: (url, options) => fetch(url, options),
+  solveCaptcha: solveCaptchaBytes,
+});
+
+function isExtensionPage(sender) {
+  const extensionId = chrome.runtime?.id;
+  if (!sender || (sender.id && sender.id !== extensionId)) return false;
+  return !sender.tab && (!sender.url || String(sender.url).startsWith(`moz-extension://`));
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== "cuims-clear:attendance-refresh") return;
+  if (!isExtensionPage(sender)) return;
+  attendance
+    .refresh("manual")
+    .then(sendResponse)
+    .catch((error) => sendResponse({ error: String(error?.message || error), code: "network" }));
+  return true;
+});
+
+chrome.alarms.create(ATTENDANCE_ALARM, { periodInMinutes: 5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm?.name === ATTENDANCE_ALARM) attendance.tick().catch(() => {});
+});
+
+// A changed UID or password lifts the "rejected login" pause.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !(changes.uid || changes.password)) return;
+  chrome.storage.local.get({ loginGuard: null }, ({ loginGuard }) => {
+    if (loginGuard?.rejectedUid) chrome.storage.local.set({ loginGuard: { ...loginGuard, rejectedUid: "" } });
+  });
 });

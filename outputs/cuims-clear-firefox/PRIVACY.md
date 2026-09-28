@@ -18,7 +18,14 @@ CU LMS control and follows the LMS URL that page opens. That URL is not saved. O
 `/my/courses.php` pages so syllabus materials and semester work can be paired. No SSO
 tokens are written to extension storage.
 
-The user can delete the stored UID and password at any time with **Clear login** in the
+When the student uses the Attendance tab, the extension signs in to `students.cuchd.in`
+with the saved UID and password in the background, the same way the login page does, and
+reads the student's own attendance report and timetable. It uses the browser's existing
+CUIMS session when one is open. On weekdays during class hours it may send one light
+request to keep that session open and one refresh after a class ends. The attendance
+figures are stored only in local extension storage. Nothing is sent anywhere else.
+
+The user can delete the stored UID, password, and attendance at any time with **Clear login** in the
 extension popup, or remove all stored settings by uninstalling the extension.
 
 The extension has access only to pages under `https://students.cuchd.in/*` and
@@ -27,4 +34,4 @@ The extension has access only to pages under `https://students.cuchd.in/*` and
 Firefox extension storage is not encrypted. Anyone with access to the user's Firefox
 profile may be able to read locally stored values.
 
-Last updated: 9 September 2026.
+Last updated: 28 September 2026.

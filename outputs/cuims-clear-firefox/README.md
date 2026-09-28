@@ -15,7 +15,10 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - shows each LMS subject once, with separate Syllabus & Materials and Semester Work links;
 - leaves native course activities, submissions, notifications, and account controls in place,
   with an **Original view** escape on LMS pages;
-- lets you erase the saved UID and password from the popup at any time.
+- shows attendance on an **Attendance** tab without opening CUIMS: overall and
+  per-subject percentages, how many classes you can skip while staying at 75% per
+  subject and 90% overall, and today's classes as they happen;
+- lets you erase the saved UID, password, and attendance from the popup at any time.
 
 CAPTCHA solving happens entirely inside the extension: the OCR engine, WASM
 binary, and English model are bundled in the package, and the captcha image is

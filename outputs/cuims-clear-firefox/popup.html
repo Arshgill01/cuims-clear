@@ -14,7 +14,7 @@
           <p class="eyebrow">Student utility</p>
           <h1>CUIMS Clear</h1>
         </div>
-        <span class="version">v0.6.3</span>
+        <span class="version">v0.7.0</span>
       </header>
 
       <nav class="open-nav" aria-label="Open portals">
@@ -26,6 +26,12 @@
         </a>
       </nav>
 
+      <div class="view-tabs" role="tablist" aria-label="Sections">
+        <button id="tab-login" type="button" role="tab" aria-selected="true" aria-controls="view-login">Login</button>
+        <button id="tab-attendance" type="button" role="tab" aria-selected="false" aria-controls="view-attendance" tabindex="-1">Attendance</button>
+      </div>
+
+      <div id="view-login" role="tabpanel" aria-labelledby="tab-login">
       <form id="settings-form">
         <fieldset class="login-fields">
           <legend>Saved login</legend>
@@ -109,11 +115,16 @@
       <section class="local-data" aria-labelledby="local-data-title">
         <div>
           <h2 id="local-data-title">Local by design</h2>
-          <p id="storage-note">Your login stays in this Firefox profile. CAPTCHA is solved on-device.</p>
+          <p id="storage-note">Your login and attendance stay in this Firefox profile. CAPTCHA is solved on-device.</p>
         </div>
         <button id="clear-login" class="clear-button" type="button">Clear login</button>
       </section>
+      </div>
+
+      <section id="view-attendance" class="attendance" role="tabpanel" aria-labelledby="tab-attendance" hidden></section>
     </main>
+    <script src="attendance-model.js"></script>
+    <script src="attendance-view.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

@@ -95,6 +95,35 @@ let prewarmed = false;
 let solveGeneration = 0;
 let lastErrorFingerprint = "";
 
+// Login state shared with the background attendance sign-in, so the tab and
+// the background never submit at the same time or ignore each other's failures.
+const SHARED_LOGIN_DEFAULTS = { bgSignInUntil: 0, bgSignInOkAt: 0, loginGuard: null };
+let sharedLogin = { ...SHARED_LOGIN_DEFAULTS };
+
+function sharedFailures(now = Date.now()) {
+  const failures = sharedLogin.loginGuard?.failures;
+  return (Array.isArray(failures) ? failures : []).filter((item) => now - Number(item?.at || 0) < FAILURE_STALE_MS);
+}
+
+function writeSharedGuard(change) {
+  const guard = sharedLogin.loginGuard || {};
+  const next = change({
+    failures: sharedFailures(),
+    lockoutUntil: Number(guard.lockoutUntil || 0),
+    rejectedUid: String(guard.rejectedUid || ""),
+  });
+  sharedLogin.loginGuard = next;
+  try {
+    chrome.storage.local.set({ loginGuard: next });
+  } catch {}
+}
+
+function shareLocalStorageWrite(values) {
+  try {
+    chrome.storage.local.set(values);
+  } catch {}
+}
+
 function dispatchFieldEvents(field) {
   if (!field) return;
   programmaticEdit = true;
@@ -172,6 +201,7 @@ function recordAutoSubmit(now = Date.now()) {
   const failures = state.failures + 1;
   store.setItem(LOGIN_FAILURE_KEY, String(failures));
   store.setItem(LAST_SUBMIT_AT_KEY, String(now));
+  shareLocalStorageWrite({ pageLoginAt: now });
   return {
     failures,
     lockoutUntil: state.lockoutUntil,
@@ -227,13 +257,24 @@ function resetFailureState() {
   store.removeItem(LOCKOUT_UNTIL_KEY);
   store.removeItem(LAST_SUBMIT_AT_KEY);
   lastErrorFingerprint = "";
+  const guard = sharedLogin.loginGuard;
+  if (guard && (sharedFailures().length || Number(guard.lockoutUntil || 0) > 0)) {
+    writeSharedGuard((current) => ({ ...current, failures: [], lockoutUntil: 0 }));
+  }
 }
 
 function canAutoSubmit(now = Date.now()) {
   if (!settings.autoSubmitLogin) return { ok: false, reason: "disabled" };
+  if (Number(sharedLogin.bgSignInUntil || 0) > now) return { ok: false, reason: "background" };
   const state = readFailureState(now);
-  if (state.locked) return { ok: false, reason: "lockout", state };
-  if (state.budgetExhausted) return { ok: false, reason: "budget", state };
+  const sharedLockout = Number(sharedLogin.loginGuard?.lockoutUntil || 0);
+  if (state.locked || sharedLockout > now) {
+    return { ok: false, reason: "lockout", state: { ...state, lockoutUntil: Math.max(state.lockoutUntil, sharedLockout) } };
+  }
+  const backgroundFailures = sharedFailures(now).filter((item) => item.by === "bg").length;
+  if (state.budgetExhausted || state.failures + backgroundFailures >= MAX_AUTO_SUBMIT_ATTEMPTS) {
+    return { ok: false, reason: "budget", state: { ...state, failures: state.failures + backgroundFailures } };
+  }
   return { ok: true, reason: "ok", state };
 }
 
@@ -424,6 +465,7 @@ function scanPortalFailureSignals() {
 
   if (detected.kind === "lockout") {
     const state = recordDetectedFailure({ lockout: true });
+    writeSharedGuard((current) => ({ ...current, lockoutUntil: Math.max(current.lockoutUntil, state.lockoutUntil) }));
     showLoginStatus(formatLockoutMessage(state.lockoutUntil), "warn");
     return;
   }
@@ -435,6 +477,9 @@ function scanPortalFailureSignals() {
   }
 
   const state = recordDetectedFailure({ lockout: false });
+  if (state.counted !== false) {
+    writeSharedGuard((current) => ({ ...current, failures: [...current.failures, { at: Date.now(), by: "page" }] }));
+  }
   if (state.locked || state.budgetExhausted) {
     showLoginStatus(
       state.locked
@@ -808,8 +853,9 @@ function markUserEdits() {
 }
 
 function startExtension() {
-  chrome.storage.local.get(DEFAULT_SETTINGS, (storedSettings) => {
+  chrome.storage.local.get({ ...DEFAULT_SETTINGS, ...SHARED_LOGIN_DEFAULTS }, (storedSettings) => {
     settings = { ...DEFAULT_SETTINGS, ...storedSettings };
+    for (const key of Object.keys(SHARED_LOGIN_DEFAULTS)) sharedLogin[key] = storedSettings[key];
     markUserEdits();
     clearStaleSuppress();
     scanPage();
@@ -823,8 +869,21 @@ function startExtension() {
   });
 }
 
+// The background just signed this browser in, so a login form still open in
+// a tab is stale. Go home instead of submitting a second login.
+function followBackgroundSignIn(now = Date.now()) {
+  if (window !== window.top || !hasLoginControls()) return;
+  if (now - Number(sharedLogin.bgSignInOkAt || 0) > 60_000) return;
+  location.assign(HOME_URL);
+}
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return;
+
+  for (const key of Object.keys(SHARED_LOGIN_DEFAULTS)) {
+    if (changes[key]) sharedLogin[key] = changes[key].newValue;
+  }
+  if (changes.bgSignInUntil && !changes.bgSignInUntil.newValue) followBackgroundSignIn();
 
   let settingsChanged = false;
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
