@@ -69,8 +69,10 @@ export function fakeCuims({
   rejectAs = null,
   homeInsteadOfAttendance = false,
   marksToday = [],
+  refuseAttendanceAfter = Infinity,
+  reportId = "RID+/=",
 } = {}) {
-  const state = { signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0 };
+  const state = { signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, reportId };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -106,9 +108,16 @@ export function fakeCuims({
     if (path === "/studenthome.aspx") return response(url.href, 200, "<html>home</html>");
     if (path === "/frmstudentcoursewiseattendancesummary.aspx") {
       if (homeInsteadOfAttendance) return response(`${ORIGIN}/StudentHome.aspx`, 200, "<html>home</html>");
-      return response(url.href, 200, ATTENDANCE_PAGE);
+      state.attendanceLoads += 1;
+      if (state.attendanceLoads > refuseAttendanceAfter) {
+        return response(url.href, 200, "<html><head><title>Please wait</title></head><body><p>Too many requests. Please try after some time.</p></body></html>");
+      }
+      return response(url.href, 200, ATTENDANCE_PAGE.replace("RID+/=", state.reportId));
     }
-    if (path.endsWith("/getreport")) return response(url.href, 200, { d: JSON.stringify(SUMMARY) });
+    if (path.endsWith("/getreport")) {
+      if (!body.includes(`UID:'${state.reportId}'`)) return response(url.href, 200, { d: null });
+      return response(url.href, 200, { d: JSON.stringify(SUMMARY) });
+    }
     if (path.endsWith("/getfullreport")) {
       const course = body.match(/course:'([^']+)'/)?.[1];
       const rows = marksToday.filter((mark) => mark.course === course);

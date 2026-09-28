@@ -18,6 +18,8 @@
   const SIGNIN_LOCK_MS = 90_000;
   const RUN_LOCK_MS = 2 * MINUTE;
   const MAX_MARK_READS = 4;
+  const BACKOFF_MINUTES = [1, 2, 5, 10, 20];
+  const BACKOFF_CODES = new Set(["report-shape", "portal-redirect", "busy", "server", "network", "login-shape"]);
 
   const DEFAULTS = {
     uid: "",
@@ -28,6 +30,11 @@
     attendanceTimetable: null,
     attendanceRequests: [],
     attendanceRunUntil: 0,
+    attendanceStatus: null,
+    attendanceMeta: null,
+    attendanceLastAttemptAt: 0,
+    attendanceBackoffUntil: 0,
+    attendanceFailStreak: 0,
     sessionAlive: false,
     sessionCheckedAt: 0,
     loginGuard: null,
@@ -166,6 +173,9 @@
         if (!mine.length || !subject.encryptCode || reads >= MAX_MARK_READS) continue;
         const known = (subject.marks || []).filter((mark) => client.parseDateKey(mark.date) === campus.key).length;
         if (subject.marks && known >= mine.length) continue;
+        // A new mark always raises the delivered count, so an unchanged count
+        // means the marks read earlier today are still current.
+        if (earlier?.marks && Number(earlier.delivered) === Number(subject.delivered)) continue;
         reads += 1;
         try {
           const marks = await client.readMarks(request, meta, subject.encryptCode);
@@ -180,35 +190,58 @@
       const state = await storage.get(DEFAULTS);
       const started = now();
       if (reason === "scheduled" && !state.attendanceAuto) return { skipped: true };
-      const fetchedAt = Date.parse(state.attendanceSnapshot?.fetchedAt || "") || 0;
-      if (reason !== "scheduled" && started - fetchedAt < MANUAL_GAP_MS) {
-        return { snapshot: state.attendanceSnapshot, recent: true };
+      const lastError = state.attendanceStatus?.error || "";
+      if (reason !== "scheduled" && started - Number(state.attendanceLastAttemptAt || 0) < MANUAL_GAP_MS) {
+        return { snapshot: state.attendanceSnapshot, recent: true, ...(lastError ? { error: lastError, code: state.attendanceStatus?.code } : {}) };
+      }
+      const backoffUntil = Number(state.attendanceBackoffUntil || 0);
+      if (backoffUntil > started) {
+        const minutes = Math.max(1, Math.ceil((backoffUntil - started) / MINUTE));
+        return { snapshot: state.attendanceSnapshot, code: "backoff", error: `${lastError || "CUIMS refused the last read."} Next try in ${minutes} min.` };
       }
       if (Number(state.attendanceRunUntil || 0) > started) return { snapshot: state.attendanceSnapshot, busy: true };
 
       const budget = meter(state);
       const request = client.createRequest({ fetchImpl, budget: budget.take });
       const onStep = (phase) => setStatus({ working: true, phase });
-      await storage.set({ attendanceRunUntil: started + RUN_LOCK_MS, ...(reason === "manual" ? { attendanceAuto: true } : {}) });
+      await storage.set({
+        attendanceRunUntil: started + RUN_LOCK_MS,
+        attendanceLastAttemptAt: started,
+        ...(reason === "manual" ? { attendanceAuto: true } : {}),
+      });
       await onStep("Checking your CUIMS session…");
       try {
-        let meta;
-        try {
-          meta = await client.openAttendance(request);
-        } catch (error) {
-          if (error.code !== "signed-out") throw error;
-          await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
-          await ensureSignedIn(state, request, reason, onStep);
+        // The report ids from the attendance page stay valid, so a normal
+        // refresh is one GetReport call. The heavy page is reopened only when
+        // the ids are missing or stop working.
+        let meta = state.attendanceMeta?.reportId ? state.attendanceMeta : null;
+        let subjects = null;
+        if (meta) {
           try {
-            meta = await client.openAttendance(request);
-          } catch (again) {
-            if (again.code === "signed-out") throw client.coded("login-shape", "CUIMS accepted the login but did not keep the session. Try again.");
-            throw again;
+            subjects = await client.readSummary(request, meta);
+          } catch (error) {
+            if (error.code === "busy" || error.code === "network" || error.code === "server") throw error;
+            meta = null;
           }
         }
-        await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
-        await onStep("Reading attendance…");
-        const subjects = await client.readSummary(request, meta);
+        if (!subjects) {
+          try {
+            meta = await client.openAttendance(request);
+          } catch (error) {
+            if (error.code !== "signed-out") throw error;
+            await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
+            await ensureSignedIn(state, request, reason, onStep);
+            try {
+              meta = await client.openAttendance(request);
+            } catch (again) {
+              if (again.code === "signed-out") throw client.coded("login-shape", "CUIMS accepted the login but did not keep the session. Try again.");
+              throw again;
+            }
+          }
+          await onStep("Reading attendance…");
+          subjects = await client.readSummary(request, meta);
+        }
+        await storage.set({ sessionAlive: true, sessionCheckedAt: now(), attendanceMeta: { reportId: meta.reportId, sessionId: meta.sessionId } });
         const campus = client.campusParts(new Date(now()));
         const slots = await readTimetable(state, request, campus.key);
         await readTodaysMarks(state, request, meta, subjects, slots, campus);
@@ -218,12 +251,24 @@
           slots,
           subjects: subjects.map(({ encryptCode, ...subject }) => subject),
         };
-        await storage.set({ attendanceSnapshot: snapshot });
+        await storage.set({ attendanceSnapshot: snapshot, attendanceFailStreak: 0, attendanceBackoffUntil: 0 });
         await setStatus({ working: false, phase: "", error: "", code: "" });
         return { snapshot };
       } catch (error) {
         const code = error.code || "network";
-        const message = error.code ? error.message : client.MESSAGES.network;
+        let message = error.code ? error.message : client.MESSAGES.network;
+        if (BACKOFF_CODES.has(code)) {
+          const streak = Number(state.attendanceFailStreak || 0) + 1;
+          const minutes = BACKOFF_MINUTES[Math.min(streak, BACKOFF_MINUTES.length) - 1];
+          const said = (error.detail?.title || error.detail?.text || "").trim().slice(0, 70);
+          message = `${message}${said ? ` CUIMS said “${said}”.` : ""} Next try in ${minutes} min.`;
+          await storage.set({
+            attendanceFailStreak: streak,
+            attendanceBackoffUntil: now() + minutes * MINUTE,
+            ...(code === "report-shape" || code === "portal-redirect" ? { attendanceMeta: null } : {}),
+            ...(error.detail ? { attendanceLastBad: { ...error.detail, code, at: now() } } : {}),
+          });
+        }
         await setStatus({ working: false, phase: "", error: message, code });
         return { snapshot: state.attendanceSnapshot, error: message, code };
       } finally {

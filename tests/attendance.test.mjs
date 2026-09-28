@@ -328,6 +328,79 @@ test("the popup view escapes CUIMS text and keeps each prediction to one short l
   for (const row of view.subjects) assert.ok(row.line.length <= 30, row.line);
 });
 
+test("after the first read, a refresh is one GetReport call without the heavy attendance page", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  const before = server.state.requests.length;
+  bg.advance(60_000);
+  const result = await bg.refresh("manual");
+  assert.equal(result.error, undefined);
+  assert.deepEqual(server.state.requests.slice(before), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport"]);
+  assert.equal(server.state.attendanceLoads, 1);
+});
+
+test("report ids that stop working fall back to the attendance page once", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  server.state.reportId = "NEW-ID=";
+  bg.advance(60_000);
+  const result = await bg.refresh("manual");
+  assert.equal(result.error, undefined);
+  assert.equal(server.state.attendanceLoads, 2);
+  assert.equal(storage.data.attendanceMeta.reportId, "NEW-ID=");
+});
+
+test("a failed attempt also waits 30 seconds, so repeated presses send nothing", async () => {
+  const server = fakeCuims({ signedIn: true, refuseAttendanceAfter: 0 });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  const first = await bg.refresh("manual");
+  assert.equal(first.code, "report-shape");
+  const count = server.state.requests.length;
+  for (let press = 0; press < 5; press += 1) {
+    bg.advance(3000);
+    const again = await bg.refresh("manual");
+    assert.ok(again.error);
+  }
+  assert.equal(server.state.requests.length, count);
+});
+
+test("a refused read backs off 1, 2, then 5 minutes and saves what CUIMS sent", async () => {
+  const server = fakeCuims({ signedIn: true, refuseAttendanceAfter: 0 });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  const first = await bg.refresh("manual");
+  assert.match(first.error, /Next try in 1 min/);
+  assert.match(first.error, /CUIMS said “Please wait”/);
+  assert.equal(storage.data.attendanceLastBad.title, "Please wait");
+  assert.match(storage.data.attendanceLastBad.text, /Too many requests/);
+  bg.advance(45_000);
+  assert.equal((await bg.refresh("manual")).code, "backoff");
+  assert.equal(server.state.attendanceLoads, 1);
+  bg.advance(20_000);
+  assert.match((await bg.refresh("manual")).error, /Next try in 2 min/);
+  bg.advance(2 * 60_000 + 1000);
+  assert.match((await bg.refresh("manual")).error, /Next try in 5 min/);
+  assert.equal(server.state.attendanceLoads, 3);
+});
+
+test("a success clears the backoff", async () => {
+  const server = fakeCuims({ signedIn: true, refuseAttendanceAfter: 0 });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  bg.advance(61_000);
+  server.state.attendanceLoads = -10;
+  const result = await bg.refresh("manual");
+  assert.equal(result.error, undefined);
+  assert.equal(storage.data.attendanceFailStreak, 0);
+  assert.equal(storage.data.attendanceBackoffUntil, 0);
+});
+
 // ---- the CUIMS tab defers to the background ----
 
 function contentRuntime() {

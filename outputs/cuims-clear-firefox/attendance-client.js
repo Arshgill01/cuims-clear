@@ -34,15 +34,28 @@
     network: "CUIMS did not respond. Try again.",
     server: "CUIMS is having trouble right now. Try again later.",
     "portal-redirect": "CUIMS sent attendance back to the home page. Open CUIMS once, then refresh.",
-    "report-shape": "CUIMS changed the attendance report, so it could not be read.",
+    "report-shape": "CUIMS answered without the attendance report.",
     "login-shape": "CUIMS changed its login page, so sign-in could not run.",
     "signed-out": "Signed out of CUIMS.",
   };
 
-  function coded(code, message) {
+  function coded(code, message, detail) {
     const error = new Error(message || MESSAGES[code] || "Could not fetch attendance.");
     error.code = code;
+    if (detail) error.detail = detail;
     return error;
+  }
+
+  // What CUIMS actually sent when it was not the report, kept short so it
+  // can be stored and shown when diagnosing a refusal or a changed page.
+  function describe(result) {
+    const html = String(result?.html || "");
+    return {
+      url: result?.url || "",
+      status: result?.status || 0,
+      title: api.stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").slice(0, 120),
+      text: api.stripTags(html.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, " ")).slice(0, 280),
+    };
   }
 
   function url(path) {
@@ -111,10 +124,10 @@
     try {
       parsed = JSON.parse(result.html || "");
     } catch {
-      throw coded("report-shape");
+      throw coded("report-shape", null, describe(result));
     }
     const rows = api.unwrapReport(parsed);
-    if (!rows) throw coded("report-shape");
+    if (!rows) throw coded("report-shape", null, describe(result));
     return rows;
   }
 
@@ -129,8 +142,8 @@
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
     const meta = api.extractReportMeta(page.html);
     if (meta.reportId && meta.sessionId) return meta;
-    if (/StudentHome\.aspx/i.test(page.url)) throw coded("portal-redirect");
-    throw coded("report-shape");
+    if (/StudentHome\.aspx/i.test(page.url)) throw coded("portal-redirect", null, describe(page));
+    throw coded("report-shape", null, describe(page));
   }
 
   async function readSummary(request, meta) {

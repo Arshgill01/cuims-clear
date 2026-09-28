@@ -8,7 +8,19 @@ const DEFAULT_SETTINGS = {
   blockFeedback: true,
 };
 
-const ATTENDANCE_KEYS = ["attendanceSnapshot", "attendanceTimetable", "attendanceStatus", "attendanceAuto", "sessionAlive", "sessionCheckedAt"];
+const ATTENDANCE_KEYS = [
+  "attendanceSnapshot",
+  "attendanceTimetable",
+  "attendanceStatus",
+  "attendanceAuto",
+  "attendanceMeta",
+  "attendanceLastBad",
+  "attendanceBackoffUntil",
+  "attendanceFailStreak",
+  "attendanceLastAttemptAt",
+  "sessionAlive",
+  "sessionCheckedAt",
+];
 const STALE_MS = 10 * 60 * 1000;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
 
