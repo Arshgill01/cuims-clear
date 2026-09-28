@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
+import { contentSource } from "./content-source.mjs";
 
 function memoryStorage() {
   const values = new Map();
@@ -51,7 +52,7 @@ function runtime(browser, { pageText = "", uidStep = false } = {}) {
     Event: class { constructor(type) { this.type = type; } },
     console,
   });
-  const script = readFileSync(new URL(`../outputs/cuims-clear-${browser}/content.js`, import.meta.url), "utf8");
+  const script = contentSource(browser);
   vm.runInContext(script, context);
   return {
     call: (expression) => vm.runInContext(expression, context),

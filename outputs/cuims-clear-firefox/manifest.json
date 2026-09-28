@@ -35,6 +35,7 @@
         "https://students.cuchd.in/*"
       ],
       "js": [
+        "captcha-prep.js",
         "content.js"
       ],
       "run_at": "document_start",

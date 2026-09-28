@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { contentSource } from "./content-source.mjs";
 
 for (const build of ["chrome", "firefox"]) {
   test(`${build}: rescanning hides a feedback popup reopened by the page`, () => {
@@ -58,7 +58,7 @@ for (const build of ["chrome", "firefox"]) {
       NodeFilter: { SHOW_TEXT: 4 },
       getComputedStyle: (element) => ({ display: element.style.getPropertyValue("display") }),
     });
-    vm.runInContext(readFileSync(new URL(`../outputs/cuims-clear-${build}/content.js`, import.meta.url), "utf8"), context);
+    vm.runInContext(contentSource(build), context);
     vm.runInContext("scanPage()", context);
     assert.equal(modal.style.getPropertyValue("display"), "none");
 

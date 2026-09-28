@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
-import { readFileSync } from "node:fs";
+import { contentSource } from "./content-source.mjs";
 
 // Load a browser build's content.js into a VM so we can call the CAPTCHA
 // geometry helpers directly. Canvas is intentionally unavailable, matching a
@@ -28,7 +28,7 @@ function loadContent(browser) {
     Event: class { constructor(type) { this.type = type; } },
     console,
   });
-  const script = readFileSync(new URL(`../outputs/cuims-clear-${browser}/content.js`, import.meta.url), "utf8");
+  const script = contentSource(browser);
   vm.runInContext(script, context);
   return (expression) => vm.runInContext(expression, context);
 }
