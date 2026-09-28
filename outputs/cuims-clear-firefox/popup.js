@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
 
 const ATTENDANCE_KEYS = ["attendanceSnapshot", "attendanceTimetable", "attendanceStatus", "attendanceAuto", "sessionAlive", "sessionCheckedAt"];
 const STALE_MS = 10 * 60 * 1000;
+const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
 
 const form = document.querySelector("#settings-form");
 const uid = document.querySelector("#uid");
@@ -25,6 +26,8 @@ const clearLogin = document.querySelector("#clear-login");
 
 const tabs = { login: document.querySelector("#tab-login"), attendance: document.querySelector("#tab-attendance") };
 const views = { login: document.querySelector("#view-login"), attendance: document.querySelector("#view-attendance") };
+
+const accessBanner = document.querySelector("#access-banner");
 
 let statusTimer;
 let attendance = { snapshot: null, status: null, error: "" };
@@ -171,3 +174,20 @@ chrome.storage.local.get({ attendanceSnapshot: null, attendanceStatus: null, pop
   attendance.status = stored.attendanceStatus;
   if (stored.popupView === "attendance") showView("attendance");
 });
+
+// Firefox lets people withdraw an MV3 add-on's site access. Without it the
+// login page is left alone and the background cannot reach CUIMS.
+function checkSiteAccess() {
+  chrome.permissions.contains({ origins: SITE_ORIGINS }, (granted) => {
+    accessBanner.hidden = Boolean(granted);
+  });
+}
+
+document.querySelector("#grant-access").addEventListener("click", () => {
+  chrome.permissions.request({ origins: SITE_ORIGINS }, (granted) => {
+    accessBanner.hidden = Boolean(granted);
+    if (granted) showStatus("Access allowed. Reload CUIMS.");
+  });
+});
+
+checkSiteAccess();

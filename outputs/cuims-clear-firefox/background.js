@@ -258,8 +258,12 @@ function isExtensionPage(sender) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== "cuims-clear:attendance-refresh") return;
   if (!isExtensionPage(sender)) return;
-  attendance
-    .refresh("manual")
+  chrome.permissions
+    .contains({ origins: ["https://students.cuchd.in/*"] })
+    .then((granted) => {
+      if (!granted) return { error: "Firefox has switched off access to CUIMS. Use Allow access at the top.", code: "no-access" };
+      return attendance.refresh("manual");
+    })
     .then(sendResponse)
     .catch((error) => sendResponse({ error: String(error?.message || error), code: "network" }));
   return true;
@@ -267,7 +271,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.alarms.create(ATTENDANCE_ALARM, { periodInMinutes: 5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm?.name === ATTENDANCE_ALARM) attendance.tick().catch(() => {});
+  if (alarm?.name !== ATTENDANCE_ALARM) return;
+  chrome.permissions
+    .contains({ origins: ["https://students.cuchd.in/*"] })
+    .then((granted) => (granted ? attendance.tick() : null))
+    .catch(() => {});
 });
 
 // A changed UID or password lifts the "rejected login" pause.
