@@ -14,16 +14,16 @@
           <p class="eyebrow">Student utility</p>
           <h1>CUIMS Clear</h1>
         </div>
-        <span class="version">v0.7.0</span>
+        <span class="version" id="version"></span>
       </header>
 
       <div id="access-banner" class="access-banner" role="alert" hidden>
-        <p>Firefox has switched off CUIMS Clear on CUIMS and LMS, so it only runs when you click it.</p>
+        <p>Your browser has switched off CUIMS Clear on CUIMS and LMS, so it only runs when you click it.</p>
         <button id="grant-access" type="button">Allow access</button>
       </div>
 
       <nav class="open-nav" aria-label="Open portals">
-        <a class="open-link" href="https://students.cuchd.in/StudentHome.aspx" target="_blank" rel="noreferrer">
+        <a class="open-link cuims-open-link" href="https://students.cuchd.in/StudentHome.aspx" target="_blank" rel="noreferrer">
           <span>Open CUIMS</span><span aria-hidden="true">↗</span>
         </a>
         <a class="open-link lms-open-link" href="https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms" target="_blank" rel="noreferrer">
@@ -120,7 +120,7 @@
       <section class="local-data" aria-labelledby="local-data-title">
         <div>
           <h2 id="local-data-title">Local by design</h2>
-          <p id="storage-note">Your login and attendance stay in this Firefox profile. CAPTCHA is solved on-device.</p>
+          <p id="storage-note">Your login and attendance stay in this browser profile. CAPTCHA is solved on-device.</p>
         </div>
         <button id="clear-login" class="clear-button" type="button">Clear login</button>
       </section>

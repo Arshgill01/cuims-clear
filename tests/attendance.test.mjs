@@ -461,3 +461,168 @@ test("landing on StudentHome tells the background the session is alive, once", (
   assert.equal(marks.length, 1);
   assert.equal(marks[0].sessionAlive, true);
 });
+
+// ---- the CUIMS tab owns the session while it shows a login form ----
+
+const loginTabOpen = (extra = {}) => saved({ loginTabAt: MONDAY_11 - 5_000, ...extra });
+const loginRequests = (server) => server.state.requests.filter((line) => /^(GET|POST) \/(login\.aspx|generatecaptcha\.aspx)?$/i.test(line));
+
+test("while a CUIMS tab is on the login page, a signed-out refresh gives way instead of signing in", async () => {
+  const server = fakeCuims();
+  const storage = loginTabOpen();
+  const result = await daemon(server, storage).refresh("manual");
+  assert.equal(result.code, "tab-login");
+  assert.equal(server.state.loginPageLoads, 0);
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.captchaReads, 0);
+  assert.deepEqual(loginRequests(server), []);
+  assert.equal(storage.data.bgSignInUntil, undefined);
+  assert.ok(storage.data.attendanceAfterTab);
+});
+
+test("a login tab does not stop a read that needs no sign-in", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const result = await daemon(server, loginTabOpen()).refresh("manual");
+  assert.equal(result.error, undefined);
+  assert.equal(result.snapshot.subjects.length, 3);
+});
+
+test("a login tab that opens mid sign-in stops the background before its next login request", async () => {
+  const server = fakeCuims();
+  const storage = saved();
+  const base = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    const answer = await base(target, options);
+    if (/\/$/.test(new URL(target).pathname) && (options.method || "GET") === "GET") storage.data.loginTabAt = MONDAY_11;
+    return answer;
+  };
+  const result = await daemon(server, storage).refresh("manual");
+  assert.equal(result.code, "tab-login");
+  assert.equal(server.state.uidPosts, 0);
+  assert.equal(server.state.loginPosts, 0);
+  assert.equal(storage.data.bgSignInUntil, 0);
+});
+
+test("every background visit to the login flow is stamped for the tab", async () => {
+  const server = fakeCuims();
+  const storage = saved();
+  await daemon(server, storage).refresh("manual");
+  assert.equal(storage.data.bgLoginTouchAt, MONDAY_11);
+});
+
+test("the keep-alive ping never loads the login page, even when the session has ended", async () => {
+  const server = fakeCuims();
+  const storage = saved({ attendanceAuto: true, sessionAlive: true, sessionCheckedAt: MONDAY_11 - 20 * 60_000, attendanceSnapshot: { fetchedAt: new Date(MONDAY_11).toISOString(), slots: [] } });
+  const result = await daemon(server, storage).tick();
+  assert.equal(result.pinged, true);
+  assert.equal(result.alive, false);
+  assert.equal(server.state.loginPageLoads, 0);
+  assert.equal(storage.data.bgLoginTouchAt, undefined);
+});
+
+test("a refresh that gave way runs again once the tab lands on StudentHome", async () => {
+  const server = fakeCuims();
+  const storage = loginTabOpen();
+  const bg = daemon(server, storage);
+  assert.equal((await bg.refresh("manual")).code, "tab-login");
+  server.state.signedIn = true;
+  storage.data.loginTabAt = 0;
+  const after = await bg.afterTabSignIn();
+  assert.equal(after.refreshed.snapshot.subjects.length, 3);
+  assert.equal((await bg.afterTabSignIn()).skipped, true);
+});
+
+// ---- Open CUIMS / Open LMS reuse or create the browser's session ----
+
+test("opening CUIMS with a live session only pings StudentHome", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const result = await daemon(server, saved()).ensureSession();
+  assert.deepEqual({ ...result }, { alive: true });
+  assert.deepEqual(server.state.requests, ["GET /StudentHome.aspx"]);
+});
+
+test("opening CUIMS with a dead session signs in once in the background", async () => {
+  const server = fakeCuims();
+  const storage = saved();
+  const result = await daemon(server, storage).ensureSession();
+  assert.equal(result.signedIn, true);
+  assert.equal(server.state.loginPosts, 1);
+  assert.equal(server.state.signedIn, true);
+  assert.equal(storage.data.sessionAlive, true);
+});
+
+test("opening CUIMS never signs in while a tab is on the login page, or when auto-login is off", async () => {
+  for (const storage of [loginTabOpen(), saved({ autoSubmitLogin: false })]) {
+    const server = fakeCuims();
+    const result = await daemon(server, storage).ensureSession();
+    assert.equal(result.alive, false);
+    assert.equal(server.state.loginPosts + server.state.uidPosts, 0);
+  }
+});
+
+test("opening CUIMS respects the shared lockout", async () => {
+  const server = fakeCuims();
+  const result = await daemon(server, saved({ loginGuard: { failures: [], lockoutUntil: MONDAY_11 + 60_000 } })).ensureSession();
+  assert.equal(result.reason, "lockout");
+  assert.equal(server.state.uidPosts, 0);
+});
+
+test("an open waits for a refresh that is already talking to CUIMS", async () => {
+  const server = fakeCuims();
+  const bg = daemon(server, saved());
+  const [refresh, session] = await Promise.all([bg.refresh("manual"), bg.ensureSession()]);
+  assert.equal(refresh.snapshot.subjects.length, 3);
+  assert.deepEqual({ ...session }, { alive: true });
+  assert.equal(server.state.loginPosts, 1);
+});
+
+// ---- the login tab recovers from a captcha the background replaced ----
+
+function loginPage({ issuedAt = 1_000, touchAt = 0, restarts = [] } = {}) {
+  const store = new Map(restarts.length ? [["cuimsClear.loginRestarts", JSON.stringify(restarts)]] : []);
+  const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, String(value)), removeItem: (key) => store.delete(key) };
+  const assigned = [];
+  const writes = [];
+  const context = vm.createContext({
+    document: { documentElement: null, body: null, addEventListener() {}, getElementById() { return null; }, querySelector() { return null; }, querySelectorAll() { return []; } },
+    location: { pathname: "/Login.aspx", assign: (url) => assigned.push(url) },
+    performance: { timeOrigin: issuedAt },
+    localStorage: storage,
+    sessionStorage: storage,
+    chrome: { storage: { onChanged: { addListener() {} }, local: { set: (values) => writes.push(values) } }, runtime: { sendMessage() {} } },
+    Event: class {},
+    console,
+  });
+  vm.runInContext(contentSource("firefox"), context);
+  vm.runInContext(`sharedLogin.bgLoginTouchAt = ${touchAt}`, context);
+  return { call: (code) => vm.runInContext(code, context), assigned, store, writes };
+}
+
+test("a captcha drawn before the background touched the login flow is dead, so the tab starts over", () => {
+  const page = loginPage({ issuedAt: 1_000, touchAt: 2_000 });
+  assert.equal(page.call("backgroundTouchedSince(captchaIssuedAt(null))"), true);
+  assert.equal(page.call("restartLogin(5000)"), true);
+  assert.deepEqual(page.assigned, ["https://students.cuchd.in/"]);
+});
+
+test("a captcha drawn after the background's last touch is trusted", () => {
+  const page = loginPage({ issuedAt: 3_000, touchAt: 2_000 });
+  assert.equal(page.call("backgroundTouchedSince(captchaIssuedAt(null))"), false);
+  assert.equal(loginPage({ issuedAt: 3_000, touchAt: 0 }).call("backgroundTouchedSince(captchaIssuedAt(null))"), false);
+});
+
+test("the tab restarts its login at most twice in two minutes", () => {
+  const now = 200_000;
+  const page = loginPage({ restarts: [now - 10_000, now - 5_000] });
+  assert.equal(page.call(`restartLogin(${now})`), false);
+  assert.deepEqual(page.assigned, []);
+  assert.equal(loginPage({ restarts: [now - 130_000, now - 5_000] }).call(`restartLogin(${now})`), true);
+});
+
+test("a refusal of a captcha the background replaced does not count against auto-login", () => {
+  const page = loginPage({ issuedAt: 1_000, touchAt: 2_000 });
+  page.call("recordAutoSubmit()");
+  page.call(`sessionStorage.setItem("cuimsClear.submitCaptchaAt", "1000")`);
+  assert.equal(page.call("submittedCaptchaWasReplaced()"), true);
+  page.call("releaseRecentAutoSubmit()");
+  assert.equal(page.call("readFailureState().failures"), 0);
+});

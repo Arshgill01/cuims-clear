@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Faster CUIMS login, attendance and safe-skip counts without opening the portal, and a cleaner LMS.",
   "icons": {
     "48": "icons/icon.svg",
@@ -9,7 +9,8 @@
   },
   "permissions": [
     "storage",
-    "alarms"
+    "alarms",
+    "activeTab"
   ],
   "host_permissions": [
     "https://students.cuchd.in/*",
@@ -20,11 +21,12 @@
       "lms-open.js",
       "vendor/tesseract/tesseract.min.js",
       "captcha-prep.js",
+      "background.js",
       "attendance-parse.js",
       "attendance-model.js",
       "attendance-client.js",
       "attendance-daemon.js",
-      "background.js"
+      "attendance-bg.js"
     ]
   },
   "content_security_policy": {

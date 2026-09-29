@@ -1,4 +1,11 @@
-importScripts("lms-open.js");
+importScripts(
+  "lms-open.js",
+  "attendance-parse.js",
+  "attendance-model.js",
+  "attendance-client.js",
+  "attendance-daemon.js",
+  "attendance-bg.js",
+);
 
 // Chrome MV3 cannot host Tesseract in this service worker: dedicated workers
 // and WASM need a real document. The offscreen page reuses background.js.
@@ -49,3 +56,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+function toBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+// The background sign-in's captcha goes through the same offscreen solver as
+// the login page's: cleanup passes, OCR, then the case correction.
+async function solveCaptchaViaOffscreen(bytes) {
+  await ensureOffscreen();
+  const result = await chrome.runtime.sendMessage({
+    type: "cuims-clear:solve-captcha-bytes",
+    dataUrl: `data:image/jpeg;base64,${toBase64(bytes)}`,
+  });
+  if (!result || result.error) throw new Error(result?.error || "empty solver response");
+  return result.text;
+}
+
+startAttendanceBackground(solveCaptchaViaOffscreen);

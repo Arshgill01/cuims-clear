@@ -32,11 +32,22 @@ The extension reads page text and structure to hide optional event and feedback
 overlays and to organize LMS course names and links. This content is not sent
 to the developer or saved in extension storage.
 
-When you select Open LMS, the extension locates an existing CUIMS or LMS tab
-and uses the university's CU LMS control to follow its SSO flow. SSO URLs and
-tokens are not saved in extension storage. The LMS course directory may fetch
+When you select Open CUIMS or Open LMS, the extension checks your CUIMS session
+and, if it has ended, signs in with your saved UID and password in the background.
+For the LMS it makes the university's own CU LMS request and opens the LMS URL
+CUIMS returns, or opens CUIMS and uses its CU LMS control. SSO URLs and tokens are
+not saved in extension storage. The LMS course directory may fetch
 additional same-origin /my/courses.php pages using your existing university
 session to pair syllabus materials with semester work.
+
+## Attendance
+
+When you use the Attendance tab, the extension reads your own attendance report
+and timetable from CUIMS with your browser's CUIMS session, signing in with your
+saved UID and password in the background when needed. On weekdays during class
+hours it may send one light request to keep the session open and one refresh after
+a class ends. Attendance figures are stored only in chrome.storage.local on this
+device and are removed by Clear login.
 
 Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
 The extension does not maintain a browsing-history record.
@@ -50,4 +61,4 @@ or lending. The developer does not have access to your portal data.
 
 Contact: arshgill6120@gmail.com
 
-Last updated: 22 September 2026.
+Last updated: 29 September 2026.

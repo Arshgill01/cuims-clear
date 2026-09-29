@@ -97,9 +97,20 @@ let lastErrorFingerprint = "";
 
 // Login state shared with the background attendance sign-in, so the tab and
 // the background never submit at the same time or ignore each other's failures.
-const SHARED_LOGIN_DEFAULTS = { bgSignInUntil: 0, bgSignInOkAt: 0, loginGuard: null };
+// CUIMS keeps one expected captcha per session, and the background shares this
+// tab's session cookie: any background visit to the login flow replaces the
+// captcha this tab is showing. bgLoginTouchAt says when that last happened.
+const SHARED_LOGIN_DEFAULTS = { bgSignInUntil: 0, bgSignInOkAt: 0, bgLoginTouchAt: 0, loginGuard: null };
 let sharedLogin = { ...SHARED_LOGIN_DEFAULTS };
 let sessionShared = false;
+
+// While a login form is open, this tab owns the CUIMS session. The heartbeat
+// tells the background to keep off the login flow until the tab is done.
+const LOGIN_TAB_BEAT_MS = 8_000;
+const LOGIN_RESTARTS_KEY = "cuimsClear.loginRestarts";
+const SUBMIT_CAPTCHA_AT_KEY = "cuimsClear.submitCaptchaAt";
+const LOGIN_START_URL = "https://students.cuchd.in/";
+let loginBeatTimer = 0;
 
 function sharedFailures(now = Date.now()) {
   const failures = sharedLogin.loginGuard?.failures;
@@ -123,6 +134,60 @@ function shareLocalStorageWrite(values) {
   try {
     chrome.storage.local.set(values);
   } catch {}
+}
+
+function isTopFrame() {
+  try {
+    return typeof window === "undefined" || window === window.top;
+  } catch {
+    return false;
+  }
+}
+
+function announceLoginTab() {
+  if (loginBeatTimer || !isTopFrame() || typeof setInterval !== "function") return;
+  const beat = () => {
+    if (!hasLoginControls()) {
+      clearInterval(loginBeatTimer);
+      loginBeatTimer = 0;
+      return;
+    }
+    shareLocalStorageWrite({ loginTabAt: Date.now() });
+  };
+  loginBeatTimer = setInterval(beat, LOGIN_TAB_BEAT_MS);
+  beat();
+}
+
+// When the captcha on screen was issued. The first image loads with the page;
+// a reload stamps its own time. Earlier is the safe side of the comparison.
+function captchaIssuedAt(captchaImage) {
+  const stamped = Number(captchaImage?.dataset?.cuimsClearIssuedAt || 0);
+  if (stamped) return stamped;
+  try {
+    return Math.floor(performance.timeOrigin) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function backgroundTouchedSince(at) {
+  return Number(sharedLogin.bgLoginTouchAt || 0) >= Number(at || 0) && Number(sharedLogin.bgLoginTouchAt || 0) > 0;
+}
+
+// Start the login over on a fresh page. Capped so two tabs can never loop.
+function restartLogin(now = Date.now()) {
+  if (!isTopFrame()) return false;
+  let recent = [];
+  try {
+    recent = JSON.parse(sessionStorage.getItem(LOGIN_RESTARTS_KEY) || "[]").filter((at) => now - at < 120_000);
+  } catch {}
+  if (recent.length >= 2) return false;
+  recent.push(now);
+  try {
+    sessionStorage.setItem(LOGIN_RESTARTS_KEY, JSON.stringify(recent));
+  } catch {}
+  location.assign(LOGIN_START_URL);
+  return true;
 }
 
 function dispatchFieldEvents(field) {
@@ -391,6 +456,7 @@ function bindCaptchaReload(captchaImage) {
   captchaImage.dataset.cuimsClearBound = "1";
   captchaImage.addEventListener("load", () => {
     solveGeneration += 1;
+    if (captchaImage.dataset.cuimsClearSeen) captchaImage.dataset.cuimsClearIssuedAt = String(Date.now() - 5_000);
     delete captchaImage.dataset.cuimsClearSolved;
     delete captchaImage.dataset.cuimsClearSolving;
     delete captchaImage.dataset.cuimsClearWaiting;
@@ -406,6 +472,8 @@ function prepareLogin() {
 
   const uidField = document.querySelector("#txtUserId, input[name='txtUserId']");
   const nextButton = document.querySelector("#btnNext, input[name='btnNext']");
+
+  announceLoginTab();
 
   if (settings.autoSolveCaptcha) {
     prewarmSolver();
@@ -477,6 +545,13 @@ function scanPortalFailureSignals() {
     return;
   }
 
+  // A refusal after the background replaced the captcha says nothing about
+  // the read. Give the attempt back and start the login over.
+  if (detected.kind === "error" && submittedCaptchaWasReplaced()) {
+    releaseRecentAutoSubmit();
+    if (restartLogin()) return;
+  }
+
   const state = recordDetectedFailure({ lockout: false });
   if (state.counted !== false) {
     writeSharedGuard((current) => ({ ...current, failures: [...current.failures, { at: Date.now(), by: "page" }] }));
@@ -494,11 +569,20 @@ function scanPortalFailureSignals() {
   showLoginStatus(formatRejectMessage(), "warn");
 }
 
+function submittedCaptchaWasReplaced() {
+  let at = 0;
+  try {
+    at = Number(sessionStorage.getItem(SUBMIT_CAPTCHA_AT_KEY) || 0);
+  } catch {}
+  return at > 0 && backgroundTouchedSince(at);
+}
+
 function prepareCaptchaStep(passwordField) {
   const captchaImage = document.querySelector("#imgCaptcha, img[src*='GenerateCaptcha' i]");
   if (!captchaImage) return;
 
   bindCaptchaReload(captchaImage);
+  captchaImage.dataset.cuimsClearSeen = "1";
 
   // Handle dynamic captcha refresh / image reload
   if (
@@ -583,6 +667,10 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
       "#btnLogin, input[name='btnLogin'], button[type='submit'], input[type='submit'][value*='Login' i]",
     );
 
+    // The background replaced this session's captcha after this one was
+    // drawn, so even a perfect read would be refused. Start over instead.
+    if (backgroundTouchedSince(captchaIssuedAt(captchaImage)) && restartLogin()) return;
+
     const gate = canAutoSubmit();
     const canSubmit = mayAutoSubmitSolution(solution);
 
@@ -619,6 +707,9 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
       ) {
         // Count before the click so a fast portal reject cannot race past the budget.
         recordAutoSubmit();
+        try {
+          sessionStorage.setItem(SUBMIT_CAPTCHA_AT_KEY, String(captchaIssuedAt(captchaImage)));
+        } catch {}
         loginButton.click();
       }
     }
@@ -803,7 +894,7 @@ function scanPage() {
     // Lets the class-hours keep-alive hold a session the student signed in to here.
     if (!sessionShared && (typeof window === "undefined" || window === window.top)) {
       sessionShared = true;
-      shareLocalStorageWrite({ sessionAlive: true, sessionCheckedAt: Date.now() });
+      shareLocalStorageWrite({ sessionAlive: true, sessionCheckedAt: Date.now(), loginTabAt: 0 });
     }
   }
 
@@ -879,8 +970,23 @@ function startExtension() {
 // a tab is stale. Go home instead of submitting a second login.
 function followBackgroundSignIn(now = Date.now()) {
   if (window !== window.top || !hasLoginControls()) return;
-  if (now - Number(sharedLogin.bgSignInOkAt || 0) > 60_000) return;
+  if (now - Number(sharedLogin.bgSignInOkAt || 0) > 60_000) {
+    resumeAfterBackground();
+    return;
+  }
   location.assign(HOME_URL);
+}
+
+// The background stopped without signing in. If it touched the login flow
+// after this tab's captcha was drawn, that captcha is dead: start over.
+// Otherwise solve again, since the held read may still be good.
+function resumeAfterBackground() {
+  const captchaImage = document.querySelector("#imgCaptcha, img[src*='GenerateCaptcha' i]");
+  if (!captchaImage) return;
+  if (backgroundTouchedSince(captchaIssuedAt(captchaImage)) && restartLogin()) return;
+  delete captchaImage.dataset.cuimsClearSolved;
+  delete captchaImage.dataset.cuimsClearSolving;
+  queueScan();
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {

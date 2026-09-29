@@ -16,6 +16,7 @@ async function launch({
   const dest = { href: undefined };
   let clicked = false;
   const created = [];
+  const nodes = new Map();
   const link = {
     href,
     matches: (sel) => sel.includes("a"),
@@ -50,8 +51,11 @@ async function launch({
       querySelectorAll: () => signedIn ? [link] : [],
       createElement: (tag) => {
         created.push(tag);
-        return { style: {}, append() {} };
+        const node = { tag, style: {}, append() {}, remove() { nodes.delete(node.id); } };
+        return node;
       },
+      documentElement: { append: (node) => nodes.set(node.id, node) },
+      getElementById: (id) => nodes.get(id) || null,
       addEventListener() {},
     },
     setTimeout: (fn, ms) => {
@@ -74,14 +78,23 @@ async function launch({
   vm.runInContext(source, context);
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
-  return { dest, clicked, store, created, window: context.window };
+  return { dest, clicked, store, created, covered: nodes.has("cuims-clear-lms-cover"), window: context.window };
 }
 
-test("does not inject a custom LMS overlay on CUIMS", async () => {
+test("does not inject a custom LMS overlay on CUIMS, only a style veil", async () => {
   assert.equal(source.includes("cuims-lms-launch-status"), false);
   assert.equal(/Open CU LMS/.test(source), false);
   const result = await launch();
-  assert.deepEqual(result.created, []);
+  assert.deepEqual(result.created, ["style"]);
+});
+
+test("the dashboard stays veiled while it hands off to LMS", async () => {
+  assert.equal((await launch()).covered, true);
+  assert.equal((await launch({ hash: "" })).covered, false);
+});
+
+test("the veil lifts when CUIMS needs the login form", async () => {
+  assert.equal((await launch({ signedIn: false })).covered, false);
 });
 
 test("clicks the official CU LMS control instead of showing a custom overlay", async () => {

@@ -14,11 +14,16 @@
           <p class="eyebrow">Student utility</p>
           <h1>CUIMS Clear</h1>
         </div>
-        <span class="version">v0.6.5</span>
+        <span class="version" id="version"></span>
       </header>
 
+      <div id="access-banner" class="access-banner" role="alert" hidden>
+        <p>Your browser has switched off CUIMS Clear on CUIMS and LMS, so it only runs when you click it.</p>
+        <button id="grant-access" type="button">Allow access</button>
+      </div>
+
       <nav class="open-nav" aria-label="Open portals">
-        <a class="open-link" href="https://students.cuchd.in/" target="_blank" rel="noreferrer">
+        <a class="open-link cuims-open-link" href="https://students.cuchd.in/StudentHome.aspx" target="_blank" rel="noreferrer">
           <span>Open CUIMS</span><span aria-hidden="true">↗</span>
         </a>
         <a class="open-link lms-open-link" href="https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms" target="_blank" rel="noreferrer">
@@ -26,6 +31,12 @@
         </a>
       </nav>
 
+      <div class="view-tabs" role="tablist" aria-label="Sections">
+        <button id="tab-login" type="button" role="tab" aria-selected="true" aria-controls="view-login">Login</button>
+        <button id="tab-attendance" type="button" role="tab" aria-selected="false" aria-controls="view-attendance" tabindex="-1">Attendance</button>
+      </div>
+
+      <div id="view-login" role="tabpanel" aria-labelledby="tab-login">
       <form id="settings-form">
         <fieldset class="login-fields">
           <legend>Saved login</legend>
@@ -109,11 +120,16 @@
       <section class="local-data" aria-labelledby="local-data-title">
         <div>
           <h2 id="local-data-title">Local by design</h2>
-          <p id="storage-note">Your login stays in this Chrome profile. CAPTCHA is solved on-device.</p>
+          <p id="storage-note">Your login and attendance stay in this browser profile. CAPTCHA is solved on-device.</p>
         </div>
         <button id="clear-login" class="clear-button" type="button">Clear login</button>
       </section>
+      </div>
+
+      <section id="view-attendance" class="attendance" role="tabpanel" aria-labelledby="tab-attendance" hidden></section>
     </main>
+    <script src="attendance-model.js"></script>
+    <script src="attendance-view.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

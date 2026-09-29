@@ -197,8 +197,14 @@ function enqueueSolve(candidates) {
   return run;
 }
 
+// Chrome delivers a content script's message to the offscreen page as well
+// as to the service worker, which relays it here. Answering both would run
+// every captcha through OCR twice, so the offscreen page takes only the relay.
+const IN_OFFSCREEN = typeof location !== "undefined" && /\/offscreen\.html$/i.test(location.pathname);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!isTrustedSolverSender(sender)) return;
+  if (IN_OFFSCREEN && sender.tab) return;
 
   if (message?.type === "cuims-clear:prewarm") {
     getSolverWorker()
@@ -225,63 +231,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Background sign-in reads the captcha the same way the login page does:
 // the shared cleanup passes, the same OCR queue, then the case correction.
+// `source` is any image URL the page can decode (blob: or data:).
+async function solveCaptchaSource(source) {
+  // Load events, not image.decode(): decode() can stay pending forever in
+  // Chrome's offscreen page, which is never rendered.
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error("captcha image did not load"));
+    image.src = source;
+  });
+  const result = await enqueueSolve(extractCaptchaVariants(image));
+  return correctCaptchaCase(String(result?.text || "").trim(), image);
+}
+
 async function solveCaptchaBytes(bytes) {
   const src = URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }));
   try {
-    const image = new Image();
-    image.src = src;
-    await image.decode();
-    const result = await enqueueSolve(extractCaptchaVariants(image));
-    return correctCaptchaCase(String(result?.text || "").trim(), image);
+    return await solveCaptchaSource(src);
   } finally {
     URL.revokeObjectURL(src);
   }
 }
 
-const ATTENDANCE_ALARM = "cuims-clear-attendance";
-
-const attendance = CuimsAttendance.createDaemon({
-  storage: {
-    get: (defaults) => chrome.storage.local.get(defaults),
-    set: (values) => chrome.storage.local.set(values),
-  },
-  fetchImpl: (url, options) => fetch(url, options),
-  solveCaptcha: solveCaptchaBytes,
-});
-
-function isExtensionPage(sender) {
-  const extensionId = chrome.runtime?.id;
-  if (!sender || (sender.id && sender.id !== extensionId)) return false;
-  return !sender.tab && (!sender.url || String(sender.url).startsWith(`moz-extension://`));
-}
-
+// Chrome's service worker has no DOM, so it hands the captcha to the
+// offscreen page, which runs this same file.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type !== "cuims-clear:attendance-refresh") return;
-  if (!isExtensionPage(sender)) return;
-  chrome.permissions
-    .contains({ origins: ["https://students.cuchd.in/*"] })
-    .then((granted) => {
-      if (!granted) return { error: "Firefox has switched off access to CUIMS. Use Allow access at the top.", code: "no-access" };
-      return attendance.refresh("manual");
-    })
-    .then(sendResponse)
-    .catch((error) => sendResponse({ error: String(error?.message || error), code: "network" }));
+  if (message?.type !== "cuims-clear:solve-captcha-bytes") return;
+  if (sender?.tab || (sender?.id && sender.id !== chrome.runtime?.id)) return;
+  if (!/^data:image\//.test(String(message.dataUrl || ""))) return;
+  solveCaptchaSource(message.dataUrl)
+    .then((text) => sendResponse({ text }))
+    .catch((error) => sendResponse({ error: String(error?.message || error) }));
   return true;
-});
-
-chrome.alarms.create(ATTENDANCE_ALARM, { periodInMinutes: 5 });
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm?.name !== ATTENDANCE_ALARM) return;
-  chrome.permissions
-    .contains({ origins: ["https://students.cuchd.in/*"] })
-    .then((granted) => (granted ? attendance.tick() : null))
-    .catch(() => {});
-});
-
-// A changed UID or password lifts the "rejected login" pause.
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !(changes.uid || changes.password)) return;
-  chrome.storage.local.get({ loginGuard: null }, ({ loginGuard }) => {
-    if (loginGuard?.rejectedUid) chrome.storage.local.set({ loginGuard: { ...loginGuard, rejectedUid: "" } });
-  });
 });

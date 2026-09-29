@@ -72,7 +72,7 @@ export function fakeCuims({
   refuseAttendanceAfter = Infinity,
   reportId = "RID+/=",
 } = {}) {
-  const state = { signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, reportId };
+  const state = { signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -80,9 +80,18 @@ export function fakeCuims({
     const body = options.body ? String(options.body) : "";
     state.requests.push(`${method} ${url.pathname}`);
     const path = url.pathname.toLowerCase();
-    const login = () => response(`${ORIGIN}/Login.aspx`, 200, UID_PAGE);
+    // Signed out, CUIMS redirects to Login.aspx. With redirect: "manual" the
+    // caller only sees an opaque redirect and the login page is never loaded.
+    const login = () => {
+      if (options.redirect === "manual") return { ...response(url.href, 0, ""), type: "opaqueredirect" };
+      state.loginPageLoads += 1;
+      return response(`${ORIGIN}/Login.aspx`, 200, UID_PAGE);
+    };
 
-    if (path === "/" && method === "GET") return response(`${ORIGIN}/`, 200, UID_PAGE);
+    if (path === "/" && method === "GET") {
+      state.loginPageLoads += 1;
+      return response(`${ORIGIN}/`, 200, UID_PAGE);
+    }
     if (path === "/" && method === "POST") {
       state.uidPosts += 1;
       const fields = new URLSearchParams(body);

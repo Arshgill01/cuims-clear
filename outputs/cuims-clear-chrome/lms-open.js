@@ -1,15 +1,22 @@
-const CUIMS_HOME = "https://students.cuchd.in/StudentHome.aspx";
-const LAUNCH_AT = "lmsLaunchAt";
-const FOCUS_MS = 2 * 60 * 1000;
-const watched = new Set();
+// Opens CUIMS and LMS from the popup.
+// LMS is reached through CUIMS's own SSO postback. The background makes that
+// postback itself when the CUIMS session is alive, so the tab goes straight to
+// LMS without painting CUIMS. Otherwise the tab loads CUIMS behind a cover and
+// lms-launch.js clicks the SSO control there (signing in first if needed).
 
-function fresh(value, ms) {
-  const at = Number(value);
-  return Boolean(at && Date.now() - at <= ms);
+const CUIMS_ORIGIN = "https://students.cuchd.in";
+const CUIMS_HOME = `${CUIMS_ORIGIN}/StudentHome.aspx`;
+const LMS_LAUNCH_URL = `${CUIMS_HOME}#cuims-clear-lms`;
+const LAUNCH_AT = "lmsLaunchAt";
+const SSO_TIMEOUT_MS = 8_000;
+const SESSION_TIMEOUT_MS = 30_000;
+
+function tabUrl(tab) {
+  return String(tab?.pendingUrl || tab?.url || "");
 }
 
-function isHome(url) {
-  return /StudentHome\.aspx/i.test(url || "");
+function isCuimsTab(tab) {
+  return /^https:\/\/students\.cuchd\.in\//i.test(tabUrl(tab));
 }
 
 async function focusTab(tab) {
@@ -20,7 +27,14 @@ async function focusTab(tab) {
   }
 }
 
-async function activeTab() {
+// The popup passes its own active tab: from the background, "current window"
+// is only a guess.
+async function resolveTab(hint) {
+  if (hint?.tabId) {
+    try {
+      return await chrome.tabs.get(hint.tabId);
+    } catch {}
+  }
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     return tab || null;
@@ -29,81 +43,159 @@ async function activeTab() {
   }
 }
 
-async function askTabToLaunch(tabId) {
-  await chrome.tabs.sendMessage(tabId, { type: "cuims-clear:launch-lms" });
+// Always a new tab, right beside the one the popup was opened from.
+async function openIn(tab, url) {
+  await chrome.tabs.create({ url, active: true, ...(tab?.index >= 0 ? { index: tab.index + 1 } : {}) });
 }
 
-async function launchInTab(tab) {
-  watched.add(tab.id);
+function decodeHtml(value) {
+  return String(value || "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;|&apos;/gi, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function lmsTarget(value) {
   try {
-    await askTabToLaunch(tab.id);
-    return true;
+    const url = new URL(String(value || ""), CUIMS_HOME);
+    if (url.origin !== "https://lms.cuchd.in" || url.pathname === "/" || url.username || url.password) return null;
+    return url.href;
   } catch {
-    try {
-      await chrome.tabs.reload(tab.id);
-      return true;
-    } catch {
-      return false;
-    }
+    return null;
   }
 }
 
-async function openBackgroundHome() {
-  const created = await chrome.tabs.create({ url: CUIMS_HOME, active: false });
-  if (created?.id) watched.add(created.id);
+function hiddenInputs(html) {
+  const fields = new URLSearchParams();
+  for (const [tag] of String(html).matchAll(/<input\b[^>]*>/gi)) {
+    if (!/\btype\s*=\s*["']?hidden/i.test(tag)) continue;
+    const name = tag.match(/\bname\s*=\s*"([^"]*)"|\bname\s*=\s*'([^']*)'/i);
+    if (!name) continue;
+    const value = tag.match(/\bvalue\s*=\s*"([^"]*)"|\bvalue\s*=\s*'([^']*)'/i);
+    fields.set(decodeHtml(name[1] ?? name[2]), decodeHtml(value ? value[1] ?? value[2] : ""));
+  }
+  return fields;
 }
 
-async function requestLmsLaunch() {
-  await chrome.storage.local.set({ [LAUNCH_AT]: Date.now() });
+// The SSO control is a LinkButton: __doPostBack('ctl00$...$lbtnLMSSSO','').
+function ssoPostback(html) {
+  const text = decodeHtml(html);
+  const byId = text.match(/<a\b[^>]*\bid\s*=\s*["'][^"']*lbtnLMSSSO["'][^>]*>/i)?.[0] || "";
+  const call = /__doPostBack\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]*)['"]\s*\)/i;
+  const own = byId.match(call);
+  if (own) return { target: own[1], argument: own[2] };
+  const named = text.match(/__doPostBack\(\s*['"]([^'"]*LMSSSO[^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*\)/i);
+  return named ? { target: named[1], argument: named[2] } : null;
+}
+
+// The postback answers with a page that calls window.open(<LMS ticket URL>).
+function ssoTicketUrl(html) {
+  const call = String(html).match(/window\.open\(\s*(['"])(.*?)\1/i);
+  if (!call) return null;
+  const raw = decodeHtml(call[2]).replace(/\\u0026/gi, "&").replace(/\\\//g, "/");
+  return lmsTarget(raw);
+}
+
+async function cuimsFetch(url, options = {}) {
+  return fetch(url, {
+    credentials: "include",
+    cache: "no-store",
+    // A signed-out answer is a redirect to the login page. Loading that page
+    // would replace the captcha of any CUIMS tab mid-login, so never follow.
+    redirect: "manual",
+    signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(SSO_TIMEOUT_MS) : undefined,
+    ...options,
+  });
+}
+
+function answered(response) {
+  return response && response.type !== "opaqueredirect" && response.status === 200;
+}
+
+// Returns the LMS ticket URL, or null when the tab has to do it.
+async function fetchLmsTicket() {
+  try {
+    const home = await cuimsFetch(CUIMS_HOME);
+    if (!answered(home)) return null;
+    const html = await home.text();
+    const postback = ssoPostback(html);
+    if (!postback) return null;
+    const fields = hiddenInputs(html);
+    fields.set("__EVENTTARGET", postback.target);
+    fields.set("__EVENTARGUMENT", postback.argument);
+    const action = decodeHtml(html.match(/<form\b[^>]*\baction\s*=\s*["']([^"']*)["']/i)?.[1] || "");
+    const posted = await cuimsFetch(new URL(action || CUIMS_HOME, CUIMS_HOME).href, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: fields.toString(),
+    });
+    if (!answered(posted)) return null;
+    return ssoTicketUrl(await posted.text());
+  } catch {
+    return null;
+  }
+}
+
+// Signs this browser in to CUIMS from the background when the session is
+// dead (see attendance-daemon.js), so the tab never shows the login page.
+async function ensureSession() {
+  if (typeof globalThis.cuimsEnsureSession !== "function") return { alive: false };
+  let timer;
+  try {
+    return await Promise.race([
+      globalThis.cuimsEnsureSession(),
+      new Promise((resolve) => (timer = setTimeout(() => resolve({ alive: false, reason: "timeout" }), SESSION_TIMEOUT_MS))),
+    ]);
+  } catch {
+    return { alive: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function openLms(hint) {
   const lmsTabs = await chrome.tabs.query({ url: "https://lms.cuchd.in/*" });
   if (lmsTabs[0]?.id) {
     await focusTab(lmsTabs[0]);
-    return;
+    return { via: "existing" };
   }
-
-  const cuimsTabs = await chrome.tabs.query({ url: "https://students.cuchd.in/*" });
-  const active = await activeTab();
-  const hiddenHome = cuimsTabs.find((tab) => (isHome(tab.url) || !tab.url) && tab.id !== active?.id);
-  if (hiddenHome?.id && await launchInTab(hiddenHome)) return;
-
-  const hiddenCuims = cuimsTabs.find((tab) => tab.id !== active?.id);
-  if (hiddenCuims?.id) {
-    watched.add(hiddenCuims.id);
-    await chrome.tabs.update(hiddenCuims.id, { url: CUIMS_HOME, active: false });
-    return;
+  const tab = await resolveTab(hint);
+  let ticket = await fetchLmsTicket();
+  if (!ticket && (await ensureSession()).signedIn) ticket = await fetchLmsTicket();
+  if (ticket) {
+    await openIn(tab, ticket);
+    return { via: "sso" };
   }
-
-  await openBackgroundHome();
+  // Signed out, or CUIMS answered differently: let the page do it.
+  await chrome.storage.local.set({ [LAUNCH_AT]: Date.now() });
+  await openIn(tab, LMS_LAUNCH_URL);
+  return { via: "page" };
 }
 
-async function revealLms(tabId, windowId) {
-  watched.delete(tabId);
-  await chrome.storage.local.remove(LAUNCH_AT);
-  await chrome.tabs.update(tabId, { active: true });
-  if (windowId) {
-    try { await chrome.windows.update(windowId, { focused: true }); } catch {}
+async function openCuims(hint) {
+  const tab = await resolveTab(hint);
+  if (isCuimsTab(tab)) {
+    await focusTab(tab);
+    return { via: "existing" };
   }
+  const session = await ensureSession();
+  await openIn(tab, CUIMS_HOME);
+  return { via: "tab", signedIn: Boolean(session.signedIn) };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "cuims-clear:launch-lms") {
-    requestLmsLaunch()
-      .then(() => sendResponse({ ok: true }))
+  const fromPopup = !sender?.tab && (!sender?.id || sender.id === chrome.runtime.id);
+  if ((message?.type === "cuims-clear:launch-lms" || message?.type === "cuims-clear:open-cuims") && fromPopup) {
+    const open = message.type === "cuims-clear:launch-lms" ? openLms : openCuims;
+    open({ tabId: Number(message.tabId) || 0 })
+      .then((result) => sendResponse({ ok: true, ...result }))
       .catch((error) => sendResponse({ error: String(error?.message || error) }));
     return true;
   }
+  // A launch that needs the login form shows its tab.
   if (message?.type === "cuims-clear:lms-needs-ui" && sender.tab?.id) {
     chrome.tabs.update(sender.tab.id, { active: true }).catch(() => {});
   }
-});
-
-chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
-  const url = tab.url || info.url || "";
-  if (!url.startsWith("https://lms.cuchd.in/")) return;
-  if (watched.has(tabId)) {
-    await revealLms(tabId, tab.windowId);
-    return;
-  }
-  const { [LAUNCH_AT]: at } = await chrome.storage.local.get({ [LAUNCH_AT]: 0 });
-  if (fresh(at, FOCUS_MS)) await revealLms(tabId, tab.windowId);
 });

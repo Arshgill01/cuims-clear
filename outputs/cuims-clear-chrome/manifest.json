@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.6.5",
-  "description": "Faster CUIMS login and a cleaner LMS, with syllabus materials and semester work paired by subject.",
+  "version": "0.7.1",
+  "description": "Faster CUIMS login, attendance and safe-skip counts without opening the portal, and a cleaner LMS.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -12,7 +12,8 @@
   "permissions": [
     "storage",
     "tabs",
-    "offscreen"
+    "offscreen",
+    "alarms"
   ],
   "host_permissions": [
     "https://students.cuchd.in/*",
@@ -50,6 +51,7 @@
         "https://students.cuchd.in/*"
       ],
       "js": [
+        "captcha-prep.js",
         "content.js"
       ],
       "run_at": "document_start",

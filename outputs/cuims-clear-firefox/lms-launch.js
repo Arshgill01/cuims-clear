@@ -5,7 +5,26 @@
   const SESSION = "cuims-clear:lms-launch";
   const LAUNCH_AT = "lmsLaunchAt";
   const TTL = 10 * 60 * 1000;
+  const COVER_ID = "cuims-clear-lms-cover";
+  const COVER_MAX_MS = 12_000;
   let inflight = false;
+
+  // While the dashboard hands off to LMS, show the LMS loading colour instead
+  // of CUIMS. Only the dashboard is covered; a login form must stay visible.
+  function cover() {
+    if (!/\/StudentHome\.aspx$/i.test(location.pathname) || document.getElementById(COVER_ID)) return;
+    const style = document.createElement("style");
+    style.id = COVER_ID;
+    style.textContent = `html{background:oklch(0.97 0.004 125)!important}
+html body{visibility:hidden!important}
+html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-items:center;visibility:visible;color:oklch(0.46 0.014 125);font:600 13px/1.4 "Avenir Next",Avenir,Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.01em}`;
+    document.documentElement.append(style);
+    setTimeout(uncover, COVER_MAX_MS);
+  }
+
+  function uncover() {
+    document.getElementById(COVER_ID)?.remove();
+  }
 
   function fresh(value) {
     const at = Number(value);
@@ -108,15 +127,22 @@
     if (inflight) return;
     inflight = true;
     try {
-      if (!(await hasIntent())) return;
+      if (!(await hasIntent())) {
+        uncover();
+        return;
+      }
       if (document.querySelector("#txtUserId, #txtPassword, #captchaCode, #btnNext, #btnLogin")) {
+        uncover();
         setTimeout(() => {
           if (document.querySelector("#txtUserId, #txtPassword, #captchaCode")) needsUi();
         }, 8000);
         return;
       }
       const link = await waitForLink();
-      if (!link) return;
+      if (!link) {
+        uncover();
+        return;
+      }
       await remember();
       activate(link);
     } finally {
@@ -128,6 +154,7 @@
     sessionStorage.setItem(SESSION, String(Date.now()));
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
   }
+  if (fresh(sessionStorage.getItem(SESSION))) cover();
 
   try {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

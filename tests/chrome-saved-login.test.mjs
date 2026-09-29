@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
+import { contentSource } from "./content-source.mjs";
 
 const source = (name) => readFileSync(new URL(`../outputs/cuims-clear-chrome/${name}`, import.meta.url), "utf8");
 
@@ -69,7 +70,7 @@ function login(solveResult = { text: "abcd", confidence: 88, score: 113, agreeme
     console,
     image, answer, password,
   });
-  vm.runInContext(source("content.js"), context);
+  vm.runInContext(contentSource("chrome"), context);
   vm.runInContext('settings.uid = "TEST123"; settings.password = "fixture-password"; settings.autoSolveCaptcha = false; extractCaptchaVariants = () => ["fixture"];', context);
   return { context, uid, password, image, answer, nextClicks: () => nextClicks, loginClicks: () => loginClicks, local };
 }
@@ -146,12 +147,20 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   let removed;
   vm.runInNewContext(source("popup.js"), {
     document: { querySelector: element },
-    window: { clearTimeout() {}, setTimeout() {} },
-    chrome: { storage: { local: {
-      get(defaults, callback) { callback(defaults); },
-      set(values, callback) { saved = values; callback(); },
-      remove(keys, callback) { removed = Array.from(keys); callback(); },
-    } } },
+    window: { clearTimeout() {}, setTimeout() {}, setInterval() {}, clearInterval() {} },
+    CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; } },
+    chrome: {
+      storage: {
+        local: {
+          get(defaults, callback) { callback(defaults); },
+          set(values, callback) { saved = values; callback?.(); },
+          remove(keys, callback) { removed = Array.from(keys); callback(); },
+        },
+        onChanged: { addListener() {} },
+      },
+      runtime: { getManifest: () => ({ version: "0.7.1" }), sendMessage() {} },
+      permissions: { contains() {}, request() {} },
+    },
   });
   element("#uid").value = " TEST123 ";
   element("#password").value = "fixture-password";
@@ -159,6 +168,8 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   assert.equal(saved.uid, "TEST123");
   assert.equal(saved.password, "fixture-password");
   element("#clear-login").click();
-  assert.deepEqual(removed, ["uid", "password"]);
+  assert.deepEqual(removed.slice(0, 2), ["uid", "password"]);
+  assert.ok(removed.includes("attendanceSnapshot"), "Clear login also forgets attendance");
+  assert.equal(removed.includes("autoSubmitLogin"), false, "preferences stay");
   assert.equal(element("#password").value, "");
 });

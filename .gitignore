@@ -13,3 +13,5 @@ work/corpus/ozoom.png
 work/corpus/zoom.png
 work/corpus/grid.png
 work/corpus/__pycache__/
+work/e2e/node_modules/
+work/e2e/results/

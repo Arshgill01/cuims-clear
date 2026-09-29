@@ -120,7 +120,7 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
     } else {
       assert.match(
         readFileSync(new URL("service-worker.js", root), "utf8"),
-        /importScripts\("lms-open\.js"\)/,
+        /importScripts\(\s*"lms-open\.js"/,
       );
     }
     for (const name of ["lms.js", "lms-model.js", "lms-launch.js", "lms-boot.js", "lms-open.js", "lms-open-wrap.js", "lms.css"]) {

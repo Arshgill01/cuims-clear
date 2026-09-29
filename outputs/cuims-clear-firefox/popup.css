@@ -369,15 +369,17 @@ input[type="checkbox"]:focus-visible {
 }
 
 .attendance {
-  --tone-high: #b7f34a;
-  --tone-high-bg: #f8fcef;
-  --tone-tight: #d9a93a;
-  --tone-tight-bg: #fdf8ea;
+  --tone-high: #7aaf2c;
+  --tone-high-ink: #3a6912;
+  --tone-ok: #8d9388;
+  --tone-tight: #d49e2a;
+  --tone-tight-bg: #fffaf0;
   --tone-tight-ink: #6f520f;
-  --tone-low: #c45a45;
-  --tone-low-bg: #fcf2ef;
-  --tone-low-ink: #8f3522;
-  padding-top: 10px;
+  --tone-low: #c9553f;
+  --tone-low-bg: #fff6f4;
+  --tone-low-ink: #93331f;
+  --track: #ebede6;
+  padding-top: 12px;
 }
 
 .attendance-bar {
@@ -385,7 +387,7 @@ input[type="checkbox"]:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .attendance-note {
@@ -395,13 +397,14 @@ input[type="checkbox"]:focus-visible {
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .refresh-button {
   min-height: 28px;
-  padding: 0 10px;
+  padding: 0 11px;
   flex: 0 0 auto;
   border: 1px solid var(--line-strong);
   color: var(--ink);
@@ -419,43 +422,60 @@ input[type="checkbox"]:focus-visible {
   opacity: 0.6;
 }
 
-.attendance-error {
-  margin: -2px 0 8px;
-  color: var(--tone-low-ink);
+.attendance-error,
+.attendance-info {
+  margin: -2px 0 10px;
+  padding: 7px 9px;
+  border-radius: 7px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.4;
+}
+
+.attendance-error {
+  color: var(--tone-low-ink);
+  background: var(--tone-low-bg);
+  box-shadow: inset 0 0 0 1px #f0d3cc;
+}
+
+.attendance-info {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .attendance-empty p:first-child {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-.attendance-empty .attendance-error {
-  margin: 8px 0 0;
+.attendance-empty .attendance-error,
+.attendance-empty .attendance-info {
+  margin: 10px 0 0;
 }
 
 .overall,
 .course {
   position: relative;
-  padding: 8px 10px 8px 12px;
+  min-width: 0;
+  padding: 9px 11px 9px 14px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--surface);
 }
 
+/* Tone rail: the one strong colour on each card. */
 .overall::before,
 .course::before {
   position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  left: 5px;
   width: 3px;
   border-radius: 2px;
-  background: var(--line);
+  background: var(--tone-ok);
   content: "";
 }
 
@@ -463,14 +483,14 @@ input[type="checkbox"]:focus-visible {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .course-title,
 .overall-label {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -488,39 +508,42 @@ input[type="checkbox"]:focus-visible {
 .course-pct,
 .overall-pct {
   flex: 0 0 auto;
-  font-size: 12px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
 }
 
 .overall-pct {
-  font-size: 20px;
+  font-size: 22px;
   letter-spacing: -0.02em;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 
 .meter {
   position: relative;
   display: block;
-  height: 3px;
-  margin: 5px 0 4px;
+  height: 4px;
+  margin: 6px 0 5px;
   border-radius: 2px;
-  background: #eceee8;
+  background: var(--track);
 }
 
 .meter-fill {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 2px;
-  background: var(--line-strong);
+  background: var(--tone-ok);
 }
 
+/* The 75% (or 90%) line the fill has to clear. */
 .meter-mark {
   position: absolute;
-  top: -2px;
-  width: 1px;
-  height: 7px;
-  background: var(--muted);
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: rgb(24 26 23 / 45%);
 }
 
 .course-bottom {
@@ -535,32 +558,49 @@ input[type="checkbox"]:focus-visible {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .counts {
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.line::before {
+  margin: 0 5px;
+  color: var(--line-strong);
+  content: "·";
+}
+
+.line.is-skip {
+  color: var(--tone-high-ink);
+  font-weight: 650;
+}
+
+.line.is-recover {
+  color: var(--tone-low-ink);
+  font-weight: 650;
 }
 
 .overall {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 
-.overall .course-line {
+.overall .line.is-hold {
   color: var(--ink);
   font-weight: 600;
 }
 
 .course-list {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.tone-high {
-  background: var(--tone-high-bg);
 }
 
 .tone-high::before,
@@ -568,7 +608,13 @@ input[type="checkbox"]:focus-visible {
   background: var(--tone-high);
 }
 
+.tone-high .course-pct,
+.tone-high .overall-pct {
+  color: var(--tone-high-ink);
+}
+
 .tone-tight {
+  border-color: #eedfb9;
   background: var(--tone-tight-bg);
 }
 
@@ -583,6 +629,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 .tone-low {
+  border-color: #f0d3cc;
   background: var(--tone-low-bg);
 }
 
@@ -592,8 +639,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 .tone-low .course-pct,
-.tone-low .overall-pct,
-.tone-low .course-line {
+.tone-low .overall-pct {
   color: var(--tone-low-ink);
 }
 
@@ -609,13 +655,14 @@ input[type="checkbox"]:focus-visible {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 1px 5px;
+  gap: 3px;
+  padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 999px;
   color: var(--muted);
   background: var(--surface);
-  font: 600 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 650 10px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .chip.is-now {
@@ -628,18 +675,22 @@ input[type="checkbox"]:focus-visible {
 }
 
 .chip.is-present {
-  color: var(--success);
+  border-color: #cfe4b3;
+  color: var(--tone-high-ink);
+  background: #f1f8e6;
 }
 
 .chip.is-absent {
+  border-color: #f0d3cc;
   color: var(--tone-low-ink);
+  background: var(--tone-low-bg);
 }
 
 .attendance-foot {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--muted);
   font-size: 10px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .access-banner {
