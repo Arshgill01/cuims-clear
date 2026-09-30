@@ -146,7 +146,7 @@ function pageTheme(themeId = "tokyo-night") {
   const context = vm.createContext({
     console,
     localStorage: { getItem: (key) => (key === "cuims-clear:theme" ? themeId : "on"), setItem() {} },
-    document: { documentElement: null, readyState: "complete" },
+    document: { documentElement: null, readyState: "complete", addEventListener() {} },
     chrome: { storage: { local: { get() {} }, onChanged: { addListener() {} } } },
     getComputedStyle: () => ({}),
   });
@@ -174,6 +174,31 @@ test("CUIMS buttons take the theme accent, and glass panels stay translucent", (
   assert.match(P.mapBackground({ r: 25, g: 26, b: 32, a: 0.5 }, t, { matches: () => false }), /^rgba\(.+0\.5\)$/);
   const light = pageTheme("catppuccin-latte");
   assert.match(light.P.mapBackground({ r: 25, g: 26, b: 32, a: 0.5 }, light.t, { matches: () => false }), /^rgba\(255, 255, 255, 0\.8\)$/);
+});
+
+test("jQuery UI textures and near-white gradients are dropped; icons and coloured gradients stay", () => {
+  const { P } = pageTheme();
+  assert.equal(P.washedImage('url("https://students.cuchd.in/Scripts/images/ui-bg_glass_75_e6e6e6_1x400.png")', "repeat-x"), true);
+  assert.equal(P.washedImage('url("strip.png")', "repeat-x"), true);
+  assert.equal(P.washedImage('url("images/ui-icons_222222_256x240.png")', "no-repeat"), false);
+  assert.equal(P.washedImage('url("search-icon.png")', "no-repeat"), false);
+  assert.equal(P.washedImage("linear-gradient(rgb(255, 255, 255), rgb(240, 240, 240))", "repeat"), true);
+  assert.equal(P.washedImage("linear-gradient(135deg, rgb(78, 115, 223), rgb(28, 200, 138))", "repeat"), false);
+  assert.equal(P.washedImage("none", "repeat"), false);
+});
+
+test("CUIMS pages are repainted when they change after load, and never flash before the first paint", () => {
+  const source = read("cuims-theme.js");
+  // jQuery UI adds its classes after load; UpdatePanels swap markup.
+  assert.match(source, /attributeOldValue: true, attributeFilter: \["class", "style"\]/);
+  assert.match(source, /record\.oldValue === target\.getAttribute\(record\.attributeName\)/);
+  // CUIMS's own `body{background:… !important}` beats any stylesheet rule.
+  assert.match(source, /function paintRoot/);
+  // Hidden until the stored choice and the first paint, with a safety reveal.
+  assert.match(source, /hold\("choice"\)/);
+  assert.match(source, /CLOAK_MAX_MS = \d+/);
+  // A theme switch updates this site's copy, so the next load starts right.
+  assert.match(source, /onChanged[\s\S]*localStorage\.setItem\("cuims-clear:theme", current\)/);
 });
 
 test("the default theme leaves CUIMS exactly as it is", () => {

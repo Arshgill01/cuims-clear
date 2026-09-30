@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Chandigarh University Management System</title>
+<link rel="stylesheet" href="https://students.cuchd.in/assets/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://students.cuchd.in/assets/css/style.css">
+<link rel="stylesheet" href="https://students.cuchd.in/Scripts/jquery-ui.css">
+<style>body, html { height: 100%; width: 100%; }</style>
+<style>body { background: #f3f3f9 !important; }</style>
+<script src="https://students.cuchd.in/Scripts/jquery-2.0.3.min.js"></script>
+</head>
+<body class="body-gradient">
+<div class="container-fluid">
+  <div class="card" id="top" style="background:#fff;border:1px solid #ddd;padding:12px;margin:8px"><h4 style="color:#333">Important Links</h4><a href="#">CLICK HERE</a></div>
+  <div style="background:#6fb28a;color:#000;padding:10px;text-align:center;font-weight:bold">Student Marks View</div>
+  <div class="late-card" id="late">Late-styled card: this only turns white once a stylesheet that loads late arrives.</div>
+  <div id="accordion">
+    <h3>Probability and Statistics (24SMT-341)</h3>
+    <div><table class="table"><tr style="background:#222;color:#fff"><th>Exam Description</th><th>Max. Marks</th><th>Marks Obtd.</th></tr><tr><td>Mid-Semester Test-1</td><td>20</td><td>14</td></tr></table></div>
+    <h3>Computer Networks (24CST-302)</h3>
+    <div><p>Nothing yet</p></div>
+    <h3>Aptitude-III (24TDT-312)</h3>
+    <div><p>Nothing yet</p></div>
+  </div>
+  <div id="up"><p>Update panel placeholder</p></div>
+  <div id="toggler" style="padding:10px">Class toggled later</div>
+</div>
+<script src="https://students.cuchd.in/Scripts/jquery-ui.js"></script>
+<script>
+  // Late stylesheet, as some CUIMS pages add them from script.
+  setTimeout(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://students.cuchd.in/__fixture/late.css";
+    document.head.append(link);
+  }, 600);
+  // ASP.NET AJAX calls BindEvents after load, like CUIMS.
+  addEventListener("load", () => setTimeout(() => $("#accordion").accordion({ heightStyle: "content" }), 300));
+  // An UpdatePanel partial postback swapping markup.
+  setTimeout(() => {
+    document.getElementById("up").innerHTML = '<div class="ui-widget-content" style="padding:10px"><b>Swapped by an UpdatePanel</b> with jQuery UI content styling</div>';
+  }, 1500);
+  setTimeout(() => document.getElementById("toggler").classList.add("ui-state-highlight"), 1800);
+</script>
+</body>
+</html>

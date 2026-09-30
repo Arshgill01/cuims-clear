@@ -1,25 +1,45 @@
 // Restyles CUIMS itself in the chosen theme. CUIMS has no theme support and
 // many hand-coloured pages, so instead of per-page rules this reads each
-// element's own colours once and maps them onto the theme: neutral whites
-// and greys become the theme's surfaces and text; coloured things keep their
+// element's own colours and maps them onto the theme: neutral whites and
+// greys become the theme's surfaces and text; coloured things keep their
 // meaning by hue (a red "Absent" stays red, in the theme's red). Every mapped
 // text colour is checked against what it ends up sitting on.
+//
+// CUIMS keeps changing its own colours after load (jQuery UI adds classes,
+// stylesheets arrive late, UpdatePanels swap markup), so an element is
+// re-read whenever its class, inline colour or subtree changes. Every repaint
+// runs synchronously in the mutation callback, before the browser draws.
 
 (() => {
   const themes = globalThis.CuimsThemes;
   if (!themes) return;
   const STYLE_ID = "cc-cuims-theme";
   const ENABLED_KEY = "themeCuims";
+  // The page stays hidden (the theme's canvas shows) until the first full
+  // paint, so the default CUIMS look never flashes. Revealed regardless after
+  // this long, in case the page never finishes loading.
+  const CLOAK_ATTR = "data-cc-cloak";
+  const CLOAK_ID = "cc-cuims-cloak";
+  const CLOAK_MAX_MS = 2500;
   const SKIP = new Set(["IMG", "SVG", "PATH", "VIDEO", "CANVAS", "IFRAME", "SCRIPT", "STYLE", "LINK", "META", "NOSCRIPT", "OBJECT", "EMBED", "BR", "PICTURE", "SOURCE"]);
-  const PROPS = ["background-color", "color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"];
+  const PROPS = ["background-color", "background-image", "color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"];
+  const COLOR_PROPS = ["background-color", "background-image", "background", "color", "border-color", "border"];
 
-  const originals = new WeakMap();
-  const touched = new Set();
+  let originals = new WeakMap();
+  // What we wrote on each element, as the browser stored it, so a later
+  // write by the page can be told apart from ours.
+  const applied = new Map();
+  // Elements CUIMS animates (`transition: all .4s`) would fade from the
+  // original colours to the theme's on every paint. Their own transition list
+  // gets our colour properties appended at 0s: a later entry wins, so colours
+  // switch at once while the page's other animations keep running.
+  const EASE_PROPS = ["transition-property", "transition-duration", "transition-timing-function", "transition-delay"];
+  const easing = new WeakMap();
+  const eased = new Set();
   let theme = null;
   let enabled = true;
   let observer = null;
-  let queued = false;
-  const pending = new Set();
+  let cloakTimer = 0;
 
   // ---- colour helpers ----
 
@@ -130,9 +150,56 @@
     return hsl(color).l > 0.6 ? t.line : t.lineStrong;
   }
 
+
+  // Background images that only exist to look light: jQuery UI's ui-bg_*
+  // textures (repeated strips) and gradients made of near-whites. Icon
+  // sprites, photos and coloured gradients are left alone.
+  function washedImage(image, repeat) {
+    if (!image || image === "none") return false;
+    if (/url\(/.test(image)) return /ui-bg_/i.test(image) || /repeat-[xy]/.test(repeat || "");
+    if (!/gradient/.test(image)) return false;
+    const stops = [...image.matchAll(/rgba?\([^)]+\)/g)].map((match) => parse(match[0])).filter(Boolean);
+    return stops.length > 0 && stops.every((stop) => stop.a < 0.05 || (family(stop) === "neutral" && hsl(stop).l > 0.8));
+  }
+
+  // The colour a washed gradient stands for, when it has no fill of its own.
+  function imageFill(image) {
+    const stop = parse((image.match(/rgba?\([^)]+\)/) || [])[0]);
+    return stop && stop.a >= 0.05 ? stop : null;
+  }
+
   function set(el, prop, value) {
     if (value == null) return;
     el.style.setProperty(prop, value, "important");
+    let mine = applied.get(el);
+    if (!mine) applied.set(el, (mine = {}));
+    mine[prop] = el.style.getPropertyValue(prop);
+  }
+
+  // Our writes are still in place (the page has not overwritten them).
+  function intact(el) {
+    const mine = applied.get(el);
+    if (!mine) return false;
+    for (const prop in mine) {
+      if (el.style.getPropertyValue(prop) !== mine[prop] || el.style.getPropertyPriority(prop) !== "important") return false;
+    }
+    return true;
+  }
+
+  // Takes back what we wrote, keeping anything the page wrote since, and
+  // forgets the element's colours so the next paint reads them afresh.
+  function unpaint(el) {
+    const mine = applied.get(el);
+    const record = originals.get(el);
+    originals.delete(el);
+    if (!mine) return;
+    applied.delete(el);
+    for (const prop in mine) {
+      if (el.style.getPropertyValue(prop) !== mine[prop] || el.style.getPropertyPriority(prop) !== "important") continue;
+      const [value, priority] = record?.inline[prop] || ["", ""];
+      if (value) el.style.setProperty(prop, value, priority);
+      else el.style.removeProperty(prop);
+    }
   }
 
   function remember(el) {
@@ -143,23 +210,46 @@
       record.computed[prop] = cs.getPropertyValue(prop);
       record.inline[prop] = [el.style.getPropertyValue(prop), el.style.getPropertyPriority(prop)];
     }
+    record.repeat = cs.getPropertyValue("background-repeat");
+    if (!easing.has(el)) {
+      easing.set(el, {
+        computed: EASE_PROPS.map((prop) => cs.getPropertyValue(prop)),
+        inline: EASE_PROPS.map((prop) => [el.style.getPropertyValue(prop), el.style.getPropertyPriority(prop)]),
+      });
+    }
     record.borders = ["top", "right", "bottom", "left"].map((side) => parseFloat(cs.getPropertyValue(`border-${side}-width`)) > 0);
     // Text colour is inherited: if this element's colour is just what we
     // painted on its parent, its real original is the parent's original.
     const parent = el.parentElement;
-    const parentRecord = parent && touched.has(parent) ? originals.get(parent) : null;
+    const parentRecord = parent && applied.has(parent) ? originals.get(parent) : null;
     if (parentRecord && !el.style.getPropertyValue("color") && cs.color === getComputedStyle(parent).color) {
       record.computed.color = parentRecord.computed.color;
     }
+    // Tiny dark blocks with nothing inside are drawn glyphs (menu bars,
+    // dots). Measured here, while only reading, so painting never forces a
+    // layout per element.
+    const bg = parse(record.computed["background-color"]);
+    if (bg && bg.a >= 0.05 && family(bg) === "neutral" && hsl(bg).l < 0.45 && !el.firstElementChild) {
+      const box = el.getBoundingClientRect();
+      record.glyph = box.width * box.height > 0 && box.width * box.height < 600;
+    }
     originals.set(el, record);
     return record;
+  }
+
+  // The fill an element is drawn with once its washed-out image is gone.
+  function fillOf(record) {
+    const color = parse(record.computed["background-color"]);
+    const image = record.computed["background-image"];
+    if (!washedImage(image, record.repeat) || (color && color.a >= 0.05)) return color;
+    return /gradient/.test(image) ? imageFill(image) : color;
   }
 
   // What an element is drawn on, after mapping, as a solid colour.
   function surfaceUnder(el, t) {
     for (let node = el; node && node.nodeType === 1 && node !== document.body; node = node.parentElement) {
       const record = originals.get(node);
-      const bg = record ? parse(record.computed["background-color"]) : null;
+      const bg = record ? fillOf(record) : null;
       if (bg && bg.a >= 0.3) {
         const mapped = mapBackground(bg, t, node);
         if (mapped) return over(mapped, surfaceUnder(node.parentElement, t));
@@ -168,34 +258,75 @@
     return t.canvas;
   }
 
+  // A computed list, split on top-level commas (cubic-bezier(…) has its own).
+  function list(value) {
+    const items = [];
+    let depth = 0;
+    let item = "";
+    for (const char of String(value || "")) {
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
+      if (char === "," && !depth) {
+        items.push(item.trim());
+        item = "";
+      } else item += char;
+    }
+    if (item.trim()) items.push(item.trim());
+    return items;
+  }
+
+  // Longhands, not the `transition` shorthand, which not every engine
+  // serialises in computed style.
+  function ease(el) {
+    const original = easing.get(el);
+    if (!original || eased.has(el) || !/[1-9]/.test(original.computed[1])) return;
+    const [names, ...rest] = original.computed.map(list);
+    if (!names.length || rest.some((values) => !values.length)) return;
+    // Shorter lists repeat to the property count; line them up first.
+    const aligned = rest.map((values) => names.map((_, index) => values[index % values.length]));
+    const extra = { "transition-duration": "0s", "transition-timing-function": "linear", "transition-delay": "0s" };
+    el.style.setProperty("transition-property", [...names, ...PROPS].join(", "), "important");
+    EASE_PROPS.slice(1).forEach((prop, index) => el.style.setProperty(prop, [...aligned[index], ...PROPS.map(() => extra[prop])].join(", "), "important"));
+    eased.add(el);
+  }
+
+  function unease() {
+    for (const el of eased) {
+      (easing.get(el)?.inline || []).forEach(([value, priority], index) => {
+        if (value) el.style.setProperty(EASE_PROPS[index], value, priority);
+        else el.style.removeProperty(EASE_PROPS[index]);
+      });
+    }
+    eased.clear();
+  }
+
   function paint(el) {
     const t = theme;
     const record = remember(el);
-    const control = el.matches(CONTROL) && family(parse(record.computed["background-color"]) || { r: 0, g: 0, b: 0, a: 0 }) !== "neutral";
-    let bg = mapBackground(parse(record.computed["background-color"]), t, el);
-    // Tiny dark blocks are drawn glyphs (menu bars, dots): they take the ink.
-    const original = parse(record.computed["background-color"]);
-    if (bg && original && family(original) === "neutral" && hsl(original).l < 0.45 && !el.firstElementChild) {
-      const box = el.getBoundingClientRect();
-      if (box.width * box.height > 0 && box.width * box.height < 600) bg = t.ink;
-    }
+    ease(el);
+    const original = fillOf(record);
+    const control = el.matches(CONTROL) && family(original || { r: 0, g: 0, b: 0, a: 0 }) !== "neutral";
+    let bg = mapBackground(original, t, el);
+    if (bg && record.glyph) bg = t.ink;
+    if (washedImage(record.computed["background-image"], record.repeat)) set(el, "background-image", "none");
     set(el, "background-color", bg);
     const under = bg ? over(bg, surfaceUnder(el.parentElement, t)) : surfaceUnder(el.parentElement, t);
     if (control) {
       set(el, "color", t.accentInk);
-      touched.add(el);
       return;
     }
     let text = mapText(parse(record.computed.color), t);
     if (!text || themes.contrast(text, under) < 4.5) {
-      text = themes.contrast(t.ink, under) >= themes.contrast(t.canvas, under) ? t.ink : t.canvas;
-      if (themes.contrast("#ffffff", under) > themes.contrast(text, under)) text = "#ffffff";
+      // The theme's own ink or canvas when either reads; else plain white or
+      // near-black, whichever reads best.
+      const best = (colors) => colors.reduce((a, b) => (themes.contrast(b, under) > themes.contrast(a, under) ? b : a));
+      text = best([t.ink, t.canvas]);
+      if (themes.contrast(text, under) < 4.5) text = best([text, "#ffffff", "#111111"]);
     }
     set(el, "color", text);
     ["top", "right", "bottom", "left"].forEach((side, index) => {
       if (record.borders[index]) set(el, `border-${side}-color`, mapBorder(parse(record.computed[`border-${side}-color`]), t));
     });
-    touched.add(el);
   }
 
   function eligible(el) {
@@ -205,31 +336,49 @@
     return true;
   }
 
-  function sweep(root) {
-    if (!theme || !root) return;
+  function elementsOf(root) {
+    const nodes = [];
+    if (!root || root.nodeType !== 1) return nodes;
+    if (eligible(root)) nodes.push(root);
+    if (SKIP.has(root.tagName)) return nodes;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
       acceptNode: (node) => (SKIP.has(node.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
     });
-    // Read every original colour first, then paint, so nothing reads a
-    // colour this pass has already changed.
-    const nodes = [];
-    if (root.nodeType === 1 && eligible(root)) nodes.push(root);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) if (eligible(node)) nodes.push(node);
-    for (const node of nodes) remember(node);
-    for (const node of nodes) paint(node);
+    return nodes;
   }
 
-  function restore() {
-    for (const el of touched) {
-      const record = originals.get(el);
-      if (!record) continue;
-      for (const prop of PROPS) {
-        const [value, priority] = record.inline[prop];
-        if (value) el.style.setProperty(prop, value, priority);
-        else el.style.removeProperty(prop);
+  // Paints a set of subtrees from scratch: take our paint off, read every
+  // original colour, then paint, so nothing reads a colour this pass changed.
+  function repaint(roots) {
+    if (!theme) return;
+    const nodes = [];
+    const seen = new Set();
+    for (const root of roots) {
+      if (!root?.isConnected) continue;
+      for (const node of elementsOf(root)) {
+        if (seen.has(node)) continue;
+        seen.add(node);
+        nodes.push(node);
       }
     }
-    touched.clear();
+    if (!nodes.length) return;
+    quietly(() => {
+      for (const node of nodes) unpaint(node);
+      for (const node of nodes) remember(node);
+      for (const node of nodes) paint(node);
+    });
+  }
+
+  // Transition overrides stay through a theme switch, so nothing fades
+  // between two themes; they go when CUIMS returns to its own look.
+  function unpaintAll(keepEasing) {
+    quietly(() => {
+      for (const el of [...applied.keys()]) unpaint(el);
+      applied.clear();
+      originals = new WeakMap();
+      if (!keepEasing) unease();
+    });
   }
 
   // ---- page-level base, painted before content ----
@@ -251,39 +400,164 @@ ${t.scheme === "dark" ? `.logo img,.nav-logo img{background:rgba(255,255,255,0.9
 input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`;
   }
 
-  function flush() {
-    queued = false;
-    const roots = [...pending];
-    pending.clear();
-    for (const node of roots) if (node.isConnected) sweep(node);
+  // CUIMS's own `body{background:… !important}` comes later in the page and
+  // wins over any stylesheet of ours, so the page roots are painted inline.
+  const roots = new Map();
+  const ROOT_PROPS = ["background-color", "background-image", "color"];
+  function paintRoot(el) {
+    if (!el || !theme) return;
+    if (!roots.has(el)) roots.set(el, ROOT_PROPS.map((prop) => [prop, el.style.getPropertyValue(prop), el.style.getPropertyPriority(prop)]));
+    const want = { "background-color": theme.canvas, "background-image": "none", color: theme.ink };
+    for (const prop of ROOT_PROPS) {
+      if (el.style.getPropertyPriority(prop) === "important" && el.dataset.ccRoot === theme.canvas) continue;
+      el.style.setProperty(prop, want[prop], "important");
+    }
+    el.dataset.ccRoot = theme.canvas;
   }
 
-  function queue(node) {
-    pending.add(node);
-    if (queued) return;
-    queued = true;
-    (globalThis.requestIdleCallback || ((fn) => setTimeout(fn, 60)))(flush, { timeout: 250 });
+  function unpaintRoots() {
+    for (const [el, saved] of roots) {
+      for (const [prop, value, priority] of saved) {
+        if (value) el.style.setProperty(prop, value, priority);
+        else el.style.removeProperty(prop);
+      }
+    }
+    for (const el of roots.keys()) delete el.dataset.ccRoot;
+    roots.clear();
+  }
+
+  // Reasons the page is still hidden: the stored choice has not arrived, or
+  // the first paint has not run. The page shows once both are done.
+  const holds = new Set();
+  function hold(reason) {
+    if (!document.documentElement) return;
+    if (!holds.size) {
+      let style = document.getElementById(CLOAK_ID);
+      if (!style) {
+        style = document.createElement("style");
+        style.id = CLOAK_ID;
+        style.textContent = `html[${CLOAK_ATTR}] body{opacity:0 !important}`;
+        (document.head || document.documentElement).append(style);
+      }
+      document.documentElement.setAttribute(CLOAK_ATTR, "");
+      cloakTimer = setTimeout(() => {
+        holds.clear();
+        uncloak();
+      }, CLOAK_MAX_MS);
+    }
+    holds.add(reason);
+  }
+
+  function release(reason) {
+    if (!holds.delete(reason) || holds.size) return;
+    uncloak();
+  }
+
+  function uncloak() {
+    clearTimeout(cloakTimer);
+    document.documentElement?.removeAttribute(CLOAK_ATTR);
+    document.getElementById(CLOAK_ID)?.remove();
+  }
+
+  // ---- keeping up with the page ----
+
+  function stylesheetsReady() {
+    return [...document.querySelectorAll("link[rel~=stylesheet]")].every((link) => link.sheet || link.disabled || !link.href);
+  }
+
+  // Runs our own writes without seeing them as page changes. Anything the
+  // page did before is handled first.
+  function quietly(fn) {
+    if (!observer) return fn();
+    const earlier = observer.takeRecords();
+    observer.disconnect();
+    try {
+      fn();
+    } finally {
+      observe();
+    }
+    if (earlier.length) handle(earlier);
+  }
+
+  function observe() {
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ["class", "style"] });
+  }
+
+  // Which subtrees the page changed in a way that can change colours.
+  function handle(records) {
+    // Until the first paint, which reads the whole page anyway.
+    if (!theme || !document.body || holds.has("paint")) return;
+    const dirty = new Set();
+    for (const record of records) {
+      const target = record.target;
+      if (record.type === "childList") {
+        for (const node of record.addedNodes) if (node.nodeType === 1) dirty.add(node);
+        continue;
+      }
+      if (target.nodeType !== 1) continue;
+      // Rewritten with the same value (classList.remove of an absent class).
+      if (record.oldValue === target.getAttribute(record.attributeName)) continue;
+      if (target === document.body || target === document.documentElement) {
+        if (record.attributeName === "class") dirty.add(document.body);
+        else if (record.attributeName === "style") quietly(() => paintRoot(target));
+        continue;
+      }
+      if (record.attributeName === "class") dirty.add(target);
+      else if (applied.has(target) ? !intact(target) : COLOR_PROPS.some((prop) => target.style.getPropertyValue(prop))) dirty.add(target);
+    }
+    // A subtree inside another dirty one is covered by it.
+    const tops = [...dirty].filter((node) => {
+      for (let up = node.parentElement; up; up = up.parentElement) if (dirty.has(up)) return false;
+      return true;
+    });
+    repaint(tops);
   }
 
   function watch() {
     if (observer || !document.documentElement) return;
-    observer = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const node of record.addedNodes) if (node.nodeType === 1 && eligible(node)) queue(node);
-      }
+    observer = new MutationObserver(handle);
+    observe();
+  }
+
+  function unwatch() {
+    observer?.disconnect();
+    observer = null;
+  }
+
+  // A stylesheet that arrives after the first paint changes colours we
+  // already read: read the whole page again.
+  function onSheetLoad(event) {
+    const node = event.target;
+    if (!theme || node?.tagName !== "LINK" || !/stylesheet/i.test(node.rel || "") || !document.body) return;
+    if (holds.has("paint")) return; // the first paint will read it
+    repaint([document.body]);
+  }
+
+  function firstPaint() {
+    if (!theme || !document.body) return release("paint");
+    quietly(() => {
+      paintRoot(document.documentElement);
+      paintRoot(document.body);
     });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    repaint([document.body]);
+    if (stylesheetsReady()) return release("paint");
+    // Wait for the rest of the page's CSS, then read everything once more.
+    addEventListener("load", () => {
+      if (theme) repaint([document.body]);
+      release("paint");
+    }, { once: true });
   }
 
   function apply(id, on) {
     const next = on && id !== themes.DEFAULT ? themes.tokens(id) : null;
     let style = document.getElementById(STYLE_ID);
-    restore();
+    unpaintAll(Boolean(next));
+    unwatch();
+    unpaintRoots();
     theme = next;
     if (!next) {
       style?.remove();
-      observer?.disconnect();
-      observer = null;
+      release("paint");
       return;
     }
     if (!style) {
@@ -292,12 +566,18 @@ input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`
       (document.head || document.documentElement).append(style);
     }
     style.textContent = baseCss(next);
-    const start = () => {
-      sweep(document.body);
-      watch();
-    };
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
-    else start();
+    paintRoot(document.documentElement);
+    watch();
+    if (document.readyState === "loading") hold("paint");
+    else firstPaint();
+  }
+
+  document.addEventListener("load", onSheetLoad, true);
+  if (document.readyState === "loading") {
+    // Hidden until the stored choice arrives, so a stale local copy of the
+    // choice never shows; then until the first paint.
+    hold("choice");
+    document.addEventListener("DOMContentLoaded", firstPaint, { once: true });
   }
 
   // First frame from this site's copy of the choice; then the real one.
@@ -319,6 +599,7 @@ input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`
       enabled = on;
       apply(current, enabled);
     }
+    release("choice");
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -326,10 +607,11 @@ input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`
     if (changes[themes.STORE_KEY]) current = themes.valid(changes[themes.STORE_KEY].newValue);
     if (changes[ENABLED_KEY]) enabled = changes[ENABLED_KEY].newValue !== false;
     try {
+      localStorage.setItem("cuims-clear:theme", current);
       localStorage.setItem("cuims-clear:theme-cuims", enabled ? "on" : "off");
     } catch {}
     apply(current, enabled);
   });
 
-  globalThis.CuimsPageTheme = { apply, sweep, family, mapBackground, mapText };
+  globalThis.CuimsPageTheme = { apply, repaint, family, mapBackground, mapText, washedImage };
 })();

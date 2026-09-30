@@ -24,7 +24,7 @@ for (const build of ["chrome", "firefox"]) {
       removeAttribute() { delete this.dataset.cuimsClearSuppressed; },
     };
     const body = {
-      classList: { remove() {} },
+      classList: { contains: () => false, remove() {} },
       style: { removeProperty() {} },
       querySelectorAll: () => [],
     };

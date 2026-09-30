@@ -881,7 +881,9 @@ function cleanupBackdrop() {
     .querySelectorAll(".modal-backdrop, .ui-widget-overlay, .swal2-backdrop-show")
     .forEach((backdrop) => suppress(backdrop, "backdrop"));
 
-  document.body?.classList.remove("modal-open");
+  // classList.remove rewrites the attribute even when the class is absent,
+  // which every class observer on the page (the theme's included) sees.
+  if (document.body?.classList.contains("modal-open")) document.body.classList.remove("modal-open");
   document.body?.style.removeProperty("overflow");
   document.body?.style.removeProperty("padding-right");
 }
