@@ -214,15 +214,25 @@
       return counts;
     }
 
+    // Leave read before LEAVES_VERSION counted refusals as pending; drop it.
+    function currentLeaves(state) {
+      const cached = state.attendanceLeaves;
+      return cached?.v === client.LEAVES_VERSION ? cached : null;
+    }
+
+    function snapshotLeaves(leaves) {
+      return leaves?.checkedAt ? { v: client.LEAVES_VERSION, checkedAt: leaves.checkedAt, pending: leaves.pending || {} } : null;
+    }
+
     // Folds one leave page's applications in and recounts pending leave when
     // the set of pending applications changed.
     async function mergeLeaves(state, request, meta, which, applications) {
-      const cached = state.attendanceLeaves || {};
+      const cached = currentLeaves(state) || {};
       const apps = { dl: cached.apps?.dl || [], ml: cached.apps?.ml || [], [which]: applications };
       const all = [...apps.dl, ...apps.ml];
       const pendingKey = all.filter((leave) => leave.state === "pending").map((leave) => leave.id).sort().join(",");
       const pending = pendingKey === cached.pendingKey && cached.pending ? cached.pending : await countPendingLeave(request, meta, state.attendanceCourses, all);
-      const leaves = { ...cached, apps, pending, pendingKey, [`${which}At`]: now(), checkedAt: now(), triedAt: now() };
+      const leaves = { ...cached, v: client.LEAVES_VERSION, apps, pending, pendingKey, [`${which}At`]: now(), checkedAt: now(), triedAt: now() };
       await storage.set({ attendanceLeaves: leaves });
       return leaves;
     }
@@ -230,14 +240,14 @@
     // Leave pages are heavy inner pages: at most one every three hours,
     // alternating duty and medical, and never alongside another heavy page.
     async function readLeaves(state, request, meta, heavy) {
-      const cached = state.attendanceLeaves;
+      const cached = currentLeaves(state);
       if (heavy.used || now() - Number(cached?.triedAt || 0) < LEAVE_CHECK_MS) return cached;
       heavy.used += 1;
       const which = Number(cached?.dlAt || 0) <= Number(cached?.mlAt || 0) ? "dl" : "ml";
       try {
         return await mergeLeaves(state, request, meta, which, await client.readLeavePage(request, which));
       } catch {
-        const leaves = { ...(cached || {}), triedAt: now() };
+        const leaves = { ...(cached || {}), v: client.LEAVES_VERSION, triedAt: now() };
         await storage.set({ attendanceLeaves: leaves });
         return leaves;
       }
@@ -253,7 +263,7 @@
       try {
         const leaves = await mergeLeaves(state, createRequest(budget), meta, which, applications);
         if (state.attendanceSnapshot) {
-          await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: { checkedAt: leaves.checkedAt, pending: leaves.pending || {} } } });
+          await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: snapshotLeaves(leaves) } });
         }
         return leaves;
       } finally {
@@ -362,7 +372,7 @@
           marksDay: campus.key,
           slots,
           subjects: subjects.map(({ encryptCode, ...subject }) => subject),
-          leaves: leaves?.checkedAt ? { checkedAt: leaves.checkedAt, pending: leaves.pending || {} } : null,
+          leaves: snapshotLeaves(leaves),
         };
         await storage.set({ attendanceSnapshot: snapshot, attendanceFailStreak: 0, attendanceBackoffUntil: 0 });
         await setStatus({ working: false, phase: "", error: "", code: "" });

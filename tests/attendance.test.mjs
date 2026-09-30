@@ -804,20 +804,37 @@ test("the popup shows the goal switch, today's plan and the leave card, and neve
 
 // ---- VDL allowance per subject ----
 
-test("each subject shows its VDL left out of 10, with pending applications already taking a slot", () => {
+test("\"Not Recommend\" and cancelled duty leave are refused, not pending (real CUIMS statuses)", () => {
+  const states = ["Recommend and Approved", "Not Recommend", "Cancel By You on 25 Sep 2026", "Not Approved", "Recommended", "Pending"].map(A.leaveState);
+  assert.deepEqual(states, ["approved", "rejected", "rejected", "rejected", "pending", "pending"]);
+});
+
+test("pending leave counted by 0.8.0's parser is ignored until the leave pages are read again", () => {
+  const snapshot = {
+    subjects: [{ code: "A-1", title: "Alpha", attended: 30, delivered: 32, leave: { vdl: 6, idl: 0, adl: 0, ml: 0 } }],
+    leaves: { checkedAt: new Date(MONDAY_11).toISOString(), pending: { A1: { vdl: 4, idl: 0, adl: 0, ml: 0 } } },
+  };
+  const view = A.buildAnalytics(snapshot, new Date(MONDAY_11));
+  assert.equal(view.subjects[0].leave.pending.dl, 0);
+  assert.equal(view.subjects[0].leave.vdlLeft, 4);
+  assert.equal(view.overall.ifApproved, null);
+  assert.equal(view.leavesCheckedAt, null);
+});
+
+test("each subject shows its VDL left as 10 minus CUIMS's VDL column; pending applications do not take a slot", () => {
   const snapshot = {
     subjects: [
       { code: "A-1", title: "Alpha", attended: 30, delivered: 32, leave: { vdl: 6, idl: 0, adl: 0, ml: 2 } },
       { code: "B-1", title: "Beta", attended: 30, delivered: 32, leave: { vdl: 9, idl: 0, adl: 0, ml: 0 } },
       { code: "C-1", title: "Gamma", attended: 30, delivered: 32, leave: { vdl: 10, idl: 0, adl: 0, ml: 0 } },
     ],
-    leaves: { checkedAt: new Date(MONDAY_11).toISOString(), pending: { A1: { vdl: 1, idl: 0, adl: 0, ml: 1 } } },
+    leaves: { v: A.LEAVES_VERSION, checkedAt: new Date(MONDAY_11).toISOString(), pending: { A1: { vdl: 1, idl: 0, adl: 0, ml: 1 } } },
   };
   const view = A.buildAnalytics(snapshot, new Date(MONDAY_11));
   const left = Object.fromEntries(view.subjects.map((row) => [row.code, row.leave.vdlLeft]));
-  assert.deepEqual(left, { "A-1": 3, "B-1": 1, "C-1": 0 });
+  assert.deepEqual(left, { "A-1": 4, "B-1": 1, "C-1": 0 });
   const html = A.renderAttendance(view, { now: new Date(MONDAY_11) });
-  assert.match(html, /VDL 3 left · 1 pending/);
+  assert.match(html, /VDL 4 left · 1 pending/);
   assert.match(html, /ML 1 pending/);
   assert.match(html, /tag-vdl is-low[^>]*>VDL 1 left/);
   assert.match(html, /tag-vdl is-out[^>]*>VDL 0 left/);

@@ -181,6 +181,8 @@
   // the per-subject rule applies.
   // Voluntary duty leave allowance, per subject, per semester.
   const VDL_PER_SUBJECT = 10;
+  // Bumped when the way pending leave is counted changes.
+  const LEAVES_VERSION = 2;
 
   const GOALS = {
     standard: { id: "standard", subject: SUBJECT_MIN, overall: OVERALL_MIN, label: "75% each + 90% overall" },
@@ -327,7 +329,10 @@
     const subjects = Array.isArray(snapshot?.subjects) ? snapshot.subjects : [];
     const slots = todaysSlots(snapshot?.slots, campus);
     const marksDay = snapshot?.marksDay || "";
-    const pendingLeave = snapshot?.leaves?.pending || {};
+    // Leave counted by an older parser (which read "Not Recommend" as
+    // pending) is ignored until the leave pages are read again.
+    const leaves = snapshot?.leaves?.v === api.LEAVES_VERSION ? snapshot.leaves : null;
+    const pendingLeave = leaves?.pending || {};
 
     const rows = subjects.map((subject) => {
       const mine = slots.filter((slot) => slotBelongsTo(slot, subject));
@@ -348,8 +353,8 @@
       const leave = {
         approved: { vdl: approvedVdl, idl: subject.leave?.idl || 0, adl: subject.leave?.adl || 0, ml: subject.leave?.ml || 0 },
         pending: { dl: pendingVdl + (waiting.idl || 0) + (waiting.adl || 0), vdl: pendingVdl, ml: waiting.ml || 0 },
-        // A pending application already takes a slot.
-        vdlLeft: Math.max(0, VDL_PER_SUBJECT - approvedVdl - pendingVdl),
+        // Only the VDL column CUIMS reports counts against the allowance.
+        vdlLeft: Math.max(0, VDL_PER_SUBJECT - approvedVdl),
       };
       return {
         code: subject.code || "",
@@ -405,7 +410,7 @@
       todayKey: campus.key,
       goal,
       timetableKnown: Array.isArray(snapshot?.slots) && snapshot.slots.length > 0,
-      leavesCheckedAt: snapshot?.leaves?.checkedAt || null,
+      leavesCheckedAt: leaves?.checkedAt || null,
       overall,
       today,
       subjects: rows,
@@ -425,6 +430,7 @@
   api.buildAnalytics = buildAnalytics;
   api.GOALS = GOALS;
   api.VDL_PER_SUBJECT = VDL_PER_SUBJECT;
+  api.LEAVES_VERSION = LEAVES_VERSION;
   api.planToday = planToday;
   api.slotKey = slotKey;
   api.normCode = normCode;

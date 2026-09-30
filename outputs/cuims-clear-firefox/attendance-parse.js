@@ -180,9 +180,12 @@
       .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
   }
 
+  // CUIMS statuses seen: "Recommend and Approved", "Not Recommend",
+  // "Cancel By You on 25 Sep 2026". A refusal is checked first so "Not
+  // Approved" never reads as approved.
   function leaveState(status) {
     const text = String(status || "");
-    if (/reject|disapprov|declin|cancel/i.test(text)) return "rejected";
+    if (/\bnot\s+(recommend|approv|sanction)|reject|disapprov|declin|cancel/i.test(text)) return "rejected";
     if (/approv/i.test(text)) return "approved";
     return "pending";
   }
@@ -310,6 +313,7 @@
   api.normalizeSummary = normalizeSummary;
   api.normalizeMarks = normalizeMarks;
   api.parseTimetable = parseTimetable;
+  api.leaveState = leaveState;
   api.parseDutyLeaves = parseDutyLeaves;
   api.parseMedicalLeaves = parseMedicalLeaves;
 })(globalThis);
