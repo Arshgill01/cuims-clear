@@ -108,7 +108,7 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
     const boot = manifest.content_scripts.find((s) => s.js?.includes("lms-boot.js"));
     assert.equal(boot.run_at, "document_start");
     assert.deepEqual(boot.css, ["lms.css"]);
-    assert.deepEqual(boot.js, ["lms-boot.js", "lms-model.js", "lms.js"]);
+    assert.deepEqual(boot.js, ["themes.js", "lms-boot.js", "lms-model.js", "lms.js"]);
     assert.equal(manifest.content_scripts.filter((s) => s.js?.includes("lms.js")).length, 1);
     const wrap = manifest.content_scripts.find((s) => s.js?.includes("lms-open-wrap.js"));
     const launch = manifest.content_scripts.find((s) => s.js?.includes("lms-launch.js"));
@@ -123,7 +123,7 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
         /importScripts\(\s*"lms-open\.js"/,
       );
     }
-    for (const name of ["lms.js", "lms-model.js", "lms-launch.js", "lms-boot.js", "lms-open.js", "lms-open-wrap.js", "lms.css"]) {
+    for (const name of ["lms.js", "lms-model.js", "lms-launch.js", "lms-boot.js", "lms-open.js", "lms-open-wrap.js", "lms.css", "themes.js", "theme-boot.js", "theme-bg.js"]) {
       assert.equal(readFileSync(new URL(name, root), "utf8"), readFileSync(new URL(`../outputs/cuims-clear-firefox/${name}`, import.meta.url), "utf8"));
     }
   }

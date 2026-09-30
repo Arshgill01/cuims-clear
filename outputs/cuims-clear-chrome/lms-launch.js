@@ -17,9 +17,15 @@
     if (!/\/StudentHome\.aspx$/i.test(location.pathname) || document.getElementById(COVER_ID)) return;
     const style = document.createElement("style");
     style.id = COVER_ID;
-    style.textContent = `html{background:oklch(0.97 0.004 125)!important}
+    // The chosen theme's page colour, so the hand-off matches the LMS it opens.
+    const theme = globalThis.CuimsThemes;
+    const id = theme?.mirrored();
+    const tokens = id && id !== theme.DEFAULT ? theme.tokens(id) : null;
+    const bg = tokens ? tokens.canvas : "oklch(0.97 0.004 125)";
+    const fg = tokens ? tokens.muted : "oklch(0.46 0.014 125)";
+    style.textContent = `html{background:${bg}!important}
 html body{visibility:hidden!important}
-html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-items:center;visibility:visible;color:oklch(0.46 0.014 125);font:600 13px/1.4 "Avenir Next",Avenir,Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.01em}`;
+html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-items:center;visibility:visible;color:${fg};font:600 13px/1.4 "Avenir Next",Avenir,Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.01em}`;
     document.documentElement.append(style);
     setTimeout(uncover, COVER_MAX_MS);
   }

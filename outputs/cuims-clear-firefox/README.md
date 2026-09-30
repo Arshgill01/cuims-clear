@@ -20,6 +20,10 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - shows attendance on an **Attendance** tab without opening CUIMS: overall and
   per-subject percentages, how many classes you can skip while staying at 75% per
   subject and 90% overall, and today's classes as they happen;
+- offers thirteen colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
+  Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Catppuccin Latte and Flexoki
+  Light, from Omarchy) that restyle the popup, the LMS clear view, CUIMS itself, and the
+  toolbar icon together, with a switch to leave CUIMS pages untouched;
 - lets you erase the saved UID, password, and attendance from the popup at any time.
 
 CAPTCHA solving happens entirely inside the extension: the OCR engine, WASM

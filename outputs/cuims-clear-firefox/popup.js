@@ -39,8 +39,19 @@ const status = document.querySelector("#status");
 const togglePassword = document.querySelector("#toggle-password");
 const clearLogin = document.querySelector("#clear-login");
 
-const tabs = { login: document.querySelector("#tab-login"), attendance: document.querySelector("#tab-attendance") };
-const views = { login: document.querySelector("#view-login"), attendance: document.querySelector("#view-attendance") };
+const tabs = {
+  login: document.querySelector("#tab-login"),
+  attendance: document.querySelector("#tab-attendance"),
+  theme: document.querySelector("#tab-theme"),
+};
+const views = {
+  login: document.querySelector("#view-login"),
+  attendance: document.querySelector("#view-attendance"),
+  theme: document.querySelector("#view-theme"),
+};
+
+const themeGrid = views.theme.querySelector(".theme-grid");
+let currentTheme = CuimsThemes.mirrored();
 
 const accessBanner = document.querySelector("#access-banner");
 document.querySelector("#version").textContent = `v${chrome.runtime.getManifest().version}`;
@@ -195,6 +206,7 @@ function showView(name) {
   }
   chrome.storage.local.set({ popupView: name });
   window.clearInterval(repaintTimer);
+  if (name === "theme") renderThemes();
   if (name !== "attendance") return;
   const working = paintAttendance();
   repaintTimer = window.setInterval(paintAttendance, 30_000);
@@ -206,7 +218,9 @@ for (const [name, tab] of Object.entries(tabs)) {
   tab.addEventListener("click", () => showView(name));
   tab.addEventListener("keydown", (event) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    const next = name === "login" ? "attendance" : "login";
+    const order = Object.keys(tabs);
+    const step = event.key === "ArrowRight" ? 1 : -1;
+    const next = order[(order.indexOf(name) + step + order.length) % order.length];
     showView(next);
     tabs[next].focus();
   });
@@ -257,7 +271,7 @@ chrome.storage.local.get({ attendanceSnapshot: null, attendanceStatus: null, pop
   attendance.snapshot = stored.attendanceSnapshot;
   attendance.status = stored.attendanceStatus;
   prefs = { goal: stored.attendanceGoal || "standard", plan: stored.attendancePlan || { day: "", skips: [] } };
-  if (stored.popupView === "attendance") showView("attendance");
+  if (stored.popupView === "attendance" || stored.popupView === "theme") showView(stored.popupView);
 });
 
 // Firefox lets people withdraw an MV3 add-on's site access (Chrome can too). Without it the
@@ -276,3 +290,65 @@ document.querySelector("#grant-access").addEventListener("click", () => {
 });
 
 checkSiteAccess();
+
+// ---- themes ----
+
+// Each card previews its theme with that theme's own colours.
+function themeCard(entry) {
+  const t = CuimsThemes.tokens(entry.id);
+  const vars = {
+    "--p-canvas": t.canvas, "--p-surface": t.surface, "--p-ink": t.ink, "--p-line": t.line, "--p-accent": t.accent,
+    "--p-good": t.good, "--p-track": t.track, "--p-brand-bg": t.brandBg, "--p-brand-ink": t.brandInk,
+  };
+  const style = Object.entries(vars).map(([name, value]) => `${name}:${value}`).join(";");
+  const dots = [t.goodInk, t.warnInk, t.badInk].map((color) => `<span style="background:${color}"></span>`).join("");
+  return `<li><button type="button" class="theme-card" role="radio" data-theme-id="${entry.id}" aria-checked="${entry.id === currentTheme}" style="${style}">
+    <span class="theme-preview" aria-hidden="true">
+      <span class="theme-preview-top"><span class="theme-preview-mark">//</span><span class="theme-preview-accent"></span></span>
+      <span class="theme-preview-card"><span class="theme-preview-line"></span><span class="theme-preview-meter"><span></span></span><span class="theme-preview-dots">${dots}</span></span>
+    </span>
+    <span class="theme-label"><span class="theme-name">${CuimsAttendance.escapeHtml(entry.name)}</span><span class="theme-mode">${entry.scheme === "dark" ? "Dark" : "Light"}</span></span>
+  </button></li>`;
+}
+
+function renderThemes() {
+  themeGrid.innerHTML = CuimsThemes.list.map(themeCard).join("");
+}
+
+function useTheme(id) {
+  currentTheme = CuimsThemes.valid(id);
+  CuimsThemes.applyToPopup(document.documentElement, currentTheme);
+  if (!views.theme.hidden) {
+    for (const card of themeGrid.querySelectorAll("[data-theme-id]")) card.setAttribute("aria-checked", String(card.dataset.themeId === currentTheme));
+  }
+}
+
+themeGrid.addEventListener("click", (event) => {
+  const card = event.target.closest("[data-theme-id]");
+  if (!card) return;
+  useTheme(card.dataset.themeId);
+  CuimsThemes.save(currentTheme);
+});
+
+// Arrow keys move through the cards like a radio group.
+themeGrid.addEventListener("keydown", (event) => {
+  const keys = { ArrowRight: 1, ArrowDown: 2, ArrowLeft: -1, ArrowUp: -2 };
+  if (!(event.key in keys)) return;
+  const cards = [...themeGrid.querySelectorAll("[data-theme-id]")];
+  const index = cards.indexOf(document.activeElement);
+  if (index < 0) return;
+  event.preventDefault();
+  const next = cards[Math.max(0, Math.min(cards.length - 1, index + keys[event.key]))];
+  next.focus();
+  next.click();
+});
+
+CuimsThemes.load().then(useTheme);
+CuimsThemes.onChange(useTheme);
+
+// Restyling CUIMS itself can be switched off on its own.
+const themeCuims = document.querySelector("#theme-cuims");
+chrome.storage.local.get({ themeCuims: true }, (stored) => {
+  themeCuims.checked = stored.themeCuims !== false;
+});
+themeCuims.addEventListener("change", () => chrome.storage.local.set({ themeCuims: themeCuims.checked }));

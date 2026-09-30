@@ -140,7 +140,7 @@ test("Chrome preserves a manually edited CAPTCHA instead of replacing or submitt
 test("Chrome popup saves credentials and Clear login removes them without erasing preferences", () => {
   const elements = new Map();
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, { value: "", checked: true, addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute() {} });
+    if (!elements.has(id)) elements.set(id, { value: "", checked: true, hidden: true, innerHTML: "", addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute() {}, querySelector: () => element(`${id} *`), querySelectorAll: () => [] });
     return elements.get(id);
   };
   let saved;
@@ -148,7 +148,8 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   vm.runInNewContext(source("popup.js"), {
     document: { querySelector: element },
     window: { clearTimeout() {}, setTimeout() {}, setInterval() {}, clearInterval() {} },
-    CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; } },
+    CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; }, escapeHtml: (value) => String(value) },
+    CuimsThemes: { list: [], mirrored: () => "clear", valid: (id) => id, tokens: () => ({}), load: () => Promise.resolve("clear"), save() {}, onChange() {}, applyToPopup() {} },
     chrome: {
       storage: {
         local: {

@@ -1,5 +1,7 @@
 importScripts(
   "lms-open.js",
+  "themes.js",
+  "theme-bg.js",
   "attendance-parse.js",
   "attendance-model.js",
   "attendance-client.js",

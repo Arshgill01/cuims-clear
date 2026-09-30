@@ -406,8 +406,19 @@ function showLoginStatus(message, tone = "info") {
     document.body.appendChild(el);
   }
   el.dataset.tone = tone;
-  el.style.background = tone === "danger" ? "#3b1418" : tone === "warn" ? "#3a2a10" : "#142033";
-  el.style.color = tone === "danger" ? "#ffd7dc" : tone === "warn" ? "#ffe6b8" : "#d7e7ff";
+  const themes = typeof globalThis !== "undefined" ? globalThis.CuimsThemes : null;
+  const id = themes?.mirrored();
+  if (id && id !== themes.DEFAULT) {
+    // The chosen theme: its card colours, with the tone as a side stripe.
+    const t = themes.tokens(id);
+    el.style.background = t.scheme === "dark" ? t.surface : t.ink;
+    el.style.color = t.scheme === "dark" ? t.ink : t.canvas;
+    el.style.borderLeft = `4px solid ${tone === "danger" ? t.bad : tone === "warn" ? t.warn : t.accent}`;
+  } else {
+    el.style.background = tone === "danger" ? "#3b1418" : tone === "warn" ? "#3a2a10" : "#142033";
+    el.style.color = tone === "danger" ? "#ffd7dc" : tone === "warn" ? "#ffe6b8" : "#d7e7ff";
+    el.style.borderLeft = "";
+  }
   el.textContent = message;
 }
 
@@ -965,6 +976,9 @@ function markUserEdits() {
 }
 
 function startExtension() {
+  // Keeps this site's copy of the theme current for the first-frame paints.
+  globalThis.CuimsThemes?.load();
+  globalThis.CuimsThemes?.onChange(() => {});
   chrome.storage.local.get({ ...DEFAULT_SETTINGS, ...SHARED_LOGIN_DEFAULTS }, (storedSettings) => {
     settings = { ...DEFAULT_SETTINGS, ...storedSettings };
     for (const key of Object.keys(SHARED_LOGIN_DEFAULTS)) sharedLogin[key] = storedSettings[key];

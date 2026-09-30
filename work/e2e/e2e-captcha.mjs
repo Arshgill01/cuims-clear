@@ -22,8 +22,13 @@ const PASSWORD_PAGE = `<!doctype html><html><head><title>CUIMS</title></head><bo
 const browser = browserName === "firefox"
   ? await launchFirefox()
   : await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true, pipe: true, enableExtensions: true });
-await browser.installExtension(path.resolve(extDir));
+const extId = await browser.installExtension(path.resolve(extDir));
 await new Promise((r) => setTimeout(r, 2500));
+// Optionally run with a theme restyling the login page.
+if (process.env.THEME && browserName !== "firefox") {
+  const sw = await (await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().includes(extId))).worker();
+  await sw.evaluate((theme) => chrome.storage.local.set({ theme }), process.env.THEME);
+}
 
 const page = await browser.newPage();
 let current = null;

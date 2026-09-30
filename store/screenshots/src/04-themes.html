@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Themes</title><link rel="stylesheet" href="shared.css">
+<style>
+  .top { position: absolute; top: 118px; left: 96px; right: 96px; display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; }
+  .top h1 { font-size: 46px; max-width: 620px; }
+  .top .lede { margin: 0; max-width: 400px; font-size: 19px; }
+  .row { position: absolute; left: 96px; right: 96px; top: 290px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+  .shot { height: 430px; overflow: hidden; border-radius: 12px; border: 1px solid #c3c9bb; box-shadow: 0 24px 48px -20px rgb(24 26 23 / 32%); position: relative; }
+  .shot img { width: 100%; display: block; }
+  .shot::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 90px; background: linear-gradient(to bottom, transparent, var(--fade)); }
+  .name { margin-top: 12px; font-size: 15px; font-weight: 700; text-align: center; }
+</style>
+<body><div class="brand"><div class="mark"><span>//</span></div>CUIMS Clear</div>
+<div class="top">
+  <div><p class="eyebrow">Themes</p><h1>Thirteen themes. Everything follows.</h1></div>
+  <p class="lede">The popup, LMS, CUIMS itself and the toolbar icon change together. Palettes from Omarchy, checked for readable contrast.</p>
+</div>
+<div class="row">
+  <div><div class="shot" style="--fade:#1a1b26"><img src=".popup-theme-tokyo-night.png" alt=""></div><p class="name">Tokyo Night</p></div>
+  <div><div class="shot" style="--fade:#eff1f5"><img src=".popup-theme-catppuccin-latte.png" alt=""></div><p class="name">Catppuccin Latte</p></div>
+  <div><div class="shot" style="--fade:#111c18"><img src=".popup-theme-osaka-jade.png" alt=""></div><p class="name">Osaka Jade</p></div>
+  <div><div class="shot" style="--fade:#05182e"><img src=".popup-theme-retro-82.png" alt=""></div><p class="name">Retro-82</p></div>
+</div>
+</body></html>

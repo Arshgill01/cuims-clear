@@ -23,7 +23,7 @@ fi
 
 for f in captcha-prep.js content.js background.js popup.html popup.js popup.css \
   attendance-parse.js attendance-model.js attendance-client.js attendance-daemon.js attendance-view.js attendance-bg.js \
-  lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js; do
+  lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js themes.js theme-boot.js theme-bg.js cuims-theme.js; do
   cp "$FF/$f" "$CH/$f"
 done
 

@@ -13,7 +13,10 @@ const head = `<link rel="stylesheet" href="/lms.css" />
 window.chrome = {
   storage: {
     local: {
-      get: (defaults, cb) => cb({ ...defaults, lmsClear: sessionStorage.getItem("clear") !== "false" }),
+      get: (defaults, cb) => {
+        const value = { ...defaults, lmsClear: sessionStorage.getItem("clear") !== "false", theme: localStorage.getItem("cuims-clear:theme") || "clear" };
+        return cb ? cb(value) : Promise.resolve(value);
+      },
       set: (value) => sessionStorage.setItem("clear", String(value.lmsClear !== false)),
     },
     onChanged: { addListener() {} },
@@ -27,6 +30,8 @@ window.fetch = async (url, opts) => {
   return response;
 };
 </script>
+<script>try { const t = new URLSearchParams(location.search).get("theme"); if (t) localStorage.setItem("cuims-clear:theme", t); } catch {}</script>
+<script src="/themes.js"></script>
 <script src="/lms-boot.js"></script>
 <script src="/lms-model.js"></script>
 <script src="/lms.js"></script>`;
@@ -46,7 +51,7 @@ function page(req) {
     return fixture("directory.html");
   }
   const asset = url.pathname.replace(/^\//, "");
-  if (["lms.css", "lms.js", "lms-model.js", "lms-boot.js"].includes(asset)) {
+  if (["lms.css", "lms.js", "lms-model.js", "lms-boot.js", "themes.js"].includes(asset)) {
     return readFileSync(new URL(asset, firefox));
   }
   return null;

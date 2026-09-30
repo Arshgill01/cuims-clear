@@ -51,7 +51,7 @@ if (browserName === "firefox") {
   const target = await browser.waitForTarget((t) => t.type() === "service_worker" && t.url().startsWith(base));
   const worker = await target.worker();
   report = await worker.evaluate(async (samples) => {
-    const out = { daemon: typeof startAttendanceBackground, ensure: typeof cuimsEnsureSession, lms: typeof openLms, alarm: Boolean(await chrome.alarms.get("cuims-clear-attendance")), reads: [] };
+    const out = { daemon: typeof startAttendanceBackground, ensure: typeof cuimsEnsureSession, lms: typeof openLms, alarmsApi: typeof chrome.alarms, reads: [] };
     for (const { label, b64 } of samples) {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
       const t = performance.now();
@@ -62,7 +62,7 @@ if (browserName === "firefox") {
   }, samples);
 }
 const right = report.reads.filter((r) => r.text === r.label).length;
-console.log(JSON.stringify({ browser: browserName, popup, daemon: report.daemon, ensure: report.ensure, lms: report.lms, alarm: report.alarm, backgroundCaptcha: `${right}/${report.reads.length}`, ms: report.reads.map((r) => r.ms), wrong: report.reads.filter((r) => r.text !== r.label), errors }, null, 1));
+console.log(JSON.stringify({ browser: browserName, popup, daemon: report.daemon, ensure: report.ensure, lms: report.lms, alarmsApi: report.alarmsApi, backgroundCaptcha: `${right}/${report.reads.length}`, ms: report.reads.map((r) => r.ms), wrong: report.reads.filter((r) => r.text !== r.label), errors }, null, 1));
 await browser.close().catch(() => {});
 browser.__kill?.();
 process.exit(0);

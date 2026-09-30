@@ -36,12 +36,13 @@
   };
   const query = new URLSearchParams(location.search);
   const view = query.get("view") || "attendance";
-  const data = { uid: "23BCS12345", password: "demo-password", autoAdvanceUid: true, autoSolveCaptcha: true, autoSubmitLogin: true, blockEvents: true, blockFeedback: true, popupView: view, attendanceSnapshot: snapshot, attendanceStatus: null, attendanceGoal: query.get("goal") || "standard", attendancePlan: { day, skips: (query.get("plan") || "").split(",").filter(Boolean) } };
+  try { localStorage.setItem("cuims-clear:theme", query.get("theme") || "clear"); } catch {}
+  const data = { uid: "23BCS12345", password: "demo-password", autoAdvanceUid: true, autoSolveCaptcha: true, autoSubmitLogin: true, blockEvents: true, blockFeedback: true, popupView: view, attendanceSnapshot: snapshot, attendanceStatus: null, theme: query.get("theme") || "clear", attendanceGoal: query.get("goal") || "standard", attendancePlan: { day, skips: (query.get("plan") || "").split(",").filter(Boolean) } };
   const pick = (d) => (typeof d === "string" ? { [d]: data[d] } : Array.isArray(d) ? Object.fromEntries(d.map((k) => [k, data[k]])) : Object.fromEntries(Object.entries(d).map(([k, v]) => [k, k in data ? data[k] : v])));
   const local = { get: (d, cb) => { const v = pick(d); cb?.(v); return Promise.resolve(v); }, set: (v, cb) => { Object.assign(data, v); cb?.(); return Promise.resolve(); }, remove: (k, cb) => { cb?.(); return Promise.resolve(); } };
   window.chrome = {
     storage: { local, onChanged: { addListener() {} } },
-    runtime: { sendMessage: (m, cb) => cb?.({ snapshot }), getManifest: () => ({ version: "0.7.3" }), lastError: null, getURL: (p) => p },
+    runtime: { sendMessage: (m, cb) => cb?.({ snapshot }), getManifest: () => ({ version: "0.8.0" }), lastError: null, getURL: (p) => p },
     permissions: { contains: (o, cb) => cb?.(true), request: (o, cb) => cb?.(true) },
     tabs: { query: async () => [] },
   };

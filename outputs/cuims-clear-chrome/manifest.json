@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "Faster CUIMS login, attendance and safe-skip counts without opening the portal, and a cleaner LMS.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -51,6 +51,8 @@
       ],
       "js": [
         "captcha-prep.js",
+        "themes.js",
+        "cuims-theme.js",
         "content.js"
       ],
       "run_at": "document_start",
@@ -71,6 +73,7 @@
         "https://students.cuchd.in/*"
       ],
       "js": [
+        "themes.js",
         "lms-launch.js"
       ],
       "run_at": "document_start"
@@ -80,6 +83,7 @@
         "https://lms.cuchd.in/*"
       ],
       "js": [
+        "themes.js",
         "lms-boot.js",
         "lms-model.js",
         "lms.js"

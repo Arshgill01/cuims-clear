@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CUIMS Clear</title>
     <link rel="stylesheet" href="popup.css" />
+    <!-- Theme before first paint: a synchronous copy, corrected from storage. -->
+    <script src="themes.js"></script>
+    <script src="theme-boot.js"></script>
   </head>
   <body>
     <main>
@@ -34,6 +37,7 @@
       <div class="view-tabs" role="tablist" aria-label="Sections">
         <button id="tab-login" type="button" role="tab" aria-selected="true" aria-controls="view-login">Login</button>
         <button id="tab-attendance" type="button" role="tab" aria-selected="false" aria-controls="view-attendance" tabindex="-1">Attendance</button>
+        <button id="tab-theme" type="button" role="tab" aria-selected="false" aria-controls="view-theme" tabindex="-1">Theme</button>
       </div>
 
       <div id="view-login" role="tabpanel" aria-labelledby="tab-login">
@@ -127,6 +131,18 @@
       </div>
 
       <section id="view-attendance" class="attendance" role="tabpanel" aria-labelledby="tab-attendance" hidden></section>
+
+      <section id="view-theme" class="themes" role="tabpanel" aria-labelledby="tab-theme" hidden>
+        <ul class="theme-grid" role="radiogroup" aria-label="Theme"></ul>
+        <label class="check-row theme-cuims">
+          <span>
+            <strong>Also restyle CUIMS pages</strong>
+            <small>Recolours the portal itself. Turn off if a page looks wrong.</small>
+          </span>
+          <input id="theme-cuims" type="checkbox" checked />
+        </label>
+        <p class="theme-note">Changes the popup, LMS, CUIMS, and the toolbar icon. Themes from Omarchy.</p>
+      </section>
     </main>
     <script src="attendance-model.js"></script>
     <script src="attendance-view.js"></script>

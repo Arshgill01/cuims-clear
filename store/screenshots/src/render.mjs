@@ -5,14 +5,17 @@ import path from "node:path";
 const here = path.dirname(new URL(import.meta.url).pathname);
 const out = path.resolve(here, "..");
 const pkg = path.join(here, ".popup");
+// The login shot shows a real CUIMS captcha from the test corpus.
+cpSync(path.resolve(here, "../../../work/corpus/raw/c002.jpg"), path.join(here, ".captcha.jpg"));
 rmSync(pkg, { recursive: true, force: true });
 cpSync(path.resolve(here, "../../../outputs/cuims-clear-chrome"), pkg, { recursive: true });
 cpSync(path.join(here, "demo-chrome.js"), path.join(pkg, "demo-chrome.js"));
-writeFileSync(path.join(pkg, "popup.html"), readFileSync(path.join(pkg, "popup.html"), "utf8").replace("<script", '<script src="demo-chrome.js"></script><script'));
+writeFileSync(path.join(pkg, "popup.html"), readFileSync(path.join(pkg, "popup.html"), "utf8").replace('<script src="themes.js">', '<script src="demo-chrome.js"></script><script src="themes.js">'));
 const browser = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true, args: ["--allow-file-access-from-files"] });
 const page = await browser.newPage();
 page.on("pageerror", (e) => console.log("PAGEERR", e.message));
-const variants = { attendance: "view=attendance", login: "view=login", ...(process.env.PREVIEW ? { planned: "view=attendance&plan=23CSH303@780", strict: "view=attendance&goal=strict" } : {}) };
+const themed = Object.fromEntries(["tokyo-night", "catppuccin-latte", "osaka-jade", "retro-82"].map((id) => [`theme-${id}`, `view=attendance&theme=${id}`]));
+const variants = { attendance: "view=attendance", login: "view=login", ...themed, ...(process.env.PREVIEW ? { planned: "view=attendance&plan=23CSH303@780", strict: "view=attendance&goal=strict" } : {}) };
 for (const [name, query] of Object.entries(variants)) {
   await page.setViewport({ width: 368, height: 760, deviceScaleFactor: 2 });
   await page.goto(`file://${pkg}/popup.html?${query}`);
