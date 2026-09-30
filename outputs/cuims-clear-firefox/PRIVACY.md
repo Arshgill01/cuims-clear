@@ -23,10 +23,10 @@ tokens are written to extension storage.
 
 When the student uses the Attendance tab, the extension signs in to `students.cuchd.in`
 with the saved UID and password in the background, the same way the login page does, and
-reads the student's own attendance report and timetable. It uses the browser's existing
-CUIMS session when one is open. On weekdays during class hours it may send one light
-request to keep that session open and one refresh after a class ends. The attendance
-figures are stored only in local extension storage. Nothing is sent anywhere else.
+reads the student's own attendance report, timetable, and duty and medical leave applications (to show pending leave). It uses the browser's existing
+CUIMS session when one is open. It talks to CUIMS only when the student uses the popup;
+nothing runs in the background on a timer. The attendance figures are stored only in
+local extension storage. Nothing is sent anywhere else.
 
 The user can delete the stored UID, password, and attendance at any time with **Clear login** in the
 extension popup, or remove all stored settings by uninstalling the extension.
@@ -37,4 +37,4 @@ The extension has access only to pages under `https://students.cuchd.in/*` and
 Firefox extension storage is not encrypted. Anyone with access to the user's Firefox
 profile may be able to read locally stored values.
 
-Last updated: 29 September 2026.
+Last updated: 30 September 2026.

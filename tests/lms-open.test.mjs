@@ -9,6 +9,7 @@ const source = readFileSync(new URL("../outputs/cuims-clear-firefox/lms-open.js"
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const TICKET = "https://lms.cuchd.in/auth/cuims/login.php?ticket=fixture&u=1";
+const COURSES = "https://lms.cuchd.in/my/courses.php";
 const DASHBOARD = `<form method="post" action="./StudentHome.aspx" id="form1">
 <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="vs&amp;1" />
 <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="ev" />
@@ -18,28 +19,34 @@ const HANDOFF = `<html><script>window.open('${TICKET.replace(/&/g, "\\u0026")}',
 
 // students.cuchd.in as the SSO launcher sees it. `signedIn` may flip when the
 // session helper signs in.
-function cuims({ signedIn = true, handoff = HANDOFF } = {}) {
+// `mode`: "redirect" is live CUIMS (the postback redirects through to LMS);
+// "window-open" is the older page that calls window.open(<ticket>).
+function cuims({ signedIn = true, handoff = HANDOFF, mode = "redirect" } = {}) {
   const state = { signedIn, requests: [], posts: [] };
   async function fetchImpl(url, options = {}) {
     const method = options.method || "GET";
     state.requests.push({ method, url, redirect: options.redirect });
-    const response = (status, body, type = "basic") => ({ status, type, text: async () => body });
+    const response = (status, body, type = "basic", at = url) => ({ status, type, url: at, text: async () => body });
     if (!state.signedIn) return response(0, "", "opaqueredirect");
     if (method === "GET") return response(200, DASHBOARD);
     state.posts.push(new URLSearchParams(options.body));
+    if (mode === "redirect") {
+      if (options.redirect === "manual") return response(0, "", "opaqueredirect");
+      return response(200, "<html>moodle</html>", "basic", "https://lms.cuchd.in/");
+    }
     return response(200, handoff);
   }
   return { state, fetchImpl };
 }
 
-function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:newtab" }, server = cuims(), ensureSession } = {}) {
+function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:newtab" }, server = cuims({ mode: "window-open" }), ensureSession } = {}) {
   const created = [];
   const updated = [];
   const focused = [];
   const storage = {};
   const listeners = [];
   const chrome = {
-    runtime: { id: "ext", onMessage: { addListener: (fn) => listeners.push(fn) } },
+    runtime: { id: "ext", getURL: (path) => `chrome-extension://ext/${path}`, onMessage: { addListener: (fn) => listeners.push(fn) } },
     storage: { local: { set: async (value) => Object.assign(storage, value) } },
     tabs: {
       get: async (id) => (active?.id === id ? active : Promise.reject(new Error("gone"))),
@@ -58,7 +65,7 @@ function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:n
   const context = vm.createContext({ chrome, fetch: server.fetchImpl, URL, URLSearchParams, AbortSignal, setTimeout, clearTimeout, Promise });
   if (ensureSession) context.cuimsEnsureSession = ensureSession;
   vm.runInContext(source, context);
-  const send = (message, sender = { id: "ext" }) =>
+  const send = (message, sender = { id: "ext", url: "chrome-extension://ext/popup.html" }) =>
     new Promise((resolve) => {
       const async = listeners[0](message, sender, resolve);
       if (async !== true) resolve(undefined);
@@ -100,7 +107,7 @@ test("the background never follows CUIMS redirects, so it never loads a login pa
 });
 
 test("signed out: the background signs in first, then goes straight to LMS", async () => {
-  const server = cuims({ signedIn: false });
+  const server = cuims({ signedIn: false, mode: "window-open" });
   let asked = 0;
   const result = open({
     server,
@@ -120,12 +127,12 @@ test("when the background cannot sign in, the tab loads CUIMS and hands off from
   const result = open({ server: cuims({ signedIn: false }), ensureSession: async () => ({ alive: false, reason: "bad-captcha" }) });
   const response = await result.launch();
   assert.equal(response.via, "page");
-  assert.ok(result.storage.lmsLaunchAt);
+  assert.equal(result.storage.lmsLaunchAt, undefined, "the intent rides on this tab's URL, never browser-wide");
   assert.deepEqual(plain(result.created), [{ url: "https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms", active: true, index: 1 }]);
 });
 
 test("a handoff that points anywhere but LMS is not followed", async () => {
-  const result = open({ server: cuims({ handoff: `<script>window.open('https://evil.example/steal','_blank')</script>` }) });
+  const result = open({ server: cuims({ mode: "window-open", handoff: `<script>window.open('https://evil.example/steal','_blank')</script>` }) });
   const response = await result.launch();
   assert.equal(response.via, "page");
   assert.equal(result.created[0].url, "https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms");
@@ -166,7 +173,29 @@ test("Open CUIMS on a CUIMS tab just stays there", async () => {
 
 test("content scripts cannot trigger an open", async () => {
   const result = open();
-  const response = await result.send({ type: "cuims-clear:launch-lms" }, { id: "ext", tab: { id: 4 } });
+  const response = await result.send({ type: "cuims-clear:launch-lms" }, { id: "ext", url: "https://students.cuchd.in/StudentHome.aspx", tab: { id: 4 } });
   assert.equal(response, undefined);
   assert.equal(result.server.state.requests.length, 0);
+});
+
+test("live CUIMS: the postback's redirect chain signs LMS in, and the tab opens LMS courses directly", async () => {
+  const server = cuims({ mode: "redirect" });
+  const result = open({ server });
+  const response = await result.launch();
+  assert.equal(response.via, "sso");
+  assert.deepEqual(plain(result.created), [{ url: COURSES, active: true, index: 1 }]);
+  const post = server.state.requests.find((request) => request.method === "POST");
+  assert.equal(post.redirect, "follow");
+  assert.equal(server.state.requests.find((request) => request.method === "GET").redirect, "manual");
+});
+
+test("a postback that ends anywhere but a signed-in LMS page falls back to the tab", async () => {
+  const server = cuims({ mode: "redirect" });
+  const base = server.fetchImpl;
+  server.fetchImpl = async (url, options = {}) => {
+    const answer = await base(url, options);
+    return options.method === "POST" ? { ...answer, url: "https://lms.cuchd.in/login/index.php" } : answer;
+  };
+  const response = await open({ server }).launch();
+  assert.equal(response.via, "page");
 });

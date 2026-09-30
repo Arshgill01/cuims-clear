@@ -1,8 +1,8 @@
-// Connects the attendance daemon to the browser: popup refreshes, the
-// class-hours alarm, and the shared login guard. Runs in the Firefox
-// background page and in Chrome's service worker.
+// Connects the attendance daemon to the browser: popup refreshes and the
+// shared login guard. There is no timer: CUIMS only hears from the extension
+// when the student uses the popup. Runs in the Firefox background page and in
+// Chrome's service worker.
 
-const ATTENDANCE_ALARM = "cuims-clear-attendance";
 const CUIMS_ORIGINS = { origins: ["https://students.cuchd.in/*"] };
 
 function startAttendanceBackground(solveCaptcha) {
@@ -17,8 +17,10 @@ function startAttendanceBackground(solveCaptcha) {
 
   const hasAccess = () => chrome.permissions.contains(CUIMS_ORIGINS);
 
+  // Only this extension's own pages. A content script's sender URL is the
+  // web page it runs in.
   function fromExtensionPage(sender) {
-    return Boolean(sender) && !sender.tab && (!sender.id || sender.id === chrome.runtime.id);
+    return sender?.id === chrome.runtime.id && String(sender.url || "").startsWith(chrome.runtime.getURL(""));
   }
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -33,17 +35,11 @@ function startAttendanceBackground(solveCaptcha) {
     return true;
   });
 
-  // Re-creating an alarm restarts its period, and this script runs on every
-  // wake, so only create it when it is missing.
-  chrome.alarms.get(ATTENDANCE_ALARM).then((alarm) => {
-    if (!alarm) chrome.alarms.create(ATTENDANCE_ALARM, { periodInMinutes: 5 });
-  });
-
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm?.name !== ATTENDANCE_ALARM) return;
-    hasAccess()
-      .then((granted) => (granted ? attendance.tick() : null))
-      .catch(() => {});
+  // The student opened a leave page on CUIMS; its content script sends it.
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (message?.type !== "cuims-clear:leave-page" || !/^https:\/\/students\.cuchd\.in\//i.test(String(sender?.url || sender?.tab?.url || ""))) return;
+    if (sender?.id && sender.id !== chrome.runtime.id) return;
+    attendance.ingestLeavePage(message.which, String(message.html || "")).catch(() => {});
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {

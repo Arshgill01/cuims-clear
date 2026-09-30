@@ -6,7 +6,6 @@
   const SUBJECT_MIN = 0.75;
   const OVERALL_MIN = 0.9;
   const CAMPUS_TZ = "Asia/Kolkata";
-  const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"];
 
   function maxMisses(attended, delivered, ratio) {
     const present = Number(attended);
@@ -76,7 +75,8 @@
       if (month > 12 && day <= 12) [day, month] = [month, day];
       return `${match[3]}-${pad(month)}-${pad(day)}`;
     }
-    match = text.match(/^(\d{1,2})[\s/-]+([A-Za-z]{3,})[\s/,-]+(\d{4})/);
+    // "Tuesday, 29 Sep 2026" and "29 Sep 2026" both appear.
+    match = text.replace(/^[A-Za-z]+,\s*/, "").match(/^(\d{1,2})[\s/-]+([A-Za-z]{3,})[\s/,-]+(\d{4})/);
     if (!match) return null;
     const month = MONTHS[match[2].slice(0, 3).toLowerCase()];
     return month ? `${match[3]}-${pad(month)}-${pad(match[1])}` : null;
@@ -171,46 +171,163 @@
   }
 
   function classState(slot, mark, minutes) {
-    if (mark) return mark.present ? "present" : "absent";
+    if (mark) return mark.present ? "present" : mark.kind === "dl" || mark.kind === "ml" ? "leave" : "absent";
     if (minutes < slot.start) return "next";
     if (minutes <= slot.end) return "now";
     return "pending";
   }
 
-  function subjectTone(percent) {
+  // The two attendance rules students live by. `overall` is null when only
+  // the per-subject rule applies.
+  // Voluntary duty leave allowance, per subject, per semester.
+  const VDL_PER_SUBJECT = 10;
+
+  const GOALS = {
+    standard: { id: "standard", subject: SUBJECT_MIN, overall: OVERALL_MIN, label: "75% each + 90% overall" },
+    strict: { id: "strict", subject: 0.9, overall: null, label: "90% every subject" },
+  };
+
+  function goalOf(id) {
+    return GOALS[id] || GOALS.standard;
+  }
+
+  function pct(ratio) {
+    return Math.round(ratio * 100);
+  }
+
+  function subjectTone(percent, goal) {
     if (percent == null) return "none";
-    if (percent < 75) return "low";
-    if (percent < 80) return "tight";
-    if (percent >= 90) return "high";
+    const floor = goal.subject * 100;
+    if (percent < floor) return "low";
+    if (percent < floor + (goal.overall ? 5 : 3)) return "tight";
+    if (percent >= Math.max(90, floor + 3)) return "high";
     return "ok";
   }
 
   function plural(count, noun) {
-    return `${count} ${noun}${count === 1 ? "" : "es"}`;
+    return `${count} ${noun}${count === 1 ? "" : noun.endsWith("s") ? "es" : "s"}`;
   }
 
-  function subjectLine(row, overall) {
+  function subjectLine(row, overall, goal) {
     if (!(row.delivered + row.pending > 0)) return "No classes yet";
-    if (row.recover > 0) return `Attend next ${row.recover} to reach 75%`;
-    if (row.skip === 0 && row.cappedByOverall) return overall.recover > 0 ? "No skips · overall under 90%" : "No skips · overall at 90%";
-    if (row.skip === 0) return "No skips left";
-    return `Can skip ${row.skip}${row.cappedByOverall ? " · overall cap" : ""}`;
+    if (row.recover > 0) return `Attend next ${row.recover} to reach ${pct(goal.subject)}%`;
+    if (row.skip > 0) return `Can skip ${row.skip}`;
+    if (row.limitedByOverall) return overall.recover > 0 ? `No skips (overall under ${pct(goal.overall)}%)` : `No skips (overall at ${pct(goal.overall)}%)`;
+    return "No skips left";
   }
 
-  function overallLine(overall) {
+  function overallLine(overall, goal, rows) {
     if (!(overall.effectiveDelivered > 0)) return "No classes yet";
-    if (overall.recover > 0) return `Attend next ${plural(overall.recover, "class")} to reach 90%`;
+    if (!goal.overall) {
+      const below = rows.filter((row) => row.recover > 0).length;
+      return below ? `${plural(below, "subject")} under ${pct(goal.subject)}%` : `Every subject at ${pct(goal.subject)}% or more`;
+    }
+    if (overall.recover > 0) return `Attend next ${plural(overall.recover, "class")} to reach ${pct(goal.overall)}%`;
     if (overall.skip === 0) return "No room to miss a class";
-    return `Room to miss ${plural(overall.skip, "class")}`;
+    return `${plural(overall.skip, "miss")} left, shared across subjects`;
+  }
+
+  // Leave that is applied for but not decided counts as absent today. If it
+  // is approved, those classes leave both counts.
+  function withLeave(attended, delivered, pendingLeave) {
+    return pendingLeave > 0 && delivered - pendingLeave > 0 ? percentOf(attended, delivered - pendingLeave) : null;
+  }
+
+  function slotKey(code, start) {
+    return `${normCode(code)}@${start}`;
+  }
+
+  // Today's planner. Every remaining class counts as attended unless it is in
+  // the skip set; a set is safe when each skipped subject, and the overall
+  // figure when the goal has one, still meet the goal at the end of the day.
+  function planToday(rows, goal, planned) {
+    const classes = [];
+    for (const row of rows) {
+      for (const item of row.today) {
+        if (item.state === "next" || item.state === "now") classes.push({ ...item, key: slotKey(row.code, item.start), row });
+      }
+    }
+    classes.sort((left, right) => left.start - right.start);
+    const endOfDay = (skips) => {
+      const bySubject = new Map();
+      let attended = 0;
+      let held = 0;
+      for (const row of rows) {
+        const mine = classes.filter((item) => item.row === row);
+        const skipped = mine.filter((item) => skips.has(item.key)).length;
+        const a = row.attended + mine.length - skipped;
+        const h = row.delivered + row.pending + mine.length;
+        bySubject.set(row, { attended: a, held: h, skipped });
+        attended += a;
+        held += h;
+      }
+      return { bySubject, attended, held };
+    };
+    const safe = (skips) => {
+      if (!skips.size) return true;
+      const day = endOfDay(skips);
+      for (const [, figures] of day.bySubject) {
+        if (figures.skipped && figures.attended / figures.held + 1e-12 < goal.subject) return false;
+      }
+      return !goal.overall || (day.held > 0 && day.attended / day.held + 1e-12 >= goal.overall);
+    };
+    const margin = (skips) => {
+      const day = endOfDay(skips);
+      let least = Infinity;
+      for (const [, figures] of day.bySubject) if (figures.skipped) least = Math.min(least, figures.attended / figures.held - goal.subject);
+      if (goal.overall) least = Math.min(least, day.attended / day.held - goal.overall);
+      return least;
+    };
+
+    // Largest safe set, keeping the most headroom. A day has a handful of
+    // classes, so every subset is checked.
+    let best = new Set();
+    const limit = Math.min(classes.length, 12);
+    for (let mask = 1; mask < 1 << limit; mask += 1) {
+      const set = new Set(classes.slice(0, limit).filter((_, index) => mask & (1 << index)).map((item) => item.key));
+      if (set.size < best.size || !safe(set)) continue;
+      if (set.size > best.size || margin(set) > margin(best)) best = set;
+    }
+
+    const plan = new Set((planned || []).filter((key) => classes.some((item) => item.key === key)));
+    const planSafe = safe(plan);
+    const items = classes.map((item) => {
+      const skipping = plan.has(item.key);
+      const next = new Set(plan);
+      next.add(item.key);
+      return {
+        key: item.key,
+        time: item.time,
+        title: item.row.title,
+        code: item.row.code,
+        state: item.state,
+        kind: item.kind,
+        skipping,
+        verdict: skipping ? (planSafe ? "planned" : "too-many") : safe(next) ? "can-skip" : "attend",
+      };
+    });
+
+    let projection = null;
+    if (plan.size) {
+      const day = endOfDay(plan);
+      projection = {
+        safe: planSafe,
+        overall: day.held > 0 ? (day.attended / day.held) * 100 : null,
+        subjects: [...day.bySubject].filter(([, figures]) => figures.skipped).map(([row, figures]) => ({ title: row.title, percent: (figures.attended / figures.held) * 100, below: figures.attended / figures.held + 1e-12 < goal.subject })),
+      };
+    }
+    return { classes: items, maxSkips: best.size, planned: plan.size, projection };
   }
 
   // Skips assume every other class is attended. A class that ended without a
   // posted mark counts as missed, so a late mark can only raise the number.
-  function buildAnalytics(snapshot, now = new Date()) {
+  function buildAnalytics(snapshot, now = new Date(), options = {}) {
+    const goal = goalOf(options.goal);
     const campus = campusParts(now);
     const subjects = Array.isArray(snapshot?.subjects) ? snapshot.subjects : [];
     const slots = todaysSlots(snapshot?.slots, campus);
     const marksDay = snapshot?.marksDay || "";
+    const pendingLeave = snapshot?.leaves?.pending || {};
 
     const rows = subjects.map((subject) => {
       const mine = slots.filter((slot) => slotBelongsTo(slot, subject));
@@ -224,6 +341,16 @@
       }));
       const attended = Number(subject.attended) || 0;
       const delivered = Number(subject.delivered) || 0;
+      const waiting = pendingLeave[normCode(subject.code)] || {};
+      // Older stored counts had one "dl" figure; it was all voluntary.
+      const pendingVdl = (waiting.vdl || 0) + (waiting.dl || 0);
+      const approvedVdl = subject.leave?.vdl || 0;
+      const leave = {
+        approved: { vdl: approvedVdl, idl: subject.leave?.idl || 0, adl: subject.leave?.adl || 0, ml: subject.leave?.ml || 0 },
+        pending: { dl: pendingVdl + (waiting.idl || 0) + (waiting.adl || 0), vdl: pendingVdl, ml: waiting.ml || 0 },
+        // A pending application already takes a slot.
+        vdlLeft: Math.max(0, VDL_PER_SUBJECT - approvedVdl - pendingVdl),
+      };
       return {
         code: subject.code || "",
         title: subject.title || "Subject",
@@ -231,74 +358,58 @@
         delivered,
         pending: today.filter((item) => item.state === "pending").length,
         percent: percentOf(attended, delivered),
+        leave,
+        ifApproved: withLeave(attended, delivered, leave.pending.dl + leave.pending.ml),
         today,
       };
     });
 
-    const attended = rows.reduce((sum, row) => sum + row.attended, 0);
-    const delivered = rows.reduce((sum, row) => sum + row.delivered, 0);
-    const pending = rows.reduce((sum, row) => sum + row.pending, 0);
+    const sum = (pick) => rows.reduce((total, row) => total + pick(row), 0);
+    const attended = sum((row) => row.attended);
+    const delivered = sum((row) => row.delivered);
+    const pending = sum((row) => row.pending);
+    const pendingLeaveTotal = { dl: sum((row) => row.leave.pending.dl), ml: sum((row) => row.leave.pending.ml) };
     const overall = {
       attended,
       delivered,
       effectiveDelivered: delivered + pending,
       percent: percentOf(attended, delivered),
-      skip: maxMisses(attended, delivered + pending, OVERALL_MIN),
-      recover: classesToRecover(attended, delivered + pending, OVERALL_MIN),
-      left: rows.reduce((sum, row) => sum + row.today.filter((item) => item.state === "next" || item.state === "now").length, 0),
+      skip: goal.overall ? maxMisses(attended, delivered + pending, goal.overall) : 0,
+      recover: goal.overall ? classesToRecover(attended, delivered + pending, goal.overall) : 0,
+      left: sum((row) => row.today.filter((item) => item.state === "next" || item.state === "now").length),
+      leave: {
+        pending: pendingLeaveTotal,
+        approved: { vdl: sum((row) => row.leave.approved.vdl), ml: sum((row) => row.leave.approved.ml), other: sum((row) => row.leave.approved.idl + row.leave.approved.adl) },
+      },
+      ifApproved: withLeave(attended, delivered, pendingLeaveTotal.dl + pendingLeaveTotal.ml),
     };
-    overall.tone = overall.percent == null ? "none" : overall.percent < 90 ? "low" : overall.percent < 92 ? "tight" : "high";
-    overall.line = overallLine(overall);
+    const overallFloor = (goal.overall || goal.subject) * 100;
+    overall.tone = overall.percent == null ? "none" : overall.percent < overallFloor ? "low" : overall.percent < overallFloor + 2 ? "tight" : "high";
 
     for (const row of rows) {
       const held = row.delivered + row.pending;
-      const subjectSkip = maxMisses(row.attended, held, SUBJECT_MIN);
-      row.recover = classesToRecover(row.attended, held, SUBJECT_MIN);
-      const overallRoom = overall.recover > 0 ? 0 : overall.skip;
+      const subjectSkip = maxMisses(row.attended, held, goal.subject);
+      row.recover = classesToRecover(row.attended, held, goal.subject);
+      const overallRoom = !goal.overall ? Infinity : overall.recover > 0 ? 0 : overall.skip;
       row.skip = row.recover > 0 ? 0 : Math.min(subjectSkip, overallRoom);
-      row.cappedByOverall = row.recover === 0 && row.skip < subjectSkip;
-      row.tone = subjectTone(row.percent);
-      row.line = subjectLine(row, overall);
-      row.mustAttendToday = row.skip === 0;
+      row.limitedByOverall = Boolean(goal.overall) && row.recover === 0 && row.skip < subjectSkip;
+      row.tone = subjectTone(row.percent, goal);
+      row.line = subjectLine(row, overall, goal);
     }
+    overall.line = overallLine(overall, goal, rows);
+    const today = slots.length ? planToday(rows, goal, options.plan) : null;
     rows.sort((left, right) => (left.percent ?? 101) - (right.percent ?? 101) || left.title.localeCompare(right.title));
 
     return {
       fetchedAt: snapshot?.fetchedAt || null,
       todayKey: campus.key,
+      goal,
       timetableKnown: Array.isArray(snapshot?.slots) && snapshot.slots.length > 0,
+      leavesCheckedAt: snapshot?.leaves?.checkedAt || null,
       overall,
+      today,
       subjects: rows,
     };
-  }
-
-  // Weekday class hours from the timetable, padded by half an hour each side.
-  // Without a timetable, a plain 8:30–17:30 weekday window.
-  function campusWindow(allSlots, now = new Date()) {
-    const campus = campusParts(now);
-    const closed = { open: false, campus, start: 0, end: 0 };
-    if (!WEEKDAYS.includes(campus.weekday)) return closed;
-    let start = 8 * 60 + 30;
-    let end = 17 * 60 + 30;
-    if (Array.isArray(allSlots) && allSlots.length) {
-      const today = todaysSlots(allSlots, campus);
-      if (!today.length) return closed;
-      start = Math.min(...today.map((slot) => slot.start)) - 30;
-      end = Math.max(...today.map((slot) => slot.end)) + 30;
-    }
-    return { open: campus.minutes >= start && campus.minutes <= end, campus, start, end };
-  }
-
-  // A class that ended at least `settleMinutes` ago, after the last fetch, is
-  // the moment worth one scheduled refresh.
-  function classEndedSince(allSlots, fetchedAt, now = new Date(), settleMinutes = 10) {
-    const campus = campusParts(now);
-    const fetched = fetchedAt ? campusParts(new Date(fetchedAt)) : null;
-    const fetchedMinutes = fetched && fetched.key === campus.key ? fetched.minutes : -1;
-    return todaysSlots(allSlots, campus).some((slot) => {
-      const settled = slot.end + settleMinutes;
-      return settled <= campus.minutes && settled > fetchedMinutes;
-    });
   }
 
   api.SUBJECT_MIN = SUBJECT_MIN;
@@ -312,6 +423,9 @@
   api.todaysSlots = todaysSlots;
   api.slotBelongsTo = slotBelongsTo;
   api.buildAnalytics = buildAnalytics;
-  api.campusWindow = campusWindow;
-  api.classEndedSince = classEndedSince;
+  api.GOALS = GOALS;
+  api.VDL_PER_SUBJECT = VDL_PER_SUBJECT;
+  api.planToday = planToday;
+  api.slotKey = slotKey;
+  api.normCode = normCode;
 })(globalThis);

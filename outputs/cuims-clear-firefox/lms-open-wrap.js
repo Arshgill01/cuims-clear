@@ -66,6 +66,7 @@
       const href = lmsUrl(url);
       if (href) {
         sessionStorage.removeItem(SESSION);
+        sessionStorage.removeItem("cuims-clear:lms-attempt");
         location.assign(href);
         return null;
       }

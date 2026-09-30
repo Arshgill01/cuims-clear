@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
-import { fakeCuims, memoryStorage, TIMETABLE_HTML } from "./fake-cuims.mjs";
+import { fakeCuims, memoryStorage, TIMETABLE_HTML, dutyLeavePage, medicalLeavePage } from "./fake-cuims.mjs";
 import { contentSource } from "./content-source.mjs";
 
 const FILES = ["attendance-parse.js", "attendance-model.js", "attendance-client.js", "attendance-daemon.js", "attendance-view.js"];
@@ -36,7 +36,7 @@ function daemon(server, storage, { clock = MONDAY_11, captcha = "Ab12" } = {}) {
   return { ...instance, sleeps, advance: (ms) => (time += ms), setTime: (value) => (time = value) };
 }
 
-const saved = (extra = {}) => memoryStorage({ uid: "24BCS10184", password: "secret", ...extra });
+const saved = (extra = {}) => memoryStorage({ uid: "24BCS00000", password: "secret", ...extra });
 
 // ---- parsing against the real page shapes ----
 
@@ -81,8 +81,8 @@ test("skip counts respect 75% per subject and cap at the 90% overall room", () =
   assert.equal(view.overall.skip, 1);
   const a = view.subjects.find((row) => row.code === "A");
   assert.equal(a.skip, 1);
-  assert.equal(a.cappedByOverall, true);
-  assert.equal(a.line, "Can skip 1 · overall cap");
+  assert.equal(a.limitedByOverall, true);
+  assert.equal(a.line, "Can skip 1");
 });
 
 test("course tone follows the attendance percentage", () => {
@@ -123,25 +123,6 @@ test("today's later classes show as upcoming and count toward classes left", () 
   assert.equal(view.overall.left, 1);
 });
 
-test("automatic work only runs inside weekday class hours", () => {
-  const slots = A.parseTimetable(TIMETABLE_HTML);
-  assert.equal(A.campusWindow(slots, new Date(MONDAY_11)).open, true);
-  assert.equal(A.campusWindow(slots, new Date(at(8, 0))).open, false);
-  assert.equal(A.campusWindow(slots, new Date(at(14, 30))).open, false, "last class ends 1:40, window closes 2:10");
-  assert.equal(A.campusWindow(slots, new Date(at(11, 0, 27))).open, false, "Sunday");
-  assert.equal(A.campusWindow([], new Date(at(12, 0, 26))).open, false, "Saturday without a timetable");
-});
-
-test("one scheduled refresh is due ten minutes after a class ends", () => {
-  const slots = A.parseTimetable(TIMETABLE_HTML);
-  const before = new Date(at(10, 25)).toISOString();
-  assert.equal(A.classEndedSince(slots, before, new Date(at(10, 29))), false);
-  assert.equal(A.classEndedSince(slots, before, new Date(at(10, 31))), true);
-  assert.equal(A.classEndedSince(slots, new Date(at(10, 31)).toISOString(), new Date(at(11, 0))), false);
-});
-
-// ---- the daemon against a fake CUIMS ----
-
 test("with a live session a refresh reads attendance without touching any login page", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
@@ -151,7 +132,6 @@ test("with a live session a refresh reads attendance without touching any login 
   assert.equal(server.state.requests.some((line) => /\/$|login/i.test(line)), false, server.state.requests.join(", "));
   assert.ok(server.state.requests.length <= 6, server.state.requests.join(", "));
   assert.equal(storage.data.sessionAlive, true);
-  assert.equal(storage.data.attendanceAuto, true);
 });
 
 test("a dead session signs in once: one UID step, one password submit, no replays", async () => {
@@ -257,7 +237,10 @@ test("CUIMS sending attendance to the home page is reported, not treated as sign
 
 test("day-by-day marks are only requested for subjects whose class today has started", async () => {
   const server = fakeCuims({ signedIn: true, marksToday: [{ course: "enc305", AttDate: "28/09/2026", Timing: "09:40 - 10:20 AM", AttendanceCode: "P" }] });
-  const result = await daemon(server, saved()).refresh("manual");
+  const bg = daemon(server, saved());
+  await bg.refresh("manual");
+  bg.advance(60_000);
+  const result = await bg.refresh("manual");
   assert.equal(server.state.requests.filter((line) => /getfullreport/i.test(line)).length, 1);
   const view = A.buildAnalytics(result.snapshot, new Date(MONDAY_11));
   const cc = view.subjects.find((row) => row.code === "24CSP-305");
@@ -272,48 +255,6 @@ test("the timetable is fetched at most once a day", async () => {
   bg.advance(60 * 60_000);
   await bg.refresh("manual");
   assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
-});
-
-test("the alarm does nothing outside class hours, and keep-alive never signs in", async () => {
-  const server = fakeCuims();
-  const storage = saved({ attendanceAuto: true, sessionAlive: true, sessionCheckedAt: 0, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
-  const bg = daemon(server, storage, { clock: at(19, 0) });
-  assert.equal((await bg.tick()).skipped, true);
-  assert.equal(server.state.requests.length, 0);
-
-  bg.setTime(at(9, 30));
-  const ping = await bg.tick();
-  assert.equal(ping.pinged, true);
-  assert.equal(ping.alive, false);
-  assert.deepEqual(server.state.requests, ["GET /StudentHome.aspx"]);
-  assert.equal(storage.data.sessionAlive, false);
-  assert.equal((await bg.tick()).skipped, true, "a dead session is left alone until the next class ends");
-  assert.equal(server.state.uidPosts, 0);
-});
-
-test("a scheduled refresh after class signs in at most once an hour, and never after a failure", async () => {
-  const slots = A.parseTimetable(TIMETABLE_HTML);
-  const server = fakeCuims();
-  const storage = saved({ attendanceAuto: true, attendanceTimetable: { day: "2026-09-28", slots } });
-  const bg = daemon(server, storage, { clock: at(10, 35) });
-  const first = await bg.tick();
-  assert.equal(first.refreshed.error, undefined);
-  assert.equal(server.state.loginPosts, 1);
-
-  server.state.signedIn = false;
-  bg.setTime(at(13, 55));
-  storage.data.lastAutoSignInAt = at(13, 20);
-  const second = await bg.tick();
-  assert.equal(second.refreshed.code, "cooldown", "within the hour since the last automatic sign-in");
-  assert.equal(server.state.loginPosts, 1);
-
-  storage.data.lastAutoSignInAt = 0;
-  storage.data.loginGuard = { failures: [{ at: at(13, 50), by: "page" }] };
-  bg.setTime(at(14, 5));
-  storage.data.attendanceSnapshot.fetchedAt = new Date(at(13, 45)).toISOString();
-  const third = await bg.tick();
-  assert.equal(third.refreshed.code, "cooldown", "a recent failed login blocks automatic sign-in");
-  assert.equal(server.state.loginPosts, 1);
 });
 
 test("the popup view escapes CUIMS text and keeps each prediction to one short line", () => {
@@ -333,6 +274,10 @@ test("after the first read, a refresh is one GetReport call without the heavy at
   const storage = saved();
   const bg = daemon(server, storage);
   await bg.refresh("manual");
+  bg.advance(60_000);
+  await bg.refresh("manual"); // picks up the deferred timetable
+  bg.advance(60_000);
+  await bg.refresh("manual"); // first leave check
   const before = server.state.requests.length;
   bg.advance(60_000);
   const result = await bg.refresh("manual");
@@ -509,16 +454,6 @@ test("every background visit to the login flow is stamped for the tab", async ()
   assert.equal(storage.data.bgLoginTouchAt, MONDAY_11);
 });
 
-test("the keep-alive ping never loads the login page, even when the session has ended", async () => {
-  const server = fakeCuims();
-  const storage = saved({ attendanceAuto: true, sessionAlive: true, sessionCheckedAt: MONDAY_11 - 20 * 60_000, attendanceSnapshot: { fetchedAt: new Date(MONDAY_11).toISOString(), slots: [] } });
-  const result = await daemon(server, storage).tick();
-  assert.equal(result.pinged, true);
-  assert.equal(result.alive, false);
-  assert.equal(server.state.loginPageLoads, 0);
-  assert.equal(storage.data.bgLoginTouchAt, undefined);
-});
-
 test("a refresh that gave way runs again once the tab lands on StudentHome", async () => {
   const server = fakeCuims();
   const storage = loginTabOpen();
@@ -625,4 +560,274 @@ test("a refusal of a captcha the background replaced does not count against auto
   assert.equal(page.call("submittedCaptchaWasReplaced()"), true);
   page.call("releaseRecentAutoSubmit()");
   assert.equal(page.call("readFailureState().failures"), 0);
+});
+
+// ---- CUIMS's landing step ----
+
+test("a background sign-in finishes CUIMS's landing step, so attendance opens instead of error.html", async () => {
+  const server = fakeCuims();
+  const result = await daemon(server, saved()).refresh("manual");
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(server.state.landingCalls, 1);
+  assert.equal(result.snapshot.subjects.length, 3);
+});
+
+test("CUIMS's throttle page is waited out: no sign-in, no retries, last read kept, five minutes first", async () => {
+  const server = fakeCuims({ signedIn: true, landed: false });
+  const storage = saved({ attendanceSnapshot: { fetchedAt: new Date(MONDAY_11 - 3_600_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] } });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh("manual");
+  assert.equal(result.code, "portal-busy");
+  assert.match(result.error, /limiting requests.*Showing your last read.*5 min/);
+  assert.equal(result.snapshot.subjects.length, 1);
+  assert.equal(server.state.loginPosts + server.state.uidPosts + server.state.landingCalls, 0);
+  const sent = server.state.requests.length;
+  bg.advance(60_000);
+  const again = await bg.refresh("manual");
+  assert.equal(again.code, "backoff");
+  assert.equal(server.state.requests.length, sent, "nothing is sent while waiting");
+  assert.doesNotMatch(again.error, /Next try in \d+ min\. Next try/);
+});
+
+test("the first read skips the timetable, and the next one fetches it", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 0);
+  bg.advance(60_000);
+  await bg.refresh("manual");
+  assert.ok(storage.data.attendanceTimetable.slots.length > 0);
+});
+
+test("a throttled timetable never fails the read and is retried after an hour, not sooner", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  const bg = daemon(server, storage);
+  server.state.landed = false; // inner pages answer error.html
+  const first = await bg.refresh("manual");
+  assert.equal(first.error, undefined);
+  assert.equal(first.snapshot.subjects.length, 3);
+  const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
+  assert.equal(timetableLoads(), 1);
+  bg.advance(10 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(timetableLoads(), 1);
+  server.state.landed = true;
+  bg.advance(60 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(timetableLoads(), 2);
+  assert.ok(storage.data.attendanceTimetable.slots.length > 0);
+});
+
+test("opening CUIMS after a background sign-in hands the tab a finished session", async () => {
+  const server = fakeCuims();
+  await daemon(server, saved()).ensureSession();
+  assert.equal(server.state.landed, true);
+});
+
+test("with cached report ids, a refresh needs no CUIMS session: no sign-in, no cookies sent", async () => {
+  const server = fakeCuims({ signedIn: false });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [] } });
+  const result = await daemon(server, storage).refresh("manual");
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.snapshot.subjects.length, 3);
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads, 0);
+  assert.equal(server.state.cookiedReports, 0);
+});
+
+// ---- nothing runs on a timer ----
+
+test("the background has no timer: no alarms permission, no alarm, no scheduled work", () => {
+  for (const build of ["firefox", "chrome"]) {
+    const root = new URL(`../outputs/cuims-clear-${build}/`, import.meta.url);
+    const manifest = JSON.parse(readFileSync(new URL("manifest.json", root), "utf8"));
+    assert.equal(manifest.permissions.includes("alarms"), false, build);
+    for (const name of ["attendance-bg.js", "attendance-daemon.js", "background.js", "lms-open.js"]) {
+      assert.doesNotMatch(readFileSync(new URL(name, root), "utf8"), /chrome\.alarms|setInterval/, `${build}/${name}`);
+    }
+  }
+  const bg = daemon(fakeCuims({ signedIn: true }), saved());
+  assert.equal(typeof bg.tick, "undefined");
+});
+
+// ---- goals, wording, relative time ----
+
+test("the 90%-every-subject goal counts skips per subject only, with no overall rule", () => {
+  const snapshot = { subjects: [
+    { code: "A", title: "A", attended: 19, delivered: 20 },
+    { code: "B", title: "B", attended: 17, delivered: 20 },
+  ] };
+  const view = A.buildAnalytics(snapshot, new Date(MONDAY_11), { goal: "strict" });
+  const a = view.subjects.find((row) => row.code === "A");
+  const b = view.subjects.find((row) => row.code === "B");
+  assert.equal(a.skip, A.maxMisses(19, 20, 0.9));
+  assert.equal(a.limitedByOverall, false);
+  assert.equal(b.recover, A.classesToRecover(17, 20, 0.9));
+  assert.equal(b.line, `Attend next ${b.recover} to reach 90%`);
+  assert.equal(b.tone, "low");
+  assert.equal(view.overall.line, "1 subject under 90%");
+  assert.doesNotMatch(JSON.stringify(view.subjects.map((row) => row.line)), /cap/);
+});
+
+test("a subject held back by the overall rule says so in plain words", () => {
+  const view = A.buildAnalytics({ subjects: [
+    { code: "A", title: "A", attended: 20, delivered: 20 },
+    { code: "B", title: "B", attended: 80, delivered: 100 },
+  ] }, new Date(MONDAY_11));
+  assert.equal(view.subjects.find((row) => row.code === "A").line, "No skips (overall under 90%)");
+});
+
+test("the last update also reads as time ago", () => {
+  const now = new Date(MONDAY_11);
+  const iso = (minutes) => new Date(MONDAY_11 - minutes * 60_000).toISOString();
+  assert.equal(A.ago(iso(0), now), "just now");
+  assert.equal(A.ago(iso(8), now), "8 min ago");
+  assert.equal(A.ago(iso(130), now), "2 h ago");
+  assert.equal(A.ago(iso(26 * 60), now), "yesterday");
+  const html = A.renderAttendance(A.buildAnalytics({ fetchedAt: iso(130), subjects: [{ code: "A", title: "A", attended: 9, delivered: 10 }] }, now), { now });
+  assert.match(html, /Updated [^<]+\(2 h ago\)/);
+});
+
+// ---- real CUIMS mark and leave shapes ----
+
+test("marks read the real CUIMS codes and dates, including leave", () => {
+  const marks = A.normalizeMarks([
+    { AttDate: "Monday, 28 Sep 2026", AttendanceDate: "/Date(1790533800000)/", Timing: "10:20 - 11:10 AM", AttendanceCode: "P" },
+    { AttDate: "Monday, 28 Sep 2026", Timing: "12:00 - 12:50 PM", AttendanceCode: "A" },
+    { AttDate: "Thursday, 24 Sep 2026", AttendanceCode: "Absent (VDL -Departmental Society Activities)" },
+    { AttDate: "Friday, 18 Sep 2026", AttendanceCode: "Absent (Medical Leave)" },
+  ]);
+  assert.deepEqual(marks.map((mark) => mark.kind), ["present", "absent", "dl", "ml"]);
+  assert.equal(A.parseDateKey(marks[0].date), "2026-09-28");
+  assert.equal(A.parseDateKey(marks[1].date), "2026-09-28");
+});
+
+test("leave history grids parse into days, class times, and state", () => {
+  const dl = A.parseDutyLeaves(dutyLeavePage([
+    { id: 11, timing: "2:30 - 3:20 PM,3:20 - 4:10 PM", dated: "25 Sep 2026", status: "Pending" },
+    { id: 12, type: "Day Bases", dated: "From 03 Sep 2026 To 04 Sep 2026", status: "Recommend and Approved" },
+    { id: 13, timing: "9:40 - 10:20 AM", dated: "01 Sep 2026", status: "Rejected" },
+  ]));
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(dl.map((leave) => leave.state)), ["pending", "approved", "rejected"]);
+  assert.deepEqual(plain(dl[0].days), ["2026-09-25"]);
+  assert.deepEqual(plain(dl[0].timings), ["2:30 - 3:20 PM", "3:20 - 4:10 PM"]);
+  assert.deepEqual(plain(dl[1].days), ["2026-09-03", "2026-09-04"]);
+  const ml = A.parseMedicalLeaves(medicalLeavePage([{ from: "14 Sep 2026", to: "16 Sep 2026", status: "Medical Leave is Approved" }, { from: "28 Sep 2026", to: "28 Sep 2026", status: "Pending at HOD" }]));
+  assert.deepEqual(plain(ml.map((leave) => [leave.state, leave.days.length])), [["approved", 3], ["pending", 1]]);
+});
+
+// ---- pending leave, end to end ----
+
+const LEAVE_DAY_MARK = { course: "enc305", AttDate: "Friday, 25 Sep 2026", Timing: "2:30 - 3:20 PM", AttendanceCode: "A" };
+
+test("a pending duty leave is matched to the absent class it covers, and shows what approval would do", async () => {
+  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK], dutyLeaves: [{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }] });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const result = await daemon(server, storage).refresh("manual");
+  assert.equal(result.error, undefined, result.error);
+  assert.deepEqual({ ...result.snapshot.leaves.pending["24CSP305"] }, { vdl: 1, idl: 0, adl: 0, ml: 0 });
+  const view = A.buildAnalytics(result.snapshot, new Date(MONDAY_11));
+  const cc = view.subjects.find((row) => row.code === "24CSP-305");
+  assert.equal(cc.leave.pending.dl, 1);
+  assert.equal(Math.round(cc.ifApproved * 10), Math.round((26 / 31) * 1000));
+  assert.equal(view.overall.leave.pending.dl, 1);
+  assert.ok(view.overall.ifApproved > view.overall.percent);
+});
+
+test("leave pages are read at most every three hours, alternating, and never with another heavy page", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  const heavy = () => server.state.attendanceLoads + server.state.requests.filter((line) => /frmmytimetable/i.test(line) && line.startsWith("GET")).length + server.state.leavePageLoads;
+  let last = heavy();
+  for (let run = 0; run < 4; run += 1) {
+    await bg.refresh("manual");
+    assert.ok(heavy() - last <= 1, `run ${run} loaded ${heavy() - last} heavy pages`);
+    last = heavy();
+    bg.advance(60_000);
+  }
+  assert.equal(server.state.leavePageLoads, 1);
+  bg.advance(3 * 60 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(server.state.leavePageLoads, 2);
+  assert.ok(storage.data.attendanceLeaves.dlAt && storage.data.attendanceLeaves.mlAt, "duty then medical");
+});
+
+test("opening a leave page on CUIMS updates pending leave with no page request", async () => {
+  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK] });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceCourses: { "24CSP305": "enc305" }, attendanceSnapshot: { fetchedAt: new Date(MONDAY_11).toISOString(), subjects: [] } });
+  await daemon(server, storage).ingestLeavePage("dl", dutyLeavePage([{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }]));
+  assert.equal(server.state.leavePageLoads, 0);
+  assert.deepEqual({ ...storage.data.attendanceSnapshot.leaves.pending["24CSP305"] }, { vdl: 1, idl: 0, adl: 0, ml: 0 });
+});
+
+// ---- today's planner ----
+
+function plannerView(options = {}) {
+  const slots = A.parseTimetable(TIMETABLE_HTML);
+  const snapshot = { fetchedAt: new Date(at(12, 30)).toISOString(), marksDay: "2026-09-28", slots, subjects: [
+    { code: "24CSP-305", title: "Competitive Coding-II", attended: 26, delivered: 32 },
+    { code: "24CST-302", title: "Computer Networks", attended: 11, delivered: 12 },
+    { code: "24TDT-312", title: "Aptitude-III", attended: 100, delivered: 100 },
+  ] };
+  return A.buildAnalytics(snapshot, new Date(at(12, 30)), options);
+}
+
+test("the planner lists today's remaining classes with a verdict each", () => {
+  const view = plannerView();
+  assert.deepEqual(JSON.parse(JSON.stringify(view.today.classes.map((item) => [item.time, item.title]))), [["1:00", "Computer Networks"]]);
+  assert.equal(view.today.classes[0].verdict, "can-skip");
+  assert.equal(view.today.maxSkips, 1);
+});
+
+test("planning a skip shows the end-of-day figures, and too many skips are flagged", () => {
+  const key = plannerView().today.classes[0].key;
+  const planned = plannerView({ plan: [key] });
+  assert.equal(planned.today.classes[0].verdict, "planned");
+  assert.equal(Math.round(planned.today.projection.subjects[0].percent * 10), Math.round((11 / 13) * 1000));
+  const strict = plannerView({ goal: "strict", plan: [key] });
+  assert.equal(strict.today.classes[0].verdict, "too-many");
+  assert.equal(strict.today.projection.safe, false);
+});
+
+test("the popup shows the goal switch, today's plan and the leave card, and never 'overall cap'", () => {
+  const view = plannerView();
+  const html = A.renderAttendance(view, { now: new Date(at(12, 30)) });
+  assert.match(html, /role="radiogroup"/);
+  assert.match(html, /data-goal="strict"/);
+  assert.match(html, /data-plan-key=/);
+  assert.match(html, /Today · Mon/);
+  assert.doesNotMatch(html, /overall cap/);
+});
+
+// ---- VDL allowance per subject ----
+
+test("each subject shows its VDL left out of 10, with pending applications already taking a slot", () => {
+  const snapshot = {
+    subjects: [
+      { code: "A-1", title: "Alpha", attended: 30, delivered: 32, leave: { vdl: 6, idl: 0, adl: 0, ml: 2 } },
+      { code: "B-1", title: "Beta", attended: 30, delivered: 32, leave: { vdl: 9, idl: 0, adl: 0, ml: 0 } },
+      { code: "C-1", title: "Gamma", attended: 30, delivered: 32, leave: { vdl: 10, idl: 0, adl: 0, ml: 0 } },
+    ],
+    leaves: { checkedAt: new Date(MONDAY_11).toISOString(), pending: { A1: { vdl: 1, idl: 0, adl: 0, ml: 1 } } },
+  };
+  const view = A.buildAnalytics(snapshot, new Date(MONDAY_11));
+  const left = Object.fromEntries(view.subjects.map((row) => [row.code, row.leave.vdlLeft]));
+  assert.deepEqual(left, { "A-1": 3, "B-1": 1, "C-1": 0 });
+  const html = A.renderAttendance(view, { now: new Date(MONDAY_11) });
+  assert.match(html, /VDL 3 left · 1 pending/);
+  assert.match(html, /ML 1 pending/);
+  assert.match(html, /tag-vdl is-low[^>]*>VDL 1 left/);
+  assert.match(html, /tag-vdl is-out[^>]*>VDL 0 left/);
+  assert.match(html, /fewest left: Gamma \(0\)/);
+});
+
+test("pending duty leave is sorted into VDL, IDL, or ADL by its category", () => {
+  const page = `<table id="gvHistory"><tr><th>DL_No</th><th>Timing</th><th>Category</th><th>File Name</th><th>Leave_Type</th><th>Dated</th><th>Status</th><th>Remarks</th></tr>
+    <tr><td>1</td><td>9:40 - 10:20 AM</td><td>Departmental Society Activities</td><td></td><td>Lecture Bases</td><td>25 Sep 2026</td><td>Pending</td><td></td></tr>
+    <tr><td>2</td><td>9:40 - 10:20 AM</td><td>Industrial Visit</td><td></td><td>Lecture Bases</td><td>25 Sep 2026</td><td>Pending</td><td></td></tr>
+    <tr><td>3</td><td>9:40 - 10:20 AM</td><td>Assigned Duty</td><td></td><td>Lecture Bases</td><td>25 Sep 2026</td><td>Pending</td><td></td></tr></table>`;
+  assert.deepEqual(JSON.parse(JSON.stringify(A.parseDutyLeaves(page).map((leave) => leave.dlType))), ["vdl", "idl", "adl"]);
 });

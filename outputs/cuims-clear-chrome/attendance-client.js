@@ -9,6 +9,10 @@
   const ATTENDANCE = "/frmStudentCourseWiseAttendanceSummary.aspx";
   const ATTENDANCE_QUERY = "?type=etgkYfqBdH1fSfc255iYGw==";
   const TIMETABLE = "/frmMyTimeTable.aspx";
+  // CUIMS finishes a login in the browser: LandingPage.aspx calls this, and
+  // until it runs the session has no menu rights, so every inner page
+  // (attendance, timetable) redirects to error.html.
+  const LANDING_INIT = "/LandingPage.aspx/ShowLandingPage";
   const TIMETABLE_TARGET = "ctl00$ContentPlaceHolder1$ReportViewer1$ctl09$Reserved_AsyncLoadTarget";
 
   const LOCKOUT = [
@@ -38,6 +42,7 @@
     "login-shape": "CUIMS changed its login page, so sign-in could not run.",
     "signed-out": "Signed out of CUIMS.",
     "tab-login": "A CUIMS tab is signing in. Attendance refreshes once it is done.",
+    "portal-busy": "CUIMS is limiting requests right now.",
   };
 
   function coded(code, message, detail) {
@@ -105,7 +110,7 @@
           method: options.method || "GET",
           headers,
           body: options.body,
-          credentials: "include",
+          credentials: options.anonymous ? "omit" : "include",
           redirect: manual ? "manual" : "follow",
           cache: "no-store",
           signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined,
@@ -139,10 +144,14 @@
     });
   }
 
+  // GetReport and GetFullReport answer from the report ids alone, with no
+  // CUIMS session. Sending them without cookies keeps them clear of the
+  // session's inner-page throttle and never touches the student's session.
   async function postJson(request, path, payload) {
     const result = await request(url(path), {
       method: "POST",
       body: payload,
+      anonymous: true,
       headers: { "content-type": "application/json; charset=utf-8" },
     });
     if (isLoginUrl(result.url) || api.isLoginDocument(result.html)) throw coded("signed-out");
@@ -163,9 +172,28 @@
 
   // The attendance page doubles as the session check: signed out, CUIMS
   // redirects it to Login.aspx.
+  function isErrorPage(value) {
+    try {
+      return /^\/error\.html$/i.test(new URL(value).pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  async function completeLanding(request) {
+    try {
+      await request(url(LANDING_INIT), { method: "POST", body: "{}", headers: { "content-type": "application/json; charset=utf-8" } });
+    } catch (error) {
+      if (error.code === "busy" || error.code === "tab-login") throw error;
+    }
+  }
+
   async function openAttendance(request) {
     const page = await request(url(`${ATTENDANCE}${ATTENDANCE_QUERY}`));
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
+    // CUIMS throttles a session that opens inner pages quickly: it answers
+    // with error.html (no 429) for several minutes. Never a reason to sign in.
+    if (isErrorPage(page.url)) throw coded("portal-busy");
     const meta = api.extractReportMeta(page.html);
     if (meta.reportId && meta.sessionId) return meta;
     if (/StudentHome\.aspx/i.test(page.url)) throw coded("portal-redirect", null, describe(page));
@@ -188,14 +216,29 @@
     return api.normalizeMarks(rows);
   }
 
+  // Optional, so it never follows a redirect: signed out just means "later",
+  // and never a login page load.
   async function readTimetable(request) {
     const target = url(TIMETABLE);
-    let page = await request(target);
+    let page = await request(target, { manual: true });
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
+    if (isErrorPage(page.url)) throw coded("portal-busy");
     if (!/gvMyTimeTable/i.test(page.html || "")) {
       page = await postForm(request, target, { ...api.hiddenFields(page.html), __EVENTTARGET: TIMETABLE_TARGET, __EVENTARGUMENT: "" });
     }
     return api.parseTimetable(page.html);
+  }
+
+  const LEAVE_PAGES = { dl: "/frmStudentApplyDutyLeave.aspx", ml: "/frmStudentMedicalLeaveApply.aspx" };
+
+  // The student's own duty or medical leave applications and their status.
+  // A heavy inner page, so the daemon reads it rarely and never follows a
+  // redirect: signed out just means "later".
+  async function readLeavePage(request, which) {
+    const page = await request(url(LEAVE_PAGES[which]), { manual: true });
+    if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
+    if (isErrorPage(page.url)) throw coded("portal-busy");
+    return which === "dl" ? api.parseDutyLeaves(page.html) : api.parseMedicalLeaves(page.html);
   }
 
   // Redirects are not followed: a signed-out answer is a redirect to the
@@ -267,7 +310,9 @@
       txtcaptcha: answer,
       btnLogin: "LOGIN",
     });
-    return { outcome: loginOutcome(posted), submitted: true };
+    const outcome = loginOutcome(posted);
+    if (outcome === "ok") await completeLanding(request);
+    return { outcome, submitted: true };
   }
 
   api.MESSAGES = MESSAGES;
@@ -276,9 +321,12 @@
   api.isLoginFlow = isLoginFlow;
   api.createRequest = createRequest;
   api.openAttendance = openAttendance;
+  api.completeLanding = completeLanding;
   api.readSummary = readSummary;
   api.readMarks = readMarks;
   api.readTimetable = readTimetable;
+  api.readLeavePage = readLeavePage;
+  api.LEAVE_PAGES = LEAVE_PAGES;
   api.pingHome = pingHome;
   api.loginOutcome = loginOutcome;
   api.signIn = signIn;

@@ -10,6 +10,17 @@ export const SUMMARY = [
   { Code: "24TDT-312", Title: "Aptitude-III", Total_Delv: "16", Total_Attd: "16", EligibilityDelivered: "16", EligibilityAttended: "16", EncryptCode: "enc312" },
 ];
 
+// The Duty Leave and Medical Leave history grids, as on the live pages.
+export function dutyLeavePage(rows = []) {
+  const body = rows.map((row) => `<tr><td>${row.id}</td><td>${row.timing || ""}</td><td>Departmental Society Activities</td><td></td><td>${row.type || "Lecture Bases"}</td><td>${row.dated}</td><td>${row.status}</td><td>event</td></tr>`).join("");
+  return `<table id="gvHistory"><tr><th>DL_No</th><th>Timing</th><th>Category</th><th>File Name</th><th>Leave_Type</th><th>Dated</th><th>Status</th><th>Remarks</th></tr>${body}</table>`;
+}
+
+export function medicalLeavePage(rows = []) {
+  const body = rows.map((row, index) => `<tr><td>${index + 1}</td><td>${row.from}</td><td>${row.to}</td><td>unwell</td><td>26271</td><td>${row.from}</td><td>${row.status}</td></tr>`).join("");
+  return `<table id="gvMlHistory"><tr><th>SrNo</th><th>FromDate</th><th>ToDate</th><th>ReasonOfML</th><th>Session</th><th>EntryDate</th><th>Status</th></tr>${body}</table>`;
+}
+
 export const TIMETABLE_HTML = `<form action="./frmMyTimeTable.aspx"><input type="hidden" name="__VIEWSTATE" value="tt" />
 <table id="ContentPlaceHolder1_gvMyTimeTable">
 <tr><th scope="col">Timing</th><th scope="col">Mon</th><th scope="col">Tue</th></tr>
@@ -71,8 +82,14 @@ export function fakeCuims({
   marksToday = [],
   refuseAttendanceAfter = Infinity,
   reportId = "RID+/=",
+  landed = true,
+  dutyLeaves = [],
+  medicalLeaves = [],
 } = {}) {
-  const state = { signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId };
+  // `landed`: CUIMS gives a session menu rights only once the browser's
+  // LandingPage step has called ShowLandingPage. Before that, every inner page
+  // redirects to error.html.
+  const state = { landed, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -111,19 +128,18 @@ export function fakeCuims({
       }
       if (fields.get("txtcaptcha") !== captcha || rejectAs === "captcha") return response(url.href, 200, passwordPage("Invalid Captcha"));
       state.signedIn = true;
-      return response(`${ORIGIN}/StudentHome.aspx`, 200, "<html>home</html>");
+      state.landed = false;
+      return response(`${ORIGIN}/LandingPage.aspx`, 200, "<html>Today's Highlight</html>");
     }
-    if (!state.signedIn) return login();
-    if (path === "/studenthome.aspx") return response(url.href, 200, "<html>home</html>");
-    if (path === "/frmstudentcoursewiseattendancesummary.aspx") {
-      if (homeInsteadOfAttendance) return response(`${ORIGIN}/StudentHome.aspx`, 200, "<html>home</html>");
-      state.attendanceLoads += 1;
-      if (state.attendanceLoads > refuseAttendanceAfter) {
-        return response(url.href, 200, "<html><head><title>Please wait</title></head><body><p>Too many requests. Please try after some time.</p></body></html>");
-      }
-      return response(url.href, 200, ATTENDANCE_PAGE.replace("RID+/=", state.reportId));
+    if (path === "/landingpage.aspx/showlandingpage" && method === "POST") {
+      if (!state.signedIn) return login();
+      state.landingCalls += 1;
+      state.landed = true;
+      return response(url.href, 200, { d: "@@0@@StudentHome.aspx" });
     }
+    // Like CUIMS, the report methods answer from the ids alone, session or not.
     if (path.endsWith("/getreport")) {
+      if (options.credentials !== "omit") state.cookiedReports += 1;
       if (!body.includes(`UID:'${state.reportId}'`)) return response(url.href, 200, { d: null });
       return response(url.href, 200, { d: JSON.stringify(SUMMARY) });
     }
@@ -132,7 +148,28 @@ export function fakeCuims({
       const rows = marksToday.filter((mark) => mark.course === course);
       return response(url.href, 200, { d: { Result: rows.length ? JSON.stringify(rows) : "No Data Found" } });
     }
+    if (!state.signedIn) return login();
+    if (path === "/studenthome.aspx") return response(url.href, 200, "<html>home</html>");
+    if (!state.landed && (path === "/frmstudentcoursewiseattendancesummary.aspx" || path === "/frmmytimetable.aspx")) {
+      return response(`${ORIGIN}/error.html`, 200, "<html><head><title>UIMS Error</title></head></html>");
+    }
+    if (path === "/frmstudentcoursewiseattendancesummary.aspx") {
+      if (homeInsteadOfAttendance) return response(`${ORIGIN}/StudentHome.aspx`, 200, "<html>home</html>");
+      state.attendanceLoads += 1;
+      if (state.attendanceLoads > refuseAttendanceAfter) {
+        return response(url.href, 200, "<html><head><title>Please wait</title></head><body><p>Too many requests. Please try after some time.</p></body></html>");
+      }
+      return response(url.href, 200, ATTENDANCE_PAGE.replace("RID+/=", state.reportId));
+    }
     if (path === "/frmmytimetable.aspx") return response(url.href, 200, TIMETABLE_HTML);
+    if (path === "/frmstudentapplydutyleave.aspx") {
+      state.leavePageLoads += 1;
+      return response(url.href, 200, dutyLeavePage(dutyLeaves));
+    }
+    if (path === "/frmstudentmedicalleaveapply.aspx") {
+      state.leavePageLoads += 1;
+      return response(url.href, 200, medicalLeavePage(medicalLeaves));
+    }
     return response(url.href, 404, "not found");
   }
 

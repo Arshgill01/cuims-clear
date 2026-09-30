@@ -20,6 +20,9 @@ const ATTENDANCE_KEYS = [
   "attendanceLastAttemptAt",
   "sessionAlive",
   "sessionCheckedAt",
+  "attendanceLeaves",
+  "attendanceCourses",
+  "attendancePlan",
 ];
 const STALE_MS = 10 * 60 * 1000;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
@@ -44,6 +47,16 @@ document.querySelector("#version").textContent = `v${chrome.runtime.getManifest(
 
 let statusTimer;
 let attendance = { snapshot: null, status: null, error: "", code: "" };
+// The student's goal is a preference; the skip plan lasts one campus day.
+let prefs = { goal: "standard", plan: { day: "", skips: [] } };
+
+function todayKey() {
+  return CuimsAttendance.campusParts(new Date()).key;
+}
+
+function plannedSkips() {
+  return prefs.plan?.day === todayKey() ? prefs.plan.skips || [] : [];
+}
 let repaintTimer;
 
 function showStatus(message) {
@@ -141,7 +154,9 @@ bindOpenLink(document.querySelector(".lms-open-link"), "cuims-clear:launch-lms",
 function paintAttendance() {
   const status = attendance.status || {};
   const working = Boolean(status.working) && Date.now() - Number(status.at || 0) < 2 * 60 * 1000;
-  const analytics = attendance.snapshot?.subjects?.length ? CuimsAttendance.buildAnalytics(attendance.snapshot, new Date()) : null;
+  const analytics = attendance.snapshot?.subjects?.length
+    ? CuimsAttendance.buildAnalytics(attendance.snapshot, new Date(), { goal: prefs.goal, plan: plannedSkips() })
+    : null;
   views.attendance.innerHTML = CuimsAttendance.renderAttendance(analytics, {
     working,
     phase: status.phase,
@@ -198,7 +213,29 @@ for (const [name, tab] of Object.entries(tabs)) {
 }
 
 views.attendance.addEventListener("click", (event) => {
-  if (event.target.closest("#fetch-attendance")) fetchAttendance();
+  if (event.target.closest("#fetch-attendance")) {
+    fetchAttendance();
+    return;
+  }
+  const goal = event.target.closest("[data-goal]");
+  if (goal) {
+    prefs.goal = goal.dataset.goal;
+    chrome.storage.local.set({ attendanceGoal: prefs.goal });
+    paintAttendance();
+    views.attendance.querySelector(`[data-goal="${prefs.goal}"]`)?.focus();
+    return;
+  }
+  const row = event.target.closest("[data-plan-key]");
+  if (row) {
+    const key = row.dataset.planKey;
+    const skips = new Set(plannedSkips());
+    if (skips.has(key)) skips.delete(key);
+    else skips.add(key);
+    prefs.plan = { day: todayKey(), skips: [...skips] };
+    chrome.storage.local.set({ attendancePlan: prefs.plan });
+    paintAttendance();
+    views.attendance.querySelector(`[data-plan-key="${CSS.escape(key)}"]`)?.focus();
+  }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -216,9 +253,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if ((changes.attendanceSnapshot || changes.attendanceStatus) && !views.attendance.hidden) paintAttendance();
 });
 
-chrome.storage.local.get({ attendanceSnapshot: null, attendanceStatus: null, popupView: "login" }, (stored) => {
+chrome.storage.local.get({ attendanceSnapshot: null, attendanceStatus: null, popupView: "login", attendanceGoal: "standard", attendancePlan: null }, (stored) => {
   attendance.snapshot = stored.attendanceSnapshot;
   attendance.status = stored.attendanceStatus;
+  prefs = { goal: stored.attendanceGoal || "standard", plan: stored.attendancePlan || { day: "", skips: [] } };
   if (stored.popupView === "attendance") showView("attendance");
 });
 

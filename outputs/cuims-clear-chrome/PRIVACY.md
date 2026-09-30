@@ -42,12 +42,11 @@ session to pair syllabus materials with semester work.
 
 ## Attendance
 
-When you use the Attendance tab, the extension reads your own attendance report
-and timetable from CUIMS with your browser's CUIMS session, signing in with your
-saved UID and password in the background when needed. On weekdays during class
-hours it may send one light request to keep the session open and one refresh after
-a class ends. Attendance figures are stored only in chrome.storage.local on this
-device and are removed by Clear login.
+When you use the Attendance tab, the extension reads your own attendance report,
+timetable, and duty and medical leave applications from CUIMS with your browser's CUIMS session, signing in with your
+saved UID and password in the background when needed. It talks to CUIMS only when
+you use the popup; nothing runs in the background on a timer. Attendance figures are
+stored only in chrome.storage.local on this device and are removed by Clear login.
 
 Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
 The extension does not maintain a browsing-history record.
@@ -61,4 +60,4 @@ or lending. The developer does not have access to your portal data.
 
 Contact: arshgill6120@gmail.com
 
-Last updated: 29 September 2026.
+Last updated: 30 September 2026.

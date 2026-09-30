@@ -123,6 +123,14 @@
     return null;
   }
 
+  // Approved leave per subject. CUIMS lists IDL (industrial), ADL (assigned)
+  // and VDL (voluntary) duty leave and medical leave; approved leave drops
+  // the class from both counts, which the eligibility figures already do.
+  function leaveCounts(row) {
+    const count = (value) => Math.max(0, numberOrNull(value) ?? 0);
+    return { idl: count(row.DutyLeave_N_P), adl: count(row.DutyLeave_ADL), vdl: count(row.DutyLeave_Others), ml: count(row.MedicalLeave) };
+  }
+
   function normalizeSummary(row) {
     if (!row || typeof row !== "object") return null;
     const counts = pickCounts(row);
@@ -132,20 +140,97 @@
       title: String(row.Title || row.Subject || row.Name || "Subject").trim(),
       attended: counts.attended,
       delivered: counts.delivered,
+      leave: leaveCounts(row),
       encryptCode: row.EncryptCode ? String(row.EncryptCode) : "",
     };
+  }
+
+  // AttendanceCode is "P", "A", or a leave: "Absent (VDL -Departmental
+  // Society Activities)", "Absent (Medical Leave)". A pending leave is still "A".
+  function markKind(code) {
+    const text = String(code || "").trim();
+    if (/^(p|present)$/i.test(text)) return "present";
+    if (/medical/i.test(text)) return "ml";
+    if (/\b[IAV]?DL\b|duty/i.test(text)) return "dl";
+    return "absent";
   }
 
   function normalizeMarks(rows) {
     if (!Array.isArray(rows)) return null;
     return rows.map((row) => {
-      const code = String(row.AttendanceCode ?? row.Status ?? "").trim().toUpperCase();
+      const kind = markKind(row.AttendanceCode ?? row.Status);
       return {
-        date: String(row.AttDate || row.Date || ""),
+        date: String(row.AttendanceDate || row.AttDate || row.Date || ""),
         time: String(row.Timing || row.Time || ""),
-        present: code === "P" || code === "PRESENT",
+        present: kind === "present",
+        kind,
       };
     });
+  }
+
+  // A history grid as a list of {header: cell} rows.
+  function gridRows(html, id) {
+    const rows = tableRows(tableInner(html, id));
+    const headerIndex = rows.findIndex((row) => row.some((cell) => /status/i.test(cell)));
+    if (headerIndex < 0) return [];
+    const headers = rows[headerIndex].map((cell) => cell.toLowerCase().replace(/[^a-z]/g, ""));
+    return rows
+      .slice(headerIndex + 1)
+      .filter((row) => row.length === headers.length)
+      .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
+  }
+
+  function leaveState(status) {
+    const text = String(status || "");
+    if (/reject|disapprov|declin|cancel/i.test(text)) return "rejected";
+    if (/approv/i.test(text)) return "approved";
+    return "pending";
+  }
+
+  function dayKeysBetween(fromKey, toKey) {
+    if (!fromKey) return [];
+    const days = [];
+    const cursor = new Date(`${fromKey}T00:00:00Z`);
+    const end = new Date(`${toKey || fromKey}T00:00:00Z`);
+    for (let guard = 0; cursor <= end && guard < 62; guard += 1) {
+      days.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return days;
+  }
+
+  // Duty Leave page, grid gvHistory: DL_No, Timing, Category, File Name,
+  // Leave_Type ("Lecture Bases" or "Day Bases"), Dated ("25 Sep 2026" or
+  // "From 03 Sep 2026 To 03 Sep 2026"), Status, Remarks.
+  function parseDutyLeaves(html) {
+    return gridRows(html, "gvHistory").map((row) => {
+      const dated = row.dated || "";
+      const range = dated.match(/from\s+(.+?)\s+to\s+(.+)$/i);
+      const from = api.parseDateKey(range ? range[1] : dated);
+      const to = range ? api.parseDateKey(range[2]) : from;
+      const byLecture = /lecture/i.test(row.leavetype || "");
+      const category = String(row.category || "");
+      return {
+        id: row.dlno || `${dated}|${row.timing}`,
+        kind: "dl",
+        // Voluntary duty leave (society events and the like) is the common
+        // one; industrial and assigned duty leave are named as such.
+        dlType: /industr/i.test(category) ? "idl" : /assign/i.test(category) ? "adl" : "vdl",
+        days: dayKeysBetween(from, to),
+        timings: byLecture ? String(row.timing || "").split(",").map((part) => part.trim()).filter(Boolean) : [],
+        state: leaveState(row.status),
+      };
+    }).filter((leave) => leave.days.length);
+  }
+
+  // Medical Leave page, grid gvMlHistory: FromDate, ToDate, ReasonOfML,
+  // Session, EntryDate, Status. Whole days.
+  function parseMedicalLeaves(html) {
+    return gridRows(html, "gvMlHistory").map((row) => {
+      const from = api.parseDateKey(row.fromdate);
+      const to = api.parseDateKey(row.todate) || from;
+      return { id: `ml|${from}|${to}`, kind: "ml", days: dayKeysBetween(from, to), timings: [], state: leaveState(row.status) };
+    }).filter((leave) => leave.days.length);
   }
 
   function tableInner(html, id) {
@@ -225,4 +310,6 @@
   api.normalizeSummary = normalizeSummary;
   api.normalizeMarks = normalizeMarks;
   api.parseTimetable = parseTimetable;
+  api.parseDutyLeaves = parseDutyLeaves;
+  api.parseMedicalLeaves = parseMedicalLeaves;
 })(globalThis);

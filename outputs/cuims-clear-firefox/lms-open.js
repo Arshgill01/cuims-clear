@@ -7,7 +7,10 @@
 const CUIMS_ORIGIN = "https://students.cuchd.in";
 const CUIMS_HOME = `${CUIMS_ORIGIN}/StudentHome.aspx`;
 const LMS_LAUNCH_URL = `${CUIMS_HOME}#cuims-clear-lms`;
-const LAUNCH_AT = "lmsLaunchAt";
+// Older builds kept a browser-wide "launch LMS" flag here; it is gone.
+try {
+  chrome.storage.local.remove("lmsLaunchAt");
+} catch {}
 const SSO_TIMEOUT_MS = 8_000;
 const SESSION_TIMEOUT_MS = 30_000;
 
@@ -114,7 +117,22 @@ function answered(response) {
   return response && response.type !== "opaqueredirect" && response.status === 200;
 }
 
-// Returns the LMS ticket URL, or null when the tab has to do it.
+const LMS_COURSES = "https://lms.cuchd.in/my/courses.php";
+
+function isLmsSignedInUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.origin === "https://lms.cuchd.in" && !/^\/login\//i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+// Makes CUIMS's own CU LMS postback from the background. CUIMS answers with a
+// redirect chain that ends on LMS with a fresh LMS session, and the background
+// shares the browser's cookie jar, so the tab can open LMS directly. Older
+// CUIMS builds answered with a page calling window.open(<ticket>) instead.
+// Returns the URL for the tab, or null when the tab has to do it.
 async function fetchLmsTicket() {
   try {
     const home = await cuimsFetch(CUIMS_HOME);
@@ -126,12 +144,16 @@ async function fetchLmsTicket() {
     fields.set("__EVENTTARGET", postback.target);
     fields.set("__EVENTARGUMENT", postback.argument);
     const action = decodeHtml(html.match(/<form\b[^>]*\baction\s*=\s*["']([^"']*)["']/i)?.[1] || "");
+    // Follow this one: the chain leads to LMS, not to a CUIMS login page,
+    // because the session was just seen alive.
     const posted = await cuimsFetch(new URL(action || CUIMS_HOME, CUIMS_HOME).href, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: fields.toString(),
+      redirect: "follow",
     });
-    if (!answered(posted)) return null;
+    if (isLmsSignedInUrl(posted.url)) return LMS_COURSES;
+    if (posted.status !== 200) return null;
     return ssoTicketUrl(await posted.text());
   } catch {
     return null;
@@ -168,8 +190,8 @@ async function openLms(hint) {
     await openIn(tab, ticket);
     return { via: "sso" };
   }
-  // Signed out, or CUIMS answered differently: let the page do it.
-  await chrome.storage.local.set({ [LAUNCH_AT]: Date.now() });
+  // Signed out, or CUIMS answered differently: let the page do it. The hash
+  // marks only this tab.
   await openIn(tab, LMS_LAUNCH_URL);
   return { via: "page" };
 }
@@ -186,7 +208,9 @@ async function openCuims(hint) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const fromPopup = !sender?.tab && (!sender?.id || sender.id === chrome.runtime.id);
+  // Only this extension's own pages (the popup). A content script's sender
+  // URL is the web page it runs in.
+  const fromPopup = sender?.id === chrome.runtime.id && String(sender.url || "").startsWith(chrome.runtime.getURL(""));
   if ((message?.type === "cuims-clear:launch-lms" || message?.type === "cuims-clear:open-cuims") && fromPopup) {
     const open = message.type === "cuims-clear:launch-lms" ? openLms : openCuims;
     open({ tabId: Number(message.tabId) || 0 })

@@ -1,9 +1,11 @@
-// Clicks CUIMS's own CU LMS control. Intent lives in sessionStorage so the
-// page-world window.open hook can follow the SSO ticket after postback.
+// Clicks CUIMS's own CU LMS control. Intent lives only in this tab's
+// sessionStorage, set by the #cuims-clear-lms link, so no other CUIMS visit
+// can turn into an LMS launch. It survives the login pages in the same tab,
+// and it is spent after one handoff attempt.
 (() => {
   if (window.top !== window) return;
   const SESSION = "cuims-clear:lms-launch";
-  const LAUNCH_AT = "lmsLaunchAt";
+  const ATTEMPT = "cuims-clear:lms-attempt";
   const TTL = 10 * 60 * 1000;
   const COVER_ID = "cuims-clear-lms-cover";
   const COVER_MAX_MS = 12_000;
@@ -33,7 +35,7 @@ html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-i
 
   function clearIntent() {
     sessionStorage.removeItem(SESSION);
-    try { chrome.storage.local.remove(LAUNCH_AT); } catch {}
+    sessionStorage.removeItem(ATTEMPT);
   }
 
   function lmsUrl(value) {
@@ -102,21 +104,8 @@ html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-i
     target.click();
   }
 
-  async function remember() {
-    sessionStorage.setItem(SESSION, String(Date.now()));
-    try { await chrome.storage.local.set({ [LAUNCH_AT]: Date.now() }); } catch {}
-  }
-
-  async function hasIntent() {
-    if (fresh(sessionStorage.getItem(SESSION))) return true;
-    try {
-      const stored = await chrome.storage.local.get({ [LAUNCH_AT]: 0 });
-      if (fresh(stored[LAUNCH_AT])) {
-        await remember();
-        return true;
-      }
-    } catch {}
-    return false;
+  function hasIntent() {
+    return fresh(sessionStorage.getItem(SESSION));
   }
 
   function needsUi() {
@@ -127,7 +116,14 @@ html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-i
     if (inflight) return;
     inflight = true;
     try {
-      if (!(await hasIntent())) {
+      if (!hasIntent()) {
+        uncover();
+        return;
+      }
+      // The handoff already ran once in this tab and CUIMS did not send it to
+      // LMS. Stop here rather than loop.
+      if (sessionStorage.getItem(ATTEMPT)) {
+        clearIntent();
         uncover();
         return;
       }
@@ -143,7 +139,7 @@ html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-i
         uncover();
         return;
       }
-      await remember();
+      sessionStorage.setItem(ATTEMPT, "1");
       activate(link);
     } finally {
       inflight = false;
@@ -152,6 +148,7 @@ html::after{content:"Opening LMS…";position:fixed;inset:0;display:grid;place-i
 
   if (location.hash === "#cuims-clear-lms") {
     sessionStorage.setItem(SESSION, String(Date.now()));
+    sessionStorage.removeItem(ATTEMPT);
     try { history.replaceState(null, "", location.pathname + location.search); } catch {}
   }
   if (fresh(sessionStorage.getItem(SESSION))) cover();

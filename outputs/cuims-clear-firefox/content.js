@@ -891,7 +891,8 @@ function scanPage() {
   if (/studenthome\.aspx$/i.test(location.pathname)) {
     resetFailureState();
     clearLoginStatus();
-    // Lets the class-hours keep-alive hold a session the student signed in to here.
+    // Tells the background the session is alive, so a refresh that gave way
+    // to this tab's login can run now.
     if (!sessionShared && (typeof window === "undefined" || window === window.top)) {
       sessionShared = true;
       shareLocalStorageWrite({ sessionAlive: true, sessionCheckedAt: Date.now(), loginTabAt: 0 });
@@ -899,6 +900,7 @@ function scanPage() {
   }
 
   prepareLogin();
+  shareLeavePage();
 
   for (const selector of MODAL_SELECTORS) {
     document.querySelectorAll(selector).forEach((element) => {
@@ -909,6 +911,19 @@ function scanPage() {
 
   scanUniqueFeedbackPrompt();
   cleanupBackdrop();
+}
+
+// Opening a leave page on CUIMS hands its application list to the
+// Attendance tab, so pending leave updates without another request.
+let leavePageShared = false;
+function shareLeavePage() {
+  if (leavePageShared || !isTopFrame()) return;
+  const which = /frmStudentApplyDutyLeave\.aspx$/i.test(location.pathname) ? "dl" : /frmStudentMedicalLeaveApply\.aspx$/i.test(location.pathname) ? "ml" : "";
+  if (!which || !document.getElementById(which === "dl" ? "gvHistory" : "gvMlHistory")) return;
+  leavePageShared = true;
+  try {
+    chrome.runtime.sendMessage({ type: "cuims-clear:leave-page", which, html: document.getElementById(which === "dl" ? "gvHistory" : "gvMlHistory").outerHTML });
+  } catch {}
 }
 
 function queueScan() {

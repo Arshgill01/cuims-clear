@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.7.1",
+  "version": "0.7.3",
   "description": "Faster CUIMS login, attendance and safe-skip counts without opening the portal, and a cleaner LMS.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -12,8 +12,7 @@
   "permissions": [
     "storage",
     "tabs",
-    "offscreen",
-    "alarms"
+    "offscreen"
   ],
   "host_permissions": [
     "https://students.cuchd.in/*",

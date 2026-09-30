@@ -1,0 +1,10 @@
+import puppeteer from "puppeteer-core";
+import { readFileSync } from "node:fs";
+const svg = readFileSync(new URL("../../chrome/promo.svg", import.meta.url), "utf8");
+const browser = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true });
+const page = await browser.newPage();
+await page.setViewport({ width: 440, height: 280, deviceScaleFactor: 1 });
+await page.setContent(`<html><body style="margin:0">${svg}</body></html>`);
+await page.screenshot({ path: new URL("../../chrome/promo.png", import.meta.url).pathname });
+await page.screenshot({ path: new URL("../../chrome/promo.jpg", import.meta.url).pathname, type: "jpeg", quality: 92 });
+await browser.close();

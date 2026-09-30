@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Login</title><link rel="stylesheet" href="shared.css">
+<style>
+  .captcha { margin-top: 34px; width: 330px; padding: 16px 18px 14px; border-radius: 14px; background: #fff; border: 1px solid #d3d8cb; box-shadow: 0 24px 48px -18px rgb(24 26 23 / 32%); }
+  .captcha .label { margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+  .captcha img { display: block; width: 294px; height: 88px; border-radius: 6px; image-rendering: pixelated; border: 1px solid #e3e6dd; }
+  .captcha .read { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+  .captcha .text { font: 700 30px/1 ui-monospace, Menlo, monospace; letter-spacing: 0.08em; }
+  .captcha .tag { padding: 5px 9px; border-radius: 999px; background: #f1f8e6; color: var(--lime-deep); font-size: 12px; font-weight: 800; box-shadow: inset 0 0 0 1px #cfe4b3; }
+</style>
+<body><div class="brand"><div class="mark"><span>//</span></div>CUIMS Clear</div>
+<div class="frame">
+  <div>
+    <p class="eyebrow">Login</p>
+    <h1>Sign in to CUIMS in one step.</h1>
+    <p class="lede">Fills your saved UID and password, reads the CAPTCHA, and submits for you.</p>
+    <ul class="points">
+      <li>CAPTCHA read on your device, no OCR server</li>
+      <li>Stops on its own before CUIMS would lock you out</li>
+    </ul>
+    <div class="captcha"><p class="label">CUIMS CAPTCHA</p><img src=".captcha.jpg" alt=""><div class="read"><span class="text">Vm2x</span><span class="tag">Read on-device</span></div></div>
+  </div>
+  <div class="popup fade"><img src=".popup-login.png" alt=""></div>
+</div>
+<p class="foot">Demo account shown. Not affiliated with Chandigarh University.</p></body></html>

@@ -1,6 +1,6 @@
 // Decides when the background may talk to CUIMS, and how much.
-// One run at a time, a request budget, a login guard shared with the CUIMS
-// tab, and automatic work only during weekday class hours.
+// One run at a time, a request budget, and a login guard shared with the
+// CUIMS tab. Nothing runs on a timer: every request follows a popup action.
 
 (function (root) {
   const api = root.CuimsAttendance || (root.CuimsAttendance = {});
@@ -12,8 +12,6 @@
   const FAILURE_WINDOW_MS = 20 * MINUTE;
   const LOCKOUT_MS = 20 * MINUTE;
   const MANUAL_FAILURE_LIMIT = 3;
-  const AUTO_SIGNIN_GAP_MS = 60 * MINUTE;
-  const KEEPALIVE_MS = 9 * MINUTE;
   const PAGE_LOGIN_GRACE_MS = 25_000;
   // A CUIMS tab on the login page beats every 8 s; background tabs may be
   // throttled to one beat a minute.
@@ -23,15 +21,20 @@
   const RUN_LOCK_MS = 2 * MINUTE;
   const MAX_MARK_READS = 4;
   const BACKOFF_MINUTES = [1, 2, 5, 10, 20];
-  const BACKOFF_CODES = new Set(["report-shape", "portal-redirect", "busy", "server", "network", "login-shape"]);
+  // CUIMS's own throttle lasts minutes, so its backoff starts at five.
+  const THROTTLE_MINUTES = [5, 10, 20, 30];
+  const BACKOFF_CODES = new Set(["report-shape", "portal-redirect", "portal-busy", "busy", "server", "network", "login-shape"]);
+  const TIMETABLE_RETRY_MS = 60 * MINUTE;
+  const LEAVE_CHECK_MS = 3 * 60 * MINUTE;
 
   const DEFAULTS = {
     uid: "",
     password: "",
     autoSolveCaptcha: true,
-    attendanceAuto: false,
     attendanceSnapshot: null,
     attendanceTimetable: null,
+    attendanceLeaves: null,
+    attendanceCourses: null,
     attendanceRequests: [],
     attendanceRunUntil: 0,
     attendanceStatus: null,
@@ -42,7 +45,6 @@
     sessionAlive: false,
     sessionCheckedAt: 0,
     loginGuard: null,
-    lastAutoSignInAt: 0,
     pageLoginAt: 0,
     loginTabAt: 0,
   };
@@ -103,11 +105,7 @@
       let guard = freshGuard(state.loginGuard, now());
       if (guard.lockoutUntil > now()) throw client.coded("lockout");
       if (guard.rejectedUid && guard.rejectedUid === uid) throw client.coded("bad-password");
-      if (reason === "scheduled") {
-        if (guard.failures.length || now() - Number(state.lastAutoSignInAt || 0) < AUTO_SIGNIN_GAP_MS) throw client.coded("cooldown");
-      } else if (guard.failures.length >= MANUAL_FAILURE_LIMIT) {
-        throw client.coded("cooldown");
-      }
+      if (guard.failures.length >= MANUAL_FAILURE_LIMIT) throw client.coded("cooldown");
 
       if (now() - Number(state.pageLoginAt || 0) < PAGE_LOGIN_GRACE_MS) {
         onStep("Waiting for the CUIMS tab to sign in…");
@@ -121,7 +119,7 @@
         throw client.coded("cooldown", "A CUIMS tab is signing in. Refresh in a moment.");
       }
 
-      const submits = reason === "scheduled" ? 1 : Math.min(2, MANUAL_FAILURE_LIMIT - guard.failures.length);
+      const submits = Math.min(2, MANUAL_FAILURE_LIMIT - guard.failures.length);
       await storage.set({ bgSignInUntil: now() + SIGNIN_LOCK_MS });
       try {
         let submitted = 0;
@@ -142,7 +140,6 @@
             await storage.set({
               loginGuard: { ...guard, failures: [] },
               bgSignInOkAt: now(),
-              ...(reason === "scheduled" ? { lastAutoSignInAt: now() } : {}),
             });
             return;
           }
@@ -163,18 +160,105 @@
       }
     }
 
-    async function readTimetable(state, request, today) {
+    // The timetable only shapes today's class chips, so
+    // it never fails a refresh. A good read lasts the day; a failed one is
+    // retried at most hourly. It is also never read in the same run as the
+    // heavy attendance page: CUIMS throttles a session that opens several
+    // inner pages at once.
+    async function readTimetable(state, request, today, heavy) {
       const cached = state.attendanceTimetable;
-      if (cached && cached.day === today) return cached.slots || [];
-      let slots = cached?.slots || [];
+      const slots = cached?.slots || [];
+      if (cached?.day === today && slots.length) return slots;
+      if (heavy.used || now() - Number(cached?.triedAt || 0) < TIMETABLE_RETRY_MS) return slots;
+      heavy.used += 1;
       try {
         const fresh = await client.readTimetable(request);
-        if (fresh.length) slots = fresh;
-      } catch (error) {
-        if (error.code === "signed-out" || error.code === "busy") throw error;
+        if (fresh.length) {
+          await storage.set({ attendanceTimetable: { day: today, slots: fresh, triedAt: now() } });
+          return fresh;
+        }
+      } catch {
+        // Signed out, throttled, or a tab owns the session: try again later.
       }
-      await storage.set({ attendanceTimetable: { day: today, slots } });
+      await storage.set({ attendanceTimetable: { day: cached?.day || "", slots, triedAt: now() } });
       return slots;
+    }
+
+    // Which subjects' classes a pending leave covers: the absent marks on its
+    // days (and, for lecture-based duty leave, at its class times). Read with
+    // the cookie-less marks call, one per subject that could be affected.
+    async function countPendingLeave(request, meta, courses, applications) {
+      const waiting = applications.filter((leave) => leave.state === "pending");
+      const counts = {};
+      if (!waiting.length) return counts;
+      for (const [code, encryptCode] of Object.entries(courses || {})) {
+        let marks;
+        try {
+          marks = await client.readMarks(request, meta, encryptCode);
+        } catch {
+          continue;
+        }
+        for (const mark of marks || []) {
+          if (mark.kind !== "absent") continue;
+          const day = client.parseDateKey(mark.date);
+          const start = client.parseRange(mark.time)?.start;
+          for (const leave of waiting) {
+            if (!leave.days.includes(day)) continue;
+            if (leave.timings.length && !leave.timings.some((timing) => client.parseRange(timing)?.start === start)) continue;
+            const entry = (counts[code] ||= { vdl: 0, idl: 0, adl: 0, ml: 0 });
+            entry[leave.kind === "ml" ? "ml" : leave.dlType || "vdl"] += 1;
+            break;
+          }
+        }
+      }
+      return counts;
+    }
+
+    // Folds one leave page's applications in and recounts pending leave when
+    // the set of pending applications changed.
+    async function mergeLeaves(state, request, meta, which, applications) {
+      const cached = state.attendanceLeaves || {};
+      const apps = { dl: cached.apps?.dl || [], ml: cached.apps?.ml || [], [which]: applications };
+      const all = [...apps.dl, ...apps.ml];
+      const pendingKey = all.filter((leave) => leave.state === "pending").map((leave) => leave.id).sort().join(",");
+      const pending = pendingKey === cached.pendingKey && cached.pending ? cached.pending : await countPendingLeave(request, meta, state.attendanceCourses, all);
+      const leaves = { ...cached, apps, pending, pendingKey, [`${which}At`]: now(), checkedAt: now(), triedAt: now() };
+      await storage.set({ attendanceLeaves: leaves });
+      return leaves;
+    }
+
+    // Leave pages are heavy inner pages: at most one every three hours,
+    // alternating duty and medical, and never alongside another heavy page.
+    async function readLeaves(state, request, meta, heavy) {
+      const cached = state.attendanceLeaves;
+      if (heavy.used || now() - Number(cached?.triedAt || 0) < LEAVE_CHECK_MS) return cached;
+      heavy.used += 1;
+      const which = Number(cached?.dlAt || 0) <= Number(cached?.mlAt || 0) ? "dl" : "ml";
+      try {
+        return await mergeLeaves(state, request, meta, which, await client.readLeavePage(request, which));
+      } catch {
+        const leaves = { ...(cached || {}), triedAt: now() };
+        await storage.set({ attendanceLeaves: leaves });
+        return leaves;
+      }
+    }
+
+    // The student opened a leave page on CUIMS: read it there, for free.
+    async function ingestLeavePage(which, html) {
+      if (!client.LEAVE_PAGES[which]) return null;
+      const state = await storage.get(DEFAULTS);
+      const meta = state.attendanceMeta;
+      const applications = which === "dl" ? client.parseDutyLeaves(html) : client.parseMedicalLeaves(html);
+      const budget = meter(state);
+      try {
+        const leaves = await mergeLeaves(state, createRequest(budget), meta, which, applications);
+        if (state.attendanceSnapshot) {
+          await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: { checkedAt: leaves.checkedAt, pending: leaves.pending || {} } } });
+        }
+        return leaves;
+      } finally {
+        await storage.set({ attendanceRequests: budget.log });
+      }
     }
 
     // Day-by-day marks are only worth a request for subjects whose class
@@ -198,8 +282,9 @@
         try {
           const marks = await client.readMarks(request, meta, subject.encryptCode);
           subject.marks = (marks || []).filter((mark) => client.parseDateKey(mark.date) === campus.key);
-        } catch (error) {
-          if (error.code === "signed-out" || error.code === "busy") throw error;
+        } catch {
+          // Today's marks are extra detail; the totals already arrived.
+          return;
         }
       }
     }
@@ -207,15 +292,15 @@
     async function run(reason) {
       const state = await storage.get(DEFAULTS);
       const started = now();
-      if (reason === "scheduled" && !state.attendanceAuto) return { skipped: true };
       const lastError = state.attendanceStatus?.error || "";
-      if (reason !== "scheduled" && started - Number(state.attendanceLastAttemptAt || 0) < MANUAL_GAP_MS) {
+      if (started - Number(state.attendanceLastAttemptAt || 0) < MANUAL_GAP_MS) {
         return { snapshot: state.attendanceSnapshot, recent: true, ...(lastError ? { error: lastError, code: state.attendanceStatus?.code } : {}) };
       }
       const backoffUntil = Number(state.attendanceBackoffUntil || 0);
       if (backoffUntil > started) {
         const minutes = Math.max(1, Math.ceil((backoffUntil - started) / MINUTE));
-        return { snapshot: state.attendanceSnapshot, code: "backoff", error: `${lastError || "CUIMS refused the last read."} Next try in ${minutes} min.` };
+        const reason = lastError.replace(/\s*Next try in \d+ min\.\s*$/, "") || "CUIMS refused the last read.";
+        return { snapshot: state.attendanceSnapshot, code: "backoff", error: `${reason} Next try in ${minutes} min.` };
       }
       if (Number(state.attendanceRunUntil || 0) > started) return { snapshot: state.attendanceSnapshot, busy: true };
 
@@ -225,7 +310,6 @@
       await storage.set({
         attendanceRunUntil: started + RUN_LOCK_MS,
         attendanceLastAttemptAt: started,
-        ...(reason === "manual" ? { attendanceAuto: true } : {}),
       });
       await onStep("Checking your CUIMS session…");
       try {
@@ -243,6 +327,7 @@
             meta = null;
           }
         }
+        const pageLoaded = !subjects;
         if (!subjects) {
           try {
             meta = await client.openAttendance(request);
@@ -263,13 +348,21 @@
         }
         await storage.set({ attendanceMeta: { reportId: meta.reportId, sessionId: meta.sessionId } });
         const campus = client.campusParts(new Date(now()));
-        const slots = await readTimetable(state, request, campus.key);
+        const courses = Object.fromEntries(subjects.filter((subject) => subject.encryptCode).map((subject) => [client.normCode(subject.code), subject.encryptCode]));
+        await storage.set({ attendanceCourses: courses });
+        state.attendanceCourses = courses;
+        // At most one heavy CUIMS page per refresh: the attendance page, else
+        // the timetable, else a leave page.
+        const heavy = { used: pageLoaded ? 1 : 0 };
+        const slots = await readTimetable(state, request, campus.key, heavy);
         await readTodaysMarks(state, request, meta, subjects, slots, campus);
+        const leaves = await readLeaves(state, request, meta, heavy);
         const snapshot = {
           fetchedAt: new Date(now()).toISOString(),
           marksDay: campus.key,
           slots,
           subjects: subjects.map(({ encryptCode, ...subject }) => subject),
+          leaves: leaves?.checkedAt ? { checkedAt: leaves.checkedAt, pending: leaves.pending || {} } : null,
         };
         await storage.set({ attendanceSnapshot: snapshot, attendanceFailStreak: 0, attendanceBackoffUntil: 0 });
         await setStatus({ working: false, phase: "", error: "", code: "" });
@@ -285,9 +378,11 @@
         }
         if (BACKOFF_CODES.has(code)) {
           const streak = Number(state.attendanceFailStreak || 0) + 1;
-          const minutes = BACKOFF_MINUTES[Math.min(streak, BACKOFF_MINUTES.length) - 1];
+          const table = code === "portal-busy" ? THROTTLE_MINUTES : BACKOFF_MINUTES;
+          const minutes = table[Math.min(streak, table.length) - 1];
           const said = (error.detail?.title || error.detail?.text || "").trim().slice(0, 70);
-          message = `${message}${said ? ` CUIMS said “${said}”.` : ""} Next try in ${minutes} min.`;
+          const kept = state.attendanceSnapshot ? " Showing your last read." : "";
+          message = `${message}${said ? ` CUIMS said “${said}”.` : ""}${kept} Next try in ${minutes} min.`;
           await storage.set({
             attendanceFailStreak: streak,
             attendanceBackoffUntil: now() + minutes * MINUTE,
@@ -304,30 +399,6 @@
 
     function refresh(reason = "manual") {
       return inflight || exclusive(() => run(reason));
-    }
-
-    // Alarm tick. Outside weekday class hours it does nothing at all.
-    async function tick() {
-      if (inflight) return { skipped: true };
-      const state = await storage.get(DEFAULTS);
-      if (!state.attendanceAuto) return { skipped: true };
-      const slots = state.attendanceTimetable?.slots || state.attendanceSnapshot?.slots || [];
-      const hours = client.campusWindow(slots, new Date(now()));
-      if (!hours.open) return { skipped: true };
-      if (client.classEndedSince(slots, state.attendanceSnapshot?.fetchedAt, new Date(now()))) {
-        return { refreshed: await refresh("scheduled") };
-      }
-      if (!state.sessionAlive || now() - Number(state.sessionCheckedAt || 0) < KEEPALIVE_MS) return { skipped: true };
-      const budget = meter(state);
-      try {
-        const alive = await client.pingHome(createRequest(budget));
-        await storage.set({ sessionAlive: alive, sessionCheckedAt: now() });
-        return { pinged: true, alive };
-      } catch {
-        return { pinged: false };
-      } finally {
-        await storage.set({ attendanceRequests: budget.log });
-      }
     }
 
     // Before the popup opens CUIMS or LMS: make sure this browser holds a
@@ -384,7 +455,7 @@
       return { refreshed: await refresh("manual") };
     }
 
-    return { refresh, tick, afterTabSignIn, ensureSession };
+    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage };
   }
 
   api.DAEMON_DEFAULTS = DEFAULTS;

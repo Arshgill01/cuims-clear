@@ -1,8 +1,9 @@
 # CUIMS Clear for Chrome
 
 Same CUIMS login helper as the Firefox build: optional saved UID/password filling, on-device
-CAPTCHA OCR, quiet mode for event/feedback overlays, and a cleaner LMS course
-directory that pairs syllabus materials with semester work.
+CAPTCHA OCR, quiet mode for event/feedback overlays, a cleaner LMS course
+directory that pairs syllabus materials with semester work, and an **Attendance**
+tab that reads your attendance and safe-skip counts without opening CUIMS.
 
 Chrome cannot load the Firefox folder. This package is the Chrome MV3 build.
 

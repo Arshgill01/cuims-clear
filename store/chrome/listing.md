@@ -35,16 +35,16 @@ Help Chandigarh University students access and navigate their CUIMS and LMS port
 ## Permission justifications
 
 ### storage
-Save optional student UID/password and login-automation, quiet-mode, and LMS-view preferences in chrome.storage.local. Credentials are not encrypted by the extension. Clear login removes saved credentials; uninstall removes local storage. No browser sync or developer backend is used.
+Save optional student UID/password, login-automation, quiet-mode, and LMS-view preferences, and the student's own attendance figures, in chrome.storage.local. Credentials are not encrypted by the extension. Clear login removes saved credentials and attendance; uninstall removes local storage. No browser sync or developer backend is used.
 
 ### tabs
-Find and reuse existing CUIMS and LMS tabs when the student selects Open LMS, coordinate the university's own SSO launch, and focus the resulting LMS tab. The extension does not record browsing history.
+When the student selects Open CUIMS or Open LMS in the popup, open the portal in a new tab next to the current one, or focus an LMS tab that is already open instead of opening another. The extension does not record browsing history.
 
 ### offscreen
 Run the bundled Tesseract OCR worker and WebAssembly engine in a Chrome offscreen document because the Manifest V3 service worker cannot run this document-based OCR workflow. CAPTCHA images are processed locally.
 
 ### Host permissions
-students.cuchd.in: assist with the login form by filling optionally saved credentials or using credentials entered by the student, process its CAPTCHA locally, apply the student's optional quiet-mode settings, and launch the university's own LMS SSO control.
+students.cuchd.in: assist with the login form by filling optionally saved credentials or using credentials entered by the student, process its CAPTCHA locally, apply the student's optional quiet-mode settings, launch the university's own LMS SSO control, and read the student's own attendance report, timetable, and duty and medical leave applications for the Attendance tab.
 lms.cuchd.in: display a cleaner course directory and course navigation, including fetching same-origin course directory pages to pair syllabus materials with semester work.
 
 ### Remote code

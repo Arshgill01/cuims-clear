@@ -1,0 +1,38 @@
+/* Store screenshot frames, 1280x800. Brand: graphite ink, lime accent. */
+:root {
+  --canvas: #e5e8df;
+  --paper: #f2f3ee;
+  --ink: #181a17;
+  --muted: #5d6258;
+  --line: #cfd4c8;
+  --lime: #b7f34a;
+  --lime-deep: #3a6912;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1280px; height: 800px; overflow: hidden; }
+body {
+  background:
+    radial-gradient(900px 600px at 88% 20%, #eef3e2 0%, transparent 60%),
+    var(--canvas);
+  color: var(--ink);
+  font-family: "Avenir Next", Avenir, Inter, -apple-system, sans-serif;
+}
+.frame { position: relative; display: grid; grid-template-columns: 560px 1fr; height: 800px; padding: 0 88px 0 96px; align-items: center; gap: 40px; }
+.brand { position: absolute; top: 44px; left: 96px; display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.brand .mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--ink); color: var(--lime); font: 800 16px/1 ui-monospace, Menlo, monospace; letter-spacing: -4px; }
+.brand .mark span { transform: translateX(-2px); }
+.eyebrow { margin: 0 0 18px; color: var(--lime-deep); font-size: 15px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+h1 { margin: 0; font-size: 54px; line-height: 1.04; letter-spacing: -0.03em; font-weight: 700; }
+.lede { margin: 22px 0 0; max-width: 470px; color: var(--muted); font-size: 21px; line-height: 1.45; }
+ul.points { margin: 34px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+ul.points li { display: flex; gap: 12px; align-items: baseline; font-size: 18px; font-weight: 600; line-height: 1.35; }
+ul.points li::before { content: ""; flex: 0 0 auto; width: 10px; height: 10px; border-radius: 3px; background: var(--lime); box-shadow: inset 0 0 0 1.5px #86b52d; transform: translateY(-1px); }
+.foot { position: absolute; bottom: 40px; left: 96px; color: #7b8075; font-size: 13px; }
+.popup {
+  justify-self: center; width: 368px; height: 712px; overflow: hidden; border-radius: 14px;
+  background: var(--paper); border: 1px solid #c3c9bb;
+  box-shadow: 0 30px 60px -20px rgb(24 26 23 / 30%), 0 10px 24px -12px rgb(24 26 23 / 18%);
+  position: relative;
+}
+.popup img { width: 368px; display: block; }
+.popup.fade::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 120px; background: linear-gradient(to bottom, rgb(242 243 238 / 0), var(--paper) 85%); }

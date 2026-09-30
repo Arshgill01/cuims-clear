@@ -7,12 +7,15 @@ const source = readFileSync(new URL("../outputs/cuims-clear-firefox/lms-launch.j
 
 async function launch({
   pending,
+  attempted = false,
+  storedLaunchAt = 0,
   hash = "#cuims-clear-lms",
   signedIn = true,
   iframe = false,
   href = "javascript:__doPostBack('ctl00$lbtnLMSSSO','')",
 } = {}) {
   const store = new Map(pending ? [["cuims-clear:lms-launch", String(pending)]] : []);
+  if (attempted) store.set("cuims-clear:lms-attempt", "1");
   const dest = { href: undefined };
   let clicked = false;
   const created = [];
@@ -66,7 +69,7 @@ async function launch({
     chrome: {
       storage: {
         local: {
-          get: async (defaults) => ({ ...defaults }),
+          get: async (defaults) => ({ ...defaults, ...(storedLaunchAt ? { lmsLaunchAt: storedLaunchAt } : {}) }),
           set: async () => {},
           remove: async () => {},
         },
@@ -118,4 +121,17 @@ test("retains the short-lived launch intent while CUIMS requires login", async (
   const result = await launch({ signedIn: false });
   assert.equal(result.clicked, false);
   assert.equal(result.store.size, 1);
+});
+
+test("a plain CUIMS visit never launches LMS, whatever an older build left in storage", async () => {
+  const result = await launch({ hash: "", storedLaunchAt: Date.now() });
+  assert.equal(result.clicked, false);
+  assert.equal(result.dest.href, undefined);
+  assert.equal(result.covered, false);
+});
+
+test("a tab tries the LMS handoff once; coming back to the dashboard does not relaunch", async () => {
+  const result = await launch({ hash: "", pending: Date.now(), attempted: true });
+  assert.equal(result.clicked, false);
+  assert.equal(result.store.size, 0);
 });

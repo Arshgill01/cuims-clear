@@ -6,12 +6,15 @@
   const STATE_LABEL = {
     present: "present",
     absent: "absent",
+    leave: "on leave",
     pending: "ended, mark not posted yet",
     now: "in progress",
     next: "later today",
   };
-  const STATE_GLYPH = { present: "✓", absent: "✕", pending: "…", now: "●", next: "" };
+  const STATE_GLYPH = { present: "✓", absent: "✕", leave: "L", pending: "…", now: "●", next: "" };
   const KIND = { P: "lab", T: "tutorial" };
+  const VERDICT = { "can-skip": "Can skip", attend: "Attend", planned: "Skipping", "too-many": "Too many" };
+  const WEEKDAY = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -25,6 +28,19 @@
     const date = new Date(iso || "");
     if (Number.isNaN(date.getTime())) return "";
     return new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hourCycle: "h12" }).format(date);
+  }
+
+  // "just now", "8 min ago", "2 h ago", "yesterday", "3 days ago".
+  function ago(iso, now = new Date()) {
+    const then = Date.parse(iso || "");
+    if (!then) return "";
+    const minutes = Math.max(0, Math.floor((now.getTime() - then) / 60000));
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    const days = Math.floor(hours / 24);
+    return days === 1 ? "yesterday" : `${days} days ago`;
   }
 
   function meter(percent, mark) {
@@ -46,41 +62,134 @@
     return "hold";
   }
 
-  function subjectRow(subject) {
+  // "VDL 7 left · 1 pending", plus pending medical leave when there is any.
+  function leaveTags(subject) {
+    const leave = subject.leave;
+    if (!leave || !(subject.delivered > 0)) return "";
+    const tone = leave.vdlLeft === 0 ? " is-out" : leave.vdlLeft <= 2 ? " is-low" : "";
+    const pendingVdl = leave.pending.vdl ? ` · ${leave.pending.vdl} pending` : "";
+    const title = `${leave.approved.vdl} of ${api.VDL_PER_SUBJECT} voluntary duty leaves approved${leave.pending.vdl ? `, ${leave.pending.vdl} pending` : ""}${subject.ifApproved != null ? `. If approved: ${api.formatPercent(subject.ifApproved)}` : ""}`;
+    const vdl = `<span class="tag tag-vdl${tone}" title="${escapeHtml(title)}">VDL ${leave.vdlLeft} left${pendingVdl}</span>`;
+    const other = leave.pending.dl - leave.pending.vdl;
+    const ml = leave.pending.ml ? `<span class="tag">ML ${leave.pending.ml} pending</span>` : "";
+    const rest = other > 0 ? `<span class="tag">DL ${other} pending</span>` : "";
+    return vdl + ml + rest;
+  }
+
+  function subjectRow(subject, mark) {
     const counts = subject.delivered > 0 ? `${subject.attended}/${subject.delivered}` : "—";
+    const tag = leaveTags(subject);
     const today = subject.today.length ? `<ul class="chips" aria-label="Today">${subject.today.map(chip).join("")}</ul>` : "";
     return `<li class="course tone-${escapeHtml(subject.tone)}">
       <div class="course-top">
         <span class="course-title" title="${escapeHtml(subject.code)}">${escapeHtml(subject.title)}</span>
         <span class="course-pct">${escapeHtml(api.formatPercent(subject.percent))}</span>
       </div>
-      ${meter(subject.percent, 75)}
+      ${meter(subject.percent, mark)}
       <div class="course-bottom">
         <span class="course-line"><span class="counts">${escapeHtml(counts)}</span><span class="line is-${stance(subject)}">${escapeHtml(subject.line)}</span></span>
-        ${today}
+        ${tag}${today}
       </div>
     </li>`;
   }
 
-  function toolbar(analytics, state) {
+  function goalSwitch(goal) {
+    const option = (entry) =>
+      `<button type="button" role="radio" data-goal="${entry.id}" aria-checked="${entry.id === goal.id}">${escapeHtml(entry.label)}</button>`;
+    return `<div class="goal" role="radiogroup" aria-label="Attendance goal">${Object.values(api.GOALS).map(option).join("")}</div>`;
+  }
+
+  function planRow(item) {
+    const kind = KIND[item.kind] ? ` · ${KIND[item.kind]}` : "";
+    const now = item.state === "now" ? `<span class="plan-now" aria-label="in progress">●</span>` : "";
+    return `<li><button type="button" class="plan-row is-${item.verdict}" data-plan-key="${escapeHtml(item.key)}" aria-pressed="${item.skipping}">
+      <span class="plan-time">${escapeHtml(item.time)}</span>
+      <span class="plan-title">${now}${escapeHtml(item.title)}<span class="plan-kind">${escapeHtml(kind)}</span></span>
+      <span class="plan-verdict">${escapeHtml(VERDICT[item.verdict] || "")}</span>
+    </button></li>`;
+  }
+
+  function planNote(today, goal) {
+    const projection = today.projection;
+    if (!projection) return today.maxSkips ? "Tap a class you plan to skip." : "";
+    const parts = projection.subjects.map((subject) => `${subject.title} ${api.formatPercent(subject.percent)}`);
+    if (goal.overall && projection.overall != null) parts.unshift(`overall ${api.formatPercent(projection.overall)}`);
+    const text = `After today: ${parts.join(" · ")}`;
+    return projection.safe ? text : `Too many skips. ${text}`;
+  }
+
+  function todayCard(analytics, now) {
+    const today = analytics.today;
+    if (!today) return "";
+    const weekday = WEEKDAY[api.campusParts(now).weekday] || "Today";
+    if (!today.classes.length) {
+      return `<section class="today is-done" aria-label="Today"><div class="section-head"><span class="section-label">Today · ${escapeHtml(weekday)}</span><span class="section-meta">No more classes</span></div></section>`;
+    }
+    const left = today.classes.length;
+    const summary = today.maxSkips ? `${left} left · skip up to ${today.maxSkips}` : `${left} left · attend all`;
+    const note = planNote(today, analytics.goal);
+    const warn = today.projection && !today.projection.safe;
+    return `<section class="today" aria-label="Today">
+      <div class="section-head"><span class="section-label">Today · ${escapeHtml(weekday)}</span><span class="section-meta">${escapeHtml(summary)}</span></div>
+      <ul class="plan">${today.classes.map(planRow).join("")}</ul>
+      ${note ? `<p class="plan-note${warn ? " is-warn" : ""}">${escapeHtml(note)}</p>` : ""}
+    </section>`;
+  }
+
+  function leaveCard(analytics, now) {
+    const leave = analytics.overall.leave;
+    const approved = leave.approved;
+    const waiting = leave.pending;
+    const checked = analytics.leavesCheckedAt;
+    if (!checked && !approved.vdl && !approved.ml && !approved.other) return "";
+    const parts = [];
+    if (waiting.dl) parts.push(`${waiting.dl} duty leave`);
+    if (waiting.ml) parts.push(`${waiting.ml} medical`);
+    const pendingLine = !checked
+      ? "Pending leave: open Duty Leave on CUIMS once to check."
+      : parts.length
+        ? `${parts.join(" · ")} pending`
+        : "No pending leave";
+    const projection =
+      analytics.overall.ifApproved != null
+        ? `<p class="leave-if">If approved: ${escapeHtml(api.formatPercent(analytics.overall.percent))} → <strong>${escapeHtml(api.formatPercent(analytics.overall.ifApproved))}</strong></p>`
+        : "";
+    const counted = [`VDL ${approved.vdl}`, `ML ${approved.ml}`, ...(approved.other ? [`other DL ${approved.other}`] : [])].join(" · ");
+    const low = analytics.subjects.filter((subject) => subject.delivered > 0).sort((left, right) => left.leave.vdlLeft - right.leave.vdlLeft)[0];
+    return `<section class="leave" aria-label="Leave">
+      <div class="section-head"><span class="section-label">Leave</span>${checked ? `<span class="section-meta">checked ${escapeHtml(ago(checked, now))}</span>` : ""}</div>
+      <p class="leave-pending${parts.length ? " has-pending" : ""}">${escapeHtml(pendingLine)}</p>
+      ${projection}
+      <p class="leave-approved">Approved so far: ${escapeHtml(counted)}</p>
+      ${low ? `<p class="leave-approved">${api.VDL_PER_SUBJECT} VDL per subject each semester · fewest left: ${escapeHtml(low.title)} (${low.leave.vdlLeft})</p>` : ""}
+    </section>`;
+  }
+
+  function toolbar(analytics, state, now) {
     const note = state.working
       ? state.phase || "Refreshing…"
       : analytics?.fetchedAt
-        ? `Updated ${clock(analytics.fetchedAt)}`
+        ? `Updated ${clock(analytics.fetchedAt)} (${ago(analytics.fetchedAt, now)})`
         : "";
-    const left = analytics?.overall.left ? ` · ${analytics.overall.left} left today` : "";
     return `<div class="attendance-bar">
-      <p class="attendance-note" role="status" aria-live="polite">${escapeHtml(note)}${state.working ? "" : escapeHtml(left)}</p>
+      <p class="attendance-note" role="status" aria-live="polite">${escapeHtml(note)}</p>
       <button id="fetch-attendance" class="refresh-button" type="button"${state.working ? " disabled" : ""}>${state.working ? "Refreshing" : "Refresh"}</button>
     </div>
     ${message(state)}`;
   }
 
-  // Giving way to a CUIMS tab is not a failure, so it reads as a note.
+  // Waiting on CUIMS (a tab signing in, its throttle, our own backoff) is not
+  // a failure, so it reads as a note, not an error.
   function message(state) {
     if (!state.error) return "";
-    const kind = state.code === "tab-login" ? "attendance-info" : "attendance-error";
+    const calm = new Set(["tab-login", "portal-busy", "backoff", "busy", "cooldown"]);
+    const kind = calm.has(state.code) ? "attendance-info" : "attendance-error";
     return `<p class="${kind}" role="status">${escapeHtml(state.error)}</p>`;
+  }
+
+  function overallStance(analytics) {
+    if (analytics.goal.overall) return stance(analytics.overall);
+    return analytics.subjects.some((row) => row.recover > 0) ? "recover" : "skip";
   }
 
   function renderAttendance(analytics, state = {}) {
@@ -91,20 +200,29 @@
         ${message(state)}
       </div>`;
     }
+    const now = state.now || new Date();
+    const goal = analytics.goal;
     const overall = analytics.overall;
-    return `${toolbar(analytics, state)}
+    const subjectMark = Math.round(goal.subject * 100);
+    const overallMark = Math.round((goal.overall || goal.subject) * 100);
+    const rule = goal.overall ? `${subjectMark}% per subject and ${overallMark}% overall` : `${subjectMark}% in every subject`;
+    return `${toolbar(analytics, state, now)}
+      ${goalSwitch(goal)}
+      ${todayCard(analytics, now)}
       <section class="overall tone-${escapeHtml(overall.tone)}" aria-label="Overall attendance">
         <div class="course-top">
           <span class="overall-label">Overall</span>
           <span class="overall-pct">${escapeHtml(api.formatPercent(overall.percent))}</span>
         </div>
-        ${meter(overall.percent, 90)}
-        <p class="course-line"><span class="counts">${escapeHtml(`${overall.attended}/${overall.delivered}`)}</span><span class="line is-${stance(overall)}">${escapeHtml(overall.line)}</span></p>
+        ${meter(overall.percent, overallMark)}
+        <p class="course-line"><span class="counts">${escapeHtml(`${overall.attended}/${overall.delivered}`)}</span><span class="line is-${overallStance(analytics)}">${escapeHtml(overall.line)}</span></p>
       </section>
-      <ul class="course-list" aria-label="Subjects">${analytics.subjects.map(subjectRow).join("")}</ul>
-      <p class="attendance-foot">Skips assume you attend the rest. 75% per subject, 90% overall. A class without a posted mark counts as missed.</p>`;
+      ${leaveCard(analytics, now)}
+      <ul class="course-list" aria-label="Subjects">${analytics.subjects.map((subject) => subjectRow(subject, subjectMark)).join("")}</ul>
+      <p class="attendance-foot">Goal: ${escapeHtml(rule)}. Skips assume you attend the rest, and a class without a posted mark counts as missed. Approved leave drops a class from the count; pending leave counts as absent until approved.</p>`;
   }
 
   api.escapeHtml = escapeHtml;
+  api.ago = ago;
   api.renderAttendance = renderAttendance;
 })(globalThis);
