@@ -350,18 +350,17 @@ function canAutoSubmit(now = Date.now()) {
   if (state.locked || sharedLockout > now) {
     return { ok: false, reason: "lockout", state: { ...state, lockoutUntil: Math.max(state.lockoutUntil, sharedLockout) } };
   }
-  const backgroundFailures = sharedFailures(now).filter((item) => item.by === "bg").length;
-  if (state.budgetExhausted || state.failures + backgroundFailures >= MAX_AUTO_SUBMIT_ATTEMPTS) {
-    return { ok: false, reason: "budget", state: { ...state, failures: state.failures + backgroundFailures } };
-  }
+  // The tab's three tries are its own: the background stands down after a
+  // single refusal (attendance-daemon.js), so it can never use them up.
+  if (state.budgetExhausted) return { ok: false, reason: "budget", state };
   return { ok: true, reason: "ok", state };
 }
 
-// Only a confident four-character read is submitted without a person
-// looking: anything else is a guaranteed refusal that still counts towards
-// CUIMS's lockout.
+// One Enter: every four-character read is submitted, sure or not. The three
+// tries are the safety net, not the solver's confidence. Anything that is not
+// four characters is not a CUIMS captcha and would only be refused.
 function mayAutoSubmitSolution(solution) {
-  if (!solution || solution.error || !solution.confident) return false;
+  if (!solution || solution.error) return false;
   return CAPTCHA_RE.test(String(solution.text || ""));
 }
 
@@ -478,7 +477,14 @@ function bindCaptchaReload(captchaImage) {
   if (captchaImage.dataset.cuimsClearBound) return;
   captchaImage.dataset.cuimsClearBound = "1";
   captchaImage.addEventListener("load", () => {
-    if (captchaImage.dataset.cuimsClearSeen) captchaImage.dataset.cuimsClearIssuedAt = String(Date.now() - 5_000);
+    const src = captchaImage.src;
+    // Chrome can report the first image complete before its load event
+    // fires. That late event is not a new captcha: solving it again clicked
+    // Login a second time while the page was already leaving, and the lost
+    // click still used up one of the three tries.
+    if (captchaImage.dataset.cuimsClearSolved === src || captchaImage.dataset.cuimsClearSolving === src) return;
+    const seen = captchaImage.dataset.cuimsClearSeen;
+    if (seen && seen !== src) captchaImage.dataset.cuimsClearIssuedAt = String(Date.now() - 5_000);
     delete captchaImage.dataset.cuimsClearSolved;
     delete captchaImage.dataset.cuimsClearSolving;
     delete captchaImage.dataset.cuimsClearWaiting;
@@ -600,7 +606,7 @@ function prepareCaptchaStep(passwordField) {
   if (!captchaImage) return;
 
   bindCaptchaReload(captchaImage);
-  captchaImage.dataset.cuimsClearSeen = "1";
+  captchaImage.dataset.cuimsClearSeen = captchaImage.src;
 
   // Handle dynamic captcha refresh / image reload
   if (

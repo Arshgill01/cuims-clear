@@ -146,21 +146,28 @@ test("a dead session signs in once: one UID step, one password submit, no replay
   assert.ok(storage.data.bgSignInOkAt > 0);
 });
 
-test("a refused captcha is never guessed again in the same refresh, and the shared limit stops later ones", async () => {
+test("one refused background login stands the background down for the window, leaving the tab its three tries", async () => {
   const server = fakeCuims({ rejectAs: "captcha" });
   const storage = saved();
   const bg = daemon(server, storage);
   const first = await bg.refresh("manual");
   assert.equal(first.code, "bad-captcha");
   assert.equal(server.state.loginPosts, 1, "one submit per sign-in");
-  for (let i = 0; i < 2; i++) {
-    bg.advance(60_000);
-    assert.equal((await bg.refresh("manual")).code, "bad-captcha");
-  }
-  assert.equal(server.state.loginPosts, 3);
   bg.advance(60_000);
   assert.equal((await bg.refresh("manual")).code, "cooldown");
-  assert.equal(server.state.loginPosts, 3, "never more than three refused submits in the window");
+  bg.advance(10 * 60_000);
+  assert.equal((await bg.refresh("manual")).code, "cooldown");
+  assert.equal(server.state.loginPosts, 1, "no second background submit inside 20 minutes");
+  bg.advance(11 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(server.state.loginPosts, 2, "back once the window has passed");
+});
+
+test("a refusal on the CUIMS tab keeps the background from signing in too", async () => {
+  const server = fakeCuims();
+  const storage = saved({ loginGuard: { failures: [{ at: MONDAY_11 - 60_000, by: "page" }], lockoutUntil: 0 } });
+  assert.equal((await daemon(server, storage).refresh("manual")).code, "cooldown");
+  assert.equal(server.state.loginPosts, 0);
 });
 
 // ---- the background and a CUIMS tab share one session and one captcha ----
@@ -456,10 +463,10 @@ test("the login page holds its submit while the background is signing in", () =>
   assert.equal(page.call("canAutoSubmit().ok"), true);
 });
 
-test("background failures and lockouts count against the login page's auto-submit", () => {
+test("a background refusal leaves the login page its three tries, but a lockout stops it", () => {
   const page = contentRuntime();
-  page.call(`sharedLogin.loginGuard = { failures: [{ at: Date.now(), by: "bg" }, { at: Date.now(), by: "bg" }, { at: Date.now(), by: "bg" }] }`);
-  assert.equal(page.call("canAutoSubmit().reason"), "budget");
+  page.call(`sharedLogin.loginGuard = { failures: [{ at: Date.now(), by: "bg" }] }`);
+  assert.equal(page.call("canAutoSubmit().ok"), true);
   page.call(`sharedLogin.loginGuard = { failures: [], lockoutUntil: Date.now() + 60000 }`);
   assert.equal(page.call("canAutoSubmit().reason"), "lockout");
 });

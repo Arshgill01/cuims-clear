@@ -6,7 +6,8 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - fills your student UID and optionally presses **Next**;
 - fills your CUIMS password from local Firefox extension storage;
 - reads the login CAPTCHA on-device by matching it against the fixed font CUIMS
-  draws it in, fills the answer, and submits only when the read is certain;
+  draws it in, fills the answer, and presses Login for you: up to three tries,
+  then Login is left to you;
 - enlarges the CAPTCHA image and focuses the field whenever automatic solving
   is off, unsure, or has used up its retry budget;
 - suppresses blocking event and feedback overlays while leaving other dialogs alone;
@@ -31,9 +32,9 @@ CAPTCHA solving happens entirely inside the extension, in plain JavaScript
 draws every captcha as four Courier New Bold characters on a fixed grid, so the
 solver matches each character cell against the 62 possible glyphs instead of
 running a general OCR engine. It reads all 530 real CUIMS captchas in the test
-corpus exactly. No data is sent to any server. A read it is not sure of is
-filled for you to check and never submitted, and automatic attempts are capped
-well under CUIMS's lockout.
+corpus exactly. No data is sent to any server. Automatic attempts stop after
+three, well under CUIMS's lockout, and a background sign-in stands down after a
+single refusal so it never uses the login tab's tries.
 
 CUIMS Clear is an independent student-built project. It is not affiliated with or endorsed
 by Chandigarh University.

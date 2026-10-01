@@ -11,7 +11,10 @@
   const BUDGET_MAX = 40;
   const FAILURE_WINDOW_MS = 20 * MINUTE;
   const LOCKOUT_MS = 20 * MINUTE;
-  const MANUAL_FAILURE_LIMIT = 3;
+  // Any refused login in the last 20 minutes, the tab's or its own, stops the
+  // background from signing in: the login tab keeps all three of its tries,
+  // and the account stays well clear of CUIMS's lockout (1 + 3 refusals).
+  const BACKGROUND_FAILURE_LIMIT = 1;
   const PAGE_LOGIN_GRACE_MS = 25_000;
   // A CUIMS tab on the login page beats every 8 s; background tabs may be
   // throttled to one beat a minute.
@@ -121,7 +124,7 @@
       let guard = freshGuard(state.loginGuard, now());
       if (guard.lockoutUntil > now()) throw client.coded("lockout");
       if (guard.rejectedUid && guard.rejectedUid === uid) throw client.coded("bad-password");
-      if (guard.failures.length >= MANUAL_FAILURE_LIMIT) throw client.coded("cooldown");
+      if (guard.failures.length >= BACKGROUND_FAILURE_LIMIT) throw client.coded("cooldown");
 
       if (now() - Number(state.pageLoginAt || 0) < PAGE_LOGIN_GRACE_MS) {
         onStep("Waiting for the CUIMS tab to sign in…");
@@ -138,7 +141,7 @@
       // One submit per sign-in: the solver is all but always right, so a
       // refusal means something else is going on, and guessing again only
       // walks towards CUIMS's lockout. Unsure reads are re-drawn for free.
-      const submits = Math.min(1, MANUAL_FAILURE_LIMIT - guard.failures.length);
+      const submits = 1;
       await storage.set({ bgSignInUntil: now() + SIGNIN_LOCK_MS });
       try {
         let submitted = 0;

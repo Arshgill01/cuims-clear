@@ -96,12 +96,12 @@ test("Chrome fills the captcha read and submits only when automatic submission i
   assert.equal(state.loginClicks(), 1);
 });
 
-test("Chrome fills an unsure read for the student to check, and does not submit it", async () => {
+test("Chrome submits an unsure four-character read too: one Enter, three tries", async () => {
   const state = login({ text: "abcd", score: 0.6, confident: false });
   vm.runInContext("prepareLogin()", state.context);
   await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
   assert.equal(state.answer.value, "abcd");
-  assert.equal(state.loginClicks(), 0);
+  assert.equal(state.loginClicks(), 1);
 });
 
 test("Chrome does not auto-submit a junk-length OCR read", async () => {
