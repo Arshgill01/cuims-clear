@@ -20,13 +20,13 @@ const A = load();
 const MONDAY_11 = Date.UTC(2026, 8, 28, 5, 30);
 const at = (hours, minutes = 0, day = 28) => Date.UTC(2026, 8, day, hours - 5, minutes - 30);
 
-function daemon(server, storage, { clock = MONDAY_11, captcha = "Ab12" } = {}) {
+function daemon(server, storage, { clock = MONDAY_11, captcha = "Ab12", solve = null } = {}) {
   let time = clock;
   const sleeps = [];
   const instance = A.createDaemon({
     storage,
     fetchImpl: server.fetchImpl,
-    solveCaptcha: async () => captcha,
+    solveCaptcha: solve || (async () => captcha),
     now: () => time,
     sleep: async (ms) => {
       sleeps.push(ms);
@@ -146,21 +146,93 @@ test("a dead session signs in once: one UID step, one password submit, no replay
   assert.ok(storage.data.bgSignInOkAt > 0);
 });
 
-test("a wrong captcha is retried once on a manual refresh, then the shared limit stops it", async () => {
+test("a refused captcha is never guessed again in the same refresh, and the shared limit stops later ones", async () => {
   const server = fakeCuims({ rejectAs: "captcha" });
   const storage = saved();
   const bg = daemon(server, storage);
   const first = await bg.refresh("manual");
   assert.equal(first.code, "bad-captcha");
-  assert.equal(server.state.loginPosts, 2);
-  bg.advance(60_000);
-  const second = await bg.refresh("manual");
-  assert.equal(server.state.loginPosts, 3, "only the one submit left under the limit of three");
-  bg.advance(60_000);
-  const third = await bg.refresh("manual");
-  assert.equal(third.code, "cooldown");
+  assert.equal(server.state.loginPosts, 1, "one submit per sign-in");
+  for (let i = 0; i < 2; i++) {
+    bg.advance(60_000);
+    assert.equal((await bg.refresh("manual")).code, "bad-captcha");
+  }
   assert.equal(server.state.loginPosts, 3);
-  assert.equal(second.code, "bad-captcha");
+  bg.advance(60_000);
+  assert.equal((await bg.refresh("manual")).code, "cooldown");
+  assert.equal(server.state.loginPosts, 3, "never more than three refused submits in the window");
+});
+
+// ---- the background and a CUIMS tab share one session and one captcha ----
+
+test("a CUIMS tab that starts the login while the background reads its captcha stops the background submit", async () => {
+  const server = fakeCuims();
+  const storage = saved();
+  let bg;
+  bg = daemon(server, storage, {
+    solve: async () => {
+      // The student opens CUIMS right now: the tab says so at document_start.
+      await storage.set({ tabLoginTouchAt: MONDAY_11 + 1 });
+      return { text: "Ab12", confident: true };
+    },
+  });
+  const result = await bg.refresh("manual");
+  assert.equal(result.code, "tab-login");
+  assert.equal(server.state.loginPosts, 0, "a captcha the tab has replaced is never submitted");
+  const { loginGuard } = await storage.get({ loginGuard: null });
+  assert.equal(loginGuard?.failures?.length || 0, 0, "giving way to the tab is not a failure");
+});
+
+test("a tab that just started loading the login page keeps the background off the login flow", async () => {
+  const server = fakeCuims();
+  const storage = saved({ tabLoginTouchAt: MONDAY_11 - 5_000 });
+  const result = await daemon(server, storage).refresh("manual");
+  assert.equal(result.code, "tab-login");
+  assert.equal(server.state.loginPageLoads + server.state.captchaReads + server.state.loginPosts, 0);
+});
+
+test("an Open CUIMS that gave up on the background sign-in cancels it before it submits", async () => {
+  const server = fakeCuims();
+  const controller = new AbortController();
+  const bg = daemon(server, saved(), {
+    solve: async () => {
+      controller.abort();
+      return { text: "Ab12", confident: true };
+    },
+  });
+  const result = await bg.ensureSession({ signal: controller.signal });
+  assert.equal(result.alive, false);
+  assert.equal(result.reason, "cancelled");
+  assert.equal(server.state.loginPosts, 0);
+});
+
+test("an unsure captcha read is re-drawn, never submitted, and costs no attempt", async () => {
+  const server = fakeCuims();
+  const storage = saved();
+  const bg = daemon(server, storage, { solve: async () => ({ text: "Ab12", confident: false }) });
+  const result = await bg.refresh("manual");
+  assert.equal(result.code, "bad-captcha");
+  assert.equal(server.state.loginPosts, 0);
+  assert.equal(server.state.captchaReads, 2, "one fresh captcha after the unsure one, then stop");
+  const { loginGuard } = await storage.get({ loginGuard: null });
+  assert.equal(loginGuard?.failures?.length || 0, 0);
+});
+
+test("only four-character reads are ever submitted from the background", async () => {
+  for (const text of ["Ab1", "Ab12x", "Ab12xy", "Ab!2", ""]) {
+    const server = fakeCuims();
+    await daemon(server, saved(), { captcha: text }).refresh("manual");
+    assert.equal(server.state.loginPosts, 0, JSON.stringify(text));
+  }
+});
+
+test("a confident read from the solver signs in and reads attendance", async () => {
+  const server = fakeCuims();
+  const bg = daemon(server, saved(), { solve: async () => ({ text: "Ab12", confident: true, score: 0.95 }) });
+  const result = await bg.refresh("manual");
+  assert.equal(result.error, undefined);
+  assert.equal(server.state.loginPosts, 1);
+  assert.equal(result.snapshot.subjects.length, 3);
 });
 
 test("a rejected password stops after one submit and stays stopped for that UID", async () => {
@@ -643,7 +715,7 @@ test("the background has no timer: no alarms permission, no alarm, no scheduled 
     const root = new URL(`../outputs/cuims-clear-${build}/`, import.meta.url);
     const manifest = JSON.parse(readFileSync(new URL("manifest.json", root), "utf8"));
     assert.equal(manifest.permissions.includes("alarms"), false, build);
-    for (const name of ["attendance-bg.js", "attendance-daemon.js", "background.js", "lms-open.js"]) {
+    for (const name of ["attendance-bg.js", "attendance-daemon.js", "lms-open.js", "captcha-solver.js"]) {
       assert.doesNotMatch(readFileSync(new URL(name, root), "utf8"), /chrome\.alarms|setInterval/, `${build}/${name}`);
     }
   }

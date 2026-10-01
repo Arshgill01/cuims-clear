@@ -59,11 +59,12 @@ function startAttendanceBackground(solveCaptcha) {
   });
 
   // lms-open.js asks for a signed-in session before it opens a tab.
-  globalThis.cuimsEnsureSession = () =>
-    hasAccess().then((granted) => (granted ? attendance.ensureSession() : { alive: false, reason: "no-access" }));
+  globalThis.cuimsEnsureSession = (options) =>
+    hasAccess().then((granted) => (granted ? attendance.ensureSession(options) : { alive: false, reason: "no-access" }));
 
   return attendance;
 }
 
-// Firefox runs the OCR solver in this same background page.
-if (typeof solveCaptchaBytes === "function") startAttendanceBackground(solveCaptchaBytes);
+// The captcha solver is plain JavaScript (captcha-solver.js), so it runs
+// right here: Firefox's background page and Chrome's service worker alike.
+startAttendanceBackground((bytes) => CuimsCaptcha.readBytes(bytes));

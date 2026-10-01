@@ -106,11 +106,14 @@ for (const browser of ["chrome", "firefox"]) {
     assert.match(app.status.textContent, /temporarily unavailable/);
   });
 
-  test(`${browser}: only 4–6 alphanumeric reads auto-submit`, () => {
+  test(`${browser}: only confident four-character reads auto-submit`, () => {
     const app = runtime(browser);
-    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh7', confidence: 10})"), true);
-    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh!', confidence: 99})"), false);
-    assert.equal(app.call("mayAutoSubmitSolution({text: 'ab', confidence: 99})"), false);
+    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh7', confident: true})"), true);
+    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh7', confident: false})"), false, "an unsure read is filled, not submitted");
+    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh!', confident: true})"), false);
+    assert.equal(app.call("mayAutoSubmitSolution({text: 'ab', confident: true})"), false);
+    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh7x', confident: true})"), false, "CUIMS captchas are always four characters");
+    assert.equal(app.call("mayAutoSubmitSolution({text: 'ofh7xy', confident: true})"), false);
   });
 
   for (const [name, expected] of [

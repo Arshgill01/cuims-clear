@@ -1,7 +1,7 @@
 # CUIMS Clear for Chrome
 
 Same CUIMS login helper as the Firefox build: optional saved UID/password filling, on-device
-CAPTCHA OCR, quiet mode for event/feedback overlays, a cleaner LMS course
+CAPTCHA solving, quiet mode for event/feedback overlays, a cleaner LMS course
 directory that pairs syllabus materials with semester work, and an **Attendance**
 tab that reads your attendance and safe-skip counts without opening CUIMS, and thirteen
 colour themes that restyle the popup, LMS pages, CUIMS itself and the toolbar icon together.

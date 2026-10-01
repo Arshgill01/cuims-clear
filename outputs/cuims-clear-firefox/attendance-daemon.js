@@ -62,9 +62,14 @@
     const client = api;
     let inflight = null;
 
+    // A tab showing the login form beats every 8 s (loginTabAt), and a tab
+    // that has just started loading it says so before its captcha is even
+    // requested (tabLoginTouchAt). Either one means the session's captcha
+    // belongs to that tab.
     async function tabOnLoginPage() {
-      const { loginTabAt } = await storage.get({ loginTabAt: 0 });
-      return now() - Number(loginTabAt || 0) < LOGIN_TAB_FRESH_MS;
+      const { loginTabAt, tabLoginTouchAt } = await storage.get({ loginTabAt: 0, tabLoginTouchAt: 0 });
+      const latest = Math.max(Number(loginTabAt || 0), Number(tabLoginTouchAt || 0));
+      return now() - latest < LOGIN_TAB_FRESH_MS;
     }
 
     function markLoginTouch() {
@@ -96,7 +101,18 @@
       return next;
     }
 
-    async function ensureSignedIn(state, request, reason, onStep) {
+    // Runs right before a background login submit. Every request of this
+    // sign-in already checked that no tab was on the login flow, so a tab
+    // signal now means one arrived while we were reading the captcha, and
+    // drew a newer one: submitting ours would only be refused.
+    function guardSubmit(signal) {
+      return async () => {
+        if (signal?.aborted) throw client.coded("cancelled");
+        if (await tabOnLoginPage()) throw client.coded("tab-login");
+      };
+    }
+
+    async function ensureSignedIn(state, request, reason, onStep, signal) {
       const uid = String(state.uid || "").trim();
       if (!uid || !state.password) throw client.coded("needs-login");
       if (state.autoSolveCaptcha === false) {
@@ -119,15 +135,20 @@
         throw client.coded("cooldown", "A CUIMS tab is signing in. Refresh in a moment.");
       }
 
-      const submits = Math.min(2, MANUAL_FAILURE_LIMIT - guard.failures.length);
+      // One submit per sign-in: the solver is all but always right, so a
+      // refusal means something else is going on, and guessing again only
+      // walks towards CUIMS's lockout. Unsure reads are re-drawn for free.
+      const submits = Math.min(1, MANUAL_FAILURE_LIMIT - guard.failures.length);
       await storage.set({ bgSignInUntil: now() + SIGNIN_LOCK_MS });
       try {
         let submitted = 0;
         let unreadable = 0;
-        while (submitted < submits && unreadable < 2) {
+        // signIn already re-draws an unsure captcha once; a second unsure
+        // pass would only replace more captchas, so one pass it is.
+        while (submitted < submits && unreadable < 1) {
           let result;
           try {
-            result = await client.signIn({ request, uid, password: state.password, solveCaptcha, onStep });
+            result = await client.signIn({ request, uid, password: state.password, solveCaptcha, onStep, beforeSubmit: guardSubmit(signal) });
           } catch (error) {
             if (error.code === "bad-captcha") {
               unreadable += 1;
@@ -417,7 +438,7 @@
     // share one cookie jar, so a background sign-in is the tab's session.
     // Never runs while a tab is on the login page, and obeys the same guard,
     // budget, and limits as a manual refresh.
-    async function openSession() {
+    async function openSession({ signal } = {}) {
       const state = await storage.get({ ...DEFAULTS, autoSubmitLogin: true });
       if (await tabOnLoginPage()) return { alive: false, reason: "tab-login" };
       const budget = meter(state);
@@ -431,7 +452,7 @@
         await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
         if (state.autoSubmitLogin === false) return { alive: false, reason: "disabled" };
         signing = true;
-        await ensureSignedIn(state, request, "open", (phase) => setStatus({ working: true, phase }));
+        await ensureSignedIn(state, request, "open", (phase) => setStatus({ working: true, phase }), signal);
         await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
         return { alive: true, signedIn: true };
       } catch (error) {
@@ -453,8 +474,9 @@
       return run;
     }
 
-    function ensureSession() {
-      return exclusive(openSession);
+    // `signal` lets the caller give up: an aborted sign-in never submits.
+    function ensureSession(options = {}) {
+      return exclusive(() => openSession(options));
     }
 
     // The CUIMS tab reached StudentHome after a refresh gave way to it.

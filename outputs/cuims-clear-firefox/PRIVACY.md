@@ -7,10 +7,9 @@ local extension storage in the user's current browser profile. They are used onl
 the CUIMS login page and control the extension's on-page behavior, including the optional
 LMS clear view.
 
-CAPTCHA solving runs entirely on the user's device. The OCR engine (Tesseract.js), its
-WebAssembly binary, and the English language model are bundled inside the extension
-package. The CAPTCHA image is read and processed locally in the browser; it is never
-uploaded. The extension includes no analytics, advertising, or remote code.
+CAPTCHA solving runs entirely on the user's device, in the extension's own JavaScript.
+The CAPTCHA image is read and processed locally in the browser; it is never uploaded.
+The extension includes no analytics, advertising, or remote code.
 
 When the student asks to open CUIMS or the LMS, the extension first checks the browser's
 CUIMS session and, if it has ended, signs in with the saved UID and password in the

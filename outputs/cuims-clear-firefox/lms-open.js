@@ -162,13 +162,19 @@ async function fetchLmsTicket() {
 
 // Signs this browser in to CUIMS from the background when the session is
 // dead (see attendance-daemon.js), so the tab never shows the login page.
+// On timeout the sign-in is cancelled, not just abandoned: a sign-in still
+// running when the tab opens would fight it over the session's one captcha.
 async function ensureSession() {
   if (typeof globalThis.cuimsEnsureSession !== "function") return { alive: false };
+  const controller = new AbortController();
   let timer;
   try {
     return await Promise.race([
-      globalThis.cuimsEnsureSession(),
-      new Promise((resolve) => (timer = setTimeout(() => resolve({ alive: false, reason: "timeout" }), SESSION_TIMEOUT_MS))),
+      globalThis.cuimsEnsureSession({ signal: controller.signal }),
+      new Promise((resolve) => (timer = setTimeout(() => {
+        controller.abort();
+        resolve({ alive: false, reason: "timeout" });
+      }, SESSION_TIMEOUT_MS))),
     ]);
   } catch {
     return { alive: false };

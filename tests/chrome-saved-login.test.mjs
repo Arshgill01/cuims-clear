@@ -15,7 +15,7 @@ function memoryStorage() {
   };
 }
 
-function login(solveResult = { text: "abcd", confidence: 88, score: 113, agreement: 1 }) {
+function login(solveResult = { text: "abcd", score: 0.95, confident: true }) {
   let nextClicks = 0;
   let loginClicks = 0;
   const uid = { value: "", dispatchEvent() {} };
@@ -55,7 +55,7 @@ function login(solveResult = { text: "abcd", confidence: 88, score: 113, agreeme
     },
     chrome: {
       storage: { onChanged: { addListener() {} } },
-      runtime: { async sendMessage() { return solveResult; } },
+      runtime: { sendMessage() {} },
     },
     location: { pathname: "/" },
     localStorage: local,
@@ -68,10 +68,10 @@ function login(solveResult = { text: "abcd", confidence: 88, score: 113, agreeme
     setTimeout(fn) { fn(); },
     Math,
     console,
-    image, answer, password,
+    image, answer, password, solveResult,
   });
   vm.runInContext(contentSource("chrome"), context);
-  vm.runInContext('settings.uid = "TEST123"; settings.password = "fixture-password"; settings.autoSolveCaptcha = false; extractCaptchaVariants = () => ["fixture"];', context);
+  vm.runInContext('settings.uid = "TEST123"; settings.password = "fixture-password"; settings.autoSolveCaptcha = false; CuimsCaptcha.readImage = () => solveResult;', context);
   return { context, uid, password, image, answer, nextClicks: () => nextClicks, loginClicks: () => loginClicks, local };
 }
 
@@ -85,7 +85,7 @@ test("Chrome fills saved UID/password and advances without a browser password ma
   assert.equal(state.nextClicks(), 1, "repeat scans respect the advance cooldown");
 });
 
-test("Chrome fills OCR result and submits only when automatic submission is enabled", async () => {
+test("Chrome fills the captcha read and submits only when automatic submission is enabled", async () => {
   const state = login();
   vm.runInContext("prepareLogin()", state.context);
   await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
@@ -96,20 +96,20 @@ test("Chrome fills OCR result and submits only when automatic submission is enab
   assert.equal(state.loginClicks(), 1);
 });
 
-test("Chrome auto-submits a valid-length OCR read even at low confidence", async () => {
-  // Real CUIMS samples often land ~65–70 confidence — must not withhold Login.
-  const state = login({ text: "abcd", confidence: 40, score: 65, agreement: 1 });
+test("Chrome fills an unsure read for the student to check, and does not submit it", async () => {
+  const state = login({ text: "abcd", score: 0.6, confident: false });
   vm.runInContext("prepareLogin()", state.context);
   await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
   assert.equal(state.answer.value, "abcd");
-  assert.equal(state.loginClicks(), 1);
+  assert.equal(state.loginClicks(), 0);
 });
 
 test("Chrome does not auto-submit a junk-length OCR read", async () => {
-  const state = login({ text: "ab", confidence: 99, score: 99, agreement: 1 });
+  const state = login({ text: "ab", score: 0.99, confident: true });
   vm.runInContext("prepareLogin()", state.context);
   await vm.runInContext("solveCaptchaImage(image, answer, password)", state.context);
-  // Fill gate rejects length < 3 entirely, so field stays empty and Login is not pressed.
+  // Anything but four characters is not a CUIMS captcha: nothing is filled or pressed.
+  assert.equal(state.answer.value, "");
   assert.equal(state.loginClicks(), 0);
 });
 

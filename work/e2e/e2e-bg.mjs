@@ -1,13 +1,21 @@
 // Loads the real package and exercises the background from inside the browser:
-// script load, alarm, the background captcha path, and the popup.
+// script load, no alarm, the background sign-in's captcha path (the solver in
+// Firefox's background page and Chrome's service worker), and the popup.
 import puppeteer from "puppeteer-core";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { launchFirefox } from "./ff-launch.mjs";
 
 const [browserName, extDir] = process.argv.slice(2);
+// Firefox 14x refuses automated navigation to moz-extension pages; its
+// background solver path is covered by solver-browsers.mjs (same DOM APIs)
+// and tests/firefox-background.test.mjs (script load and wiring).
+if (browserName === "firefox") {
+  console.log("firefox: extension pages cannot be automated; run solver-browsers.mjs firefox instead");
+  process.exit(0);
+}
 const CORPUS = new URL("../corpus", import.meta.url).pathname;
-const samples = Object.entries(JSON.parse(readFileSync(path.join(CORPUS, "labels.json"), "utf8"))).slice(0, 12)
+const samples = Object.entries(JSON.parse(readFileSync(path.join(CORPUS, "labels-live.json"), "utf8"))).slice(0, 60)
   .map(([file, label]) => ({ label, b64: readFileSync(path.join(CORPUS, file)).toString("base64") }));
 const UUID = "0d6bf9a4-6a46-4f0e-9d3a-2f3c3a1c7e11";
 const errors = [];
@@ -42,7 +50,7 @@ if (browserName === "firefox") {
     for (const { label, b64 } of samples) {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
       const t = performance.now();
-      try { out.reads.push({ label, text: await bg.solveCaptchaBytes(bytes), ms: Math.round(performance.now() - t) }); }
+      try { const read = await bg.CuimsCaptcha.readBytes(bytes); out.reads.push({ label, text: read.text, confident: read.confident, ms: Math.round(performance.now() - t) }); }
       catch (e) { out.reads.push({ label, error: String(e) }); }
     }
     return out;
@@ -55,14 +63,14 @@ if (browserName === "firefox") {
     for (const { label, b64 } of samples) {
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
       const t = performance.now();
-      try { out.reads.push({ label, text: await solveCaptchaViaOffscreen(bytes), ms: Math.round(performance.now() - t) }); }
+      try { const read = await CuimsCaptcha.readBytes(bytes); out.reads.push({ label, text: read.text, confident: read.confident, ms: Math.round(performance.now() - t) }); }
       catch (e) { out.reads.push({ label, error: String(e) }); }
     }
     return out;
   }, samples);
 }
 const right = report.reads.filter((r) => r.text === r.label).length;
-console.log(JSON.stringify({ browser: browserName, popup, daemon: report.daemon, ensure: report.ensure, lms: report.lms, alarmsApi: report.alarmsApi, backgroundCaptcha: `${right}/${report.reads.length}`, ms: report.reads.map((r) => r.ms), wrong: report.reads.filter((r) => r.text !== r.label), errors }, null, 1));
+console.log(JSON.stringify({ browser: browserName, popup, daemon: report.daemon, ensure: report.ensure, lms: report.lms, alarmsApi: report.alarmsApi, backgroundCaptcha: `${right}/${report.reads.length}`, confident: report.reads.filter((r) => r.confident).length, msMax: Math.max(...report.reads.map((r) => r.ms || 0)), wrong: report.reads.filter((r) => r.text !== r.label), errors }, null, 1));
 await browser.close().catch(() => {});
 browser.__kill?.();
 process.exit(0);

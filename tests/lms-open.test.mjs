@@ -39,7 +39,7 @@ function cuims({ signedIn = true, handoff = HANDOFF, mode = "redirect" } = {}) {
   return { state, fetchImpl };
 }
 
-function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:newtab" }, server = cuims({ mode: "window-open" }), ensureSession } = {}) {
+function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:newtab" }, server = cuims({ mode: "window-open" }), ensureSession, timers = { setTimeout, clearTimeout } } = {}) {
   const created = [];
   const updated = [];
   const focused = [];
@@ -62,7 +62,7 @@ function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:n
     },
     windows: { update: async () => {} },
   };
-  const context = vm.createContext({ chrome, fetch: server.fetchImpl, URL, URLSearchParams, AbortSignal, setTimeout, clearTimeout, Promise });
+  const context = vm.createContext({ chrome, fetch: server.fetchImpl, URL, URLSearchParams, AbortSignal, AbortController, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, Promise });
   if (ensureSession) context.cuimsEnsureSession = ensureSession;
   vm.runInContext(source, context);
   const send = (message, sender = { id: "ext", url: "chrome-extension://ext/popup.html" }) =>
@@ -198,4 +198,21 @@ test("a postback that ends anywhere but a signed-in LMS page falls back to the t
   };
   const response = await open({ server }).launch();
   assert.equal(response.via, "page");
+});
+
+test("a background sign-in that outlasts Open CUIMS's wait is cancelled before the tab opens", async () => {
+  let signal = null;
+  const result = open({
+    server: cuims({ signedIn: false }),
+    ensureSession: (options) => {
+      signal = options?.signal;
+      return new Promise(() => {});
+    },
+    // The 30 s wait elapses at once.
+    timers: { setTimeout: (fn) => (queueMicrotask(fn), 1), clearTimeout() {} },
+  });
+  const response = await result.send({ type: "cuims-clear:open-cuims", tabId: 1 });
+  assert.equal(response.via, "tab");
+  assert.ok(signal, "the sign-in was handed a signal");
+  assert.equal(signal.aborted, true, "the sign-in is told to stop before the tab can race it");
 });

@@ -34,8 +34,14 @@ const page = await browser.newPage();
 let current = null;
 let submitted = null;
 await page.setRequestInterception(true);
-page.on("request", (req) => {
+// A navigation can cancel an intercepted request before it is answered
+// (Firefox reports "no such request"); that is the page moving on, not a
+// failure.
+const settle = (promise) => promise?.catch?.(() => {});
+page.on("request", (rawReq) => {
+  const req = { url: () => rawReq.url(), continue: () => settle(rawReq.continue()), respond: (r) => settle(rawReq.respond(r)) };
   const url = req.url();
+  if (process.env.TRACE && url.includes("cuchd")) console.log("  req", current, url.replace("https://students.cuchd.in", ""));
   if (!url.startsWith("https://students.cuchd.in/")) return req.continue();
   if (/GenerateCaptcha/i.test(url)) return req.respond({ status: 200, contentType: "image/jpeg", body: readFileSync(path.join(CORPUS, current)) });
   if (new URL(url).searchParams.has("txtcaptcha")) {
@@ -53,9 +59,13 @@ for (const [file, label] of labels) {
   current = file;
   submitted = null;
   // Land on StudentHome between samples: resets the tab's retry budget.
-  await page.goto("https://students.cuchd.in/StudentHome.aspx", { waitUntil: "domcontentloaded" });
-  await new Promise((r) => setTimeout(r, 150));
-  await page.goto("https://students.cuchd.in/Login.aspx", { waitUntil: "domcontentloaded" });
+  try {
+    await page.goto("https://students.cuchd.in/StudentHome.aspx", { waitUntil: "domcontentloaded" });
+    await new Promise((r) => setTimeout(r, 150));
+    await page.goto("https://students.cuchd.in/Login.aspx", { waitUntil: "domcontentloaded" });
+  } catch (error) {
+    console.log(`  ${file}: navigation failed (${error.message.split("\n")[0]})`);
+  }
   const until = Date.now() + 15000;
   let field = "";
   while (Date.now() < until && submitted === null) {

@@ -43,6 +43,7 @@
     "signed-out": "Signed out of CUIMS.",
     "tab-login": "A CUIMS tab is signing in. Attendance refreshes once it is done.",
     "portal-busy": "CUIMS is limiting requests right now.",
+    cancelled: "Sign-in was stopped before it submitted.",
   };
 
   function coded(code, message, detail) {
@@ -264,14 +265,24 @@
     return "rejected";
   }
 
+  // CUIMS captchas are always four letters and digits.
   function validCaptcha(text) {
-    return /^[A-Za-z0-9]{4,6}$/.test(text);
+    return /^[A-Za-z0-9]{4}$/.test(text);
   }
 
-  // UID step, password step, one submit. Unreadable captchas are re-drawn
-  // (at most `reads` times) before anything is submitted, since only a submit
-  // counts against CUIMS's lockout.
-  async function signIn({ request, uid, password, solveCaptcha, reads = 3, onStep }) {
+  // The solver answers { text, confident }; older callers answer a string.
+  function captchaAnswer(read) {
+    if (read && typeof read === "object") return read.confident === false ? "" : String(read.text || "").trim();
+    return String(read || "").trim();
+  }
+
+  // UID step, password step, one submit. Unsure reads are re-drawn (at most
+  // `reads` times) before anything is submitted, since only a submit counts
+  // against CUIMS's lockout. `beforeSubmit()` runs last, right before the
+  // submit: it throws when something else (a CUIMS tab) has drawn a newer
+  // captcha for this session since ours, which would make even a perfect
+  // read fail.
+  async function signIn({ request, uid, password, solveCaptcha, reads = 2, onStep, beforeSubmit }) {
     onStep?.("Signing in…");
     const start = await request(url("/"));
     if (!api.isUidStep(start.html)) {
@@ -296,12 +307,13 @@
       const imageUrl = read === 0 ? new URL(src, step.url).href : url(`/GenerateCaptcha.aspx?${Date.now()}`);
       const image = await request(imageUrl, { raw: true });
       try {
-        answer = String(await solveCaptcha(image.bytes)).trim();
+        answer = captchaAnswer(await solveCaptcha(image.bytes));
       } catch {
         answer = "";
       }
     }
     if (!validCaptcha(answer)) throw coded("bad-captcha", "Could not read the captcha. Try again.");
+    await beforeSubmit?.();
 
     onStep?.("Checking the login…");
     const posted = await postForm(request, new URL(api.formAction(step.html) || step.url, step.url).href, {
@@ -330,4 +342,5 @@
   api.pingHome = pingHome;
   api.loginOutcome = loginOutcome;
   api.signIn = signIn;
+  api.validCaptcha = validCaptcha;
 })(globalThis);

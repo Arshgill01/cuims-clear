@@ -26,8 +26,8 @@ credentials; version 0.6.3 cannot recover those values and requires saving them 
 
 ## On-device page processing
 
-CAPTCHA images and text are processed locally with the bundled Tesseract.js
-engine, WebAssembly core, and English language model. Images are not uploaded.
+CAPTCHA images and text are processed locally by the extension's own
+JavaScript. Images are not uploaded.
 The extension reads page text and structure to hide optional event and feedback
 overlays and to organize LMS course names and links. This content is not sent
 to the developer or saved in extension storage.

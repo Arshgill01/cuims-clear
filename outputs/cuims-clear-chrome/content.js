@@ -51,12 +51,8 @@ const LAST_SUBMIT_AT_KEY = "cuimsClear.lastAutoSubmitAt";
 // CUIMS's own lockout window, which only cares about rapid consecutive failures.
 const FAILURE_STALE_MS = 20 * 60 * 1000;
 const STATUS_ID = "cuims-clear-login-status";
-const MIN_CAPTCHA_FILL_LEN = 3;
-const MAX_CAPTCHA_FILL_LEN = 7;
-const MIN_AUTO_SUBMIT_LEN = 4;
-const MAX_AUTO_SUBMIT_LEN = 6;
-// Confidence ranks multi-pass OCR; it must not withhold Login on the happy path.
-const CAPTCHA_CHARSET_RE = /^[A-Za-z0-9]+$/;
+// Every CUIMS captcha is exactly four letters and digits.
+const CAPTCHA_RE = /^[A-Za-z0-9]{4}$/;
 
 const LOCKOUT_PATTERNS = [
   /try\s+after\s+\d+\s*min/i,
@@ -91,8 +87,6 @@ let settings = { ...DEFAULT_SETTINGS };
 const suppressedElements = new Map();
 let scanQueued = false;
 let programmaticEdit = false;
-let prewarmed = false;
-let solveGeneration = 0;
 let lastErrorFingerprint = "";
 
 // Login state shared with the background attendance sign-in, so the tab and
@@ -158,16 +152,43 @@ function announceLoginTab() {
   beat();
 }
 
-// When the captcha on screen was issued. The first image loads with the page;
-// a reload stamps its own time. Earlier is the safe side of the comparison.
+// When the captcha on screen was issued: the image's own request time when
+// the browser reports it (a background touch before that request cannot have
+// replaced this captcha), else the page's start. A reload stamps its own
+// time. Earlier is the safe side of the comparison.
 function captchaIssuedAt(captchaImage) {
   const stamped = Number(captchaImage?.dataset?.cuimsClearIssuedAt || 0);
   if (stamped) return stamped;
   try {
+    const entries = captchaImage?.src ? performance.getEntriesByName(captchaImage.src) : [];
+    const entry = entries[entries.length - 1];
+    if (entry?.fetchStart > 0) return Math.floor(performance.timeOrigin + entry.fetchStart);
     return Math.floor(performance.timeOrigin) || 0;
   } catch {
     return 0;
   }
+}
+
+// A login page restored from history shows a captcha CUIMS has already
+// replaced: its HTML and image come from the browser's cache.
+function captchaFromHistory() {
+  try {
+    return performance.getEntriesByType("navigation")[0]?.type === "back_forward";
+  } catch {
+    return false;
+  }
+}
+
+function isLoginPath() {
+  return /^\/(login\.aspx)?$/i.test(location.pathname);
+}
+
+// This tab is about to draw a captcha, which replaces the one a background
+// sign-in may be holding. Said as early as possible, so the background can
+// see it before it submits.
+function stampTabLogin() {
+  if (!isTopFrame() || !isLoginPath()) return;
+  shareLocalStorageWrite({ tabLoginTouchAt: Date.now() });
 }
 
 function backgroundTouchedSince(at) {
@@ -196,14 +217,6 @@ function dispatchFieldEvents(field) {
   field.dispatchEvent(new Event("input", { bubbles: true }));
   field.dispatchEvent(new Event("change", { bubbles: true }));
   programmaticEdit = false;
-}
-
-function prewarmSolver() {
-  if (prewarmed) return;
-  prewarmed = true;
-  try {
-    chrome.runtime.sendMessage({ type: "cuims-clear:prewarm" }, () => {});
-  } catch {}
 }
 
 // Prefer origin-shared localStorage so all_frames cannot amplify the budget.
@@ -344,13 +357,12 @@ function canAutoSubmit(now = Date.now()) {
   return { ok: true, reason: "ok", state };
 }
 
+// Only a confident four-character read is submitted without a person
+// looking: anything else is a guaranteed refusal that still counts towards
+// CUIMS's lockout.
 function mayAutoSubmitSolution(solution) {
-  if (!solution || solution.error) return false;
-  const text = String(solution.text || "").trim();
-  const len = text.length;
-  // Happy path: valid length + charset → submit. Multi-pass raises accuracy.
-  if (len < MIN_AUTO_SUBMIT_LEN || len > MAX_AUTO_SUBMIT_LEN) return false;
-  return CAPTCHA_CHARSET_RE.test(text);
+  if (!solution || solution.error || !solution.confident) return false;
+  return CAPTCHA_RE.test(String(solution.text || ""));
 }
 
 function loginPageHaystack() {
@@ -466,7 +478,6 @@ function bindCaptchaReload(captchaImage) {
   if (captchaImage.dataset.cuimsClearBound) return;
   captchaImage.dataset.cuimsClearBound = "1";
   captchaImage.addEventListener("load", () => {
-    solveGeneration += 1;
     if (captchaImage.dataset.cuimsClearSeen) captchaImage.dataset.cuimsClearIssuedAt = String(Date.now() - 5_000);
     delete captchaImage.dataset.cuimsClearSolved;
     delete captchaImage.dataset.cuimsClearSolving;
@@ -485,10 +496,6 @@ function prepareLogin() {
   const nextButton = document.querySelector("#btnNext, input[name='btnNext']");
 
   announceLoginTab();
-
-  if (settings.autoSolveCaptcha) {
-    prewarmSolver();
-  }
 
   if (uidField) {
     uidField.autocomplete = "username";
@@ -635,35 +642,20 @@ function prepareCaptchaStep(passwordField) {
   const solving = captchaImage.dataset.cuimsClearSolving === captchaImage.src;
   if (solved || solving) return;
 
+  if (captchaFromHistory() && restartLogin()) return;
+
   captchaImage.dataset.cuimsClearSolving = captchaImage.src;
   solveCaptchaImage(captchaImage, captchaField, passwordField);
 }
 
-async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
-  const generation = ++solveGeneration;
-  captchaField.placeholder = "Solving…";
-
+function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   try {
-    const candidates = extractCaptchaVariants(captchaImage);
-    if (!candidates || candidates.length === 0) throw new Error("Could not extract image");
-
-    let solution = await chrome.runtime.sendMessage({
-      type: "cuims-clear:solve-captcha",
-      candidates,
-    });
-
-    if (generation !== solveGeneration) return;
+    // The read runs here, on the image this page shows: no message to the
+    // background, no shared queue, nothing another tab can swap underneath.
+    const solution = globalThis.CuimsCaptcha.readImage(captchaImage);
+    const text = solution.text;
+    if (!CAPTCHA_RE.test(text)) throw new Error(`unreadable captcha (${solution.reason || "no text"})`);
     if (captchaField.dataset.cuimsClearUserEdited) return;
-    if (solution?.error) throw new Error(solution.error);
-
-    let text = (solution?.text || "").trim();
-    if (text.length < MIN_CAPTCHA_FILL_LEN || text.length > MAX_CAPTCHA_FILL_LEN) {
-      throw new Error("unconvincing read: " + text);
-    }
-
-    // Fixed-font geometry pass: fix only case (V/v, C/c, ...) and O vs 0.
-    text = correctCaptchaCase(text, captchaImage);
-    solution = { ...solution, text };
 
     captchaField.value = text;
     dispatchFieldEvents(captchaField);
@@ -701,34 +693,27 @@ async function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     }
 
     if (!canSubmit) {
-      // Junk length/charset — fill only, stay quiet (no confidence lectures).
+      // Not sure of the read: fill it, enlarge the image, let the student check.
       enlargeCaptcha(captchaImage);
       captchaField.focus();
       return;
     }
 
-    if (loginButton && pwField?.value && !captchaField.dataset.cuimsClearUserEdited) {
+    if (loginButton && pwField?.value && captchaField.value === text && !captchaField.dataset.cuimsClearUserEdited) {
       clearLoginStatus();
-      // Zero catch on the happy path: submit as soon as the field is filled.
-      if (
-        captchaField.value === text &&
-        pwField?.value &&
-        !captchaField.dataset.cuimsClearUserEdited &&
-        canAutoSubmit().ok
-      ) {
-        // Count before the click so a fast portal reject cannot race past the budget.
-        recordAutoSubmit();
-        try {
-          sessionStorage.setItem(SUBMIT_CAPTCHA_AT_KEY, String(captchaIssuedAt(captchaImage)));
-        } catch {}
-        loginButton.click();
-      }
+      // Count before the click so a fast portal reject cannot race past the budget.
+      recordAutoSubmit();
+      try {
+        sessionStorage.setItem(SUBMIT_CAPTCHA_AT_KEY, String(captchaIssuedAt(captchaImage)));
+      } catch {}
+      loginButton.click();
     }
   } catch (err) {
-    if (generation !== solveGeneration) return;
     console.warn("[CUIMS Clear] CAPTCHA solve error:", err);
     captchaField.placeholder = CAPTCHA_PLACEHOLDER;
-    delete captchaImage.dataset.cuimsClearSolving;
+    // Once per image: the next try comes with a new captcha, not with the
+    // style change below waking the page observer into a loop.
+    captchaImage.dataset.cuimsClearSolved = captchaImage.src;
     enlargeCaptcha(captchaImage);
     captchaField.focus();
   }
@@ -1041,10 +1026,21 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   queueScan();
 });
 
+// Back/forward cache: the page comes back as it was, captcha and all.
+if (typeof addEventListener === "function") {
+  addEventListener("pageshow", (event) => {
+    if (event.persisted && hasLoginControls()) restartLogin();
+  });
+}
+
 if (location.pathname.toLowerCase().endsWith("/landingpage.aspx")) {
   location.replace(HOME_URL);
 } else if (document.documentElement) {
+  stampTabLogin();
   startExtension();
 } else {
-  document.addEventListener("DOMContentLoaded", startExtension, { once: true });
+  document.addEventListener("DOMContentLoaded", () => {
+    stampTabLogin();
+    startExtension();
+  }, { once: true });
 }

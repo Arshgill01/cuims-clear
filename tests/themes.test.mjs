@@ -205,5 +205,5 @@ test("the default theme leaves CUIMS exactly as it is", () => {
   const source = read("cuims-theme.js");
   assert.match(source, /id !== themes\.DEFAULT/);
   const manifest = JSON.parse(read("manifest.json"));
-  assert.deepEqual(manifest.content_scripts[0].js, ["captcha-prep.js", "themes.js", "cuims-theme.js", "content.js"]);
+  assert.deepEqual(manifest.content_scripts[0].js, ["captcha-glyphs.js", "captcha-solver.js", "themes.js", "cuims-theme.js", "content.js"]);
 });

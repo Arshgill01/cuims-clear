@@ -8,7 +8,11 @@ Offline (mocked CUIMS, no account needed):
 - `node e2e-captcha.mjs <chrome|firefox> <package dir> [labels.json] [count]`:
   real CUIMS captchas from `../corpus` on a mocked login page, through the real
   extension. `THEME=<id>` runs it with a theme restyling the page.
-- `node e2e-bg.mjs chrome <package dir>`: service worker, offscreen captcha path, popup.
+- `node e2e-bg.mjs chrome <package dir>`: service worker, its captcha path
+  (`CuimsCaptcha.readBytes`), popup.
+- `node solver-browsers.mjs [chrome|firefox]`: the shipped solver over every
+  labelled captcha in each browser's own decoder and canvas, through both the
+  background path (`readBytes`) and the login page path (`readImage`).
 - `node probe-themes.mjs <chrome package dir>`: toolbar icon per theme, live theme switching.
 - `node cuims-login-themes.mjs <chrome package dir> <out.png>`: the public CUIMS login page in several themes.
 
