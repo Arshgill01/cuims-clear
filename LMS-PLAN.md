@@ -4,7 +4,7 @@
 Add an authenticated LMS launcher and a courses-first LMS presentation to the existing
 Firefox source package and synced Chrome package. Keep the current graphite/lime identity.
 Show each subject once with separate Syllabus & Materials and Semester Work links.
-Recognize both 601A and 601-A as semester entries; pair by subject code.
+CONT_<code> is materials; <code>_<batch>_<section> (any batch, e.g. KRG-601A, TPP-605_A) is semester work; pair by subject code.
 Preserve native course activities, submissions, notifications and account controls.
 
 ## Execution

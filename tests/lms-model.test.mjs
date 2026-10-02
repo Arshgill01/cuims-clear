@@ -20,6 +20,20 @@ test('pairs CONT materials with 601A and 601-A semester work by subject code', (
   }
 });
 
+test('pairs semester work for any batch and section, not only KRG-601A', () => {
+  for (const title of [
+    '24TDT-312_24BCS_TPP-605_A :: APTITUDE-III',
+    '24CST-302_24BCS_TPP-605_ALL :: COMPUTER NETWORKS',
+    '24CST-381_24BCS_NTPP-612-B_ALL :: DATA MINING',
+  ]) {
+    const course = parseCourse(title, href(2));
+    const groups = groupCourses([parseCourse(`CONT_${course.code} :: ${course.name}`, href(1)), course]);
+    assert.equal(groups.length, 1, title);
+    assert.equal(groups[0].materials.length, 1, title);
+    assert.equal(groups[0].work[0]?.url, href(2), title);
+  }
+});
+
 test('does not merge different codes with similar titles or lose duplicate sections', () => {
   const groups = groupCourses([
     parseCourse('CONT_24CST-302 :: NETWORKS', href(1)),

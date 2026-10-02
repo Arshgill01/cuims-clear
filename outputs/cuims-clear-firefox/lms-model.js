@@ -20,7 +20,10 @@
     const [prefix, ...parts] = original.split(/\s*::\s*/);
     const code = prefix.match(/(?:^|_)(\d{2}[A-Z]{2,5}-\d{3})(?=_|$)/i)?.[1].toUpperCase();
     const name = parts.join(" :: ") || original;
-    const kind = /(?:^|[^a-z0-9])601-?A(?=$|[^a-z0-9])/i.test(prefix) ? "work" : "materials";
+    // CONT_<code> is the shared materials course; <code>_<batch>_<section> is the
+    // section's own course, whatever the batch (KRG-601A, TPP-605_A, ...).
+    const sectioned = code && new RegExp(`^${code}_[^_\\s]`, "i").test(prefix);
+    const kind = sectioned && !/^CONT_/i.test(prefix) ? "work" : "materials";
     // Unknown naming schemes remain separate, even when their display names match.
     return { url, original, code: code || "", name, kind, key: code || url };
   }
