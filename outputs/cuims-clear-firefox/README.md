@@ -21,10 +21,13 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - shows attendance on an **Attendance** tab without opening CUIMS: overall and
   per-subject percentages, how many classes you can skip while staying at 75% per
   subject and 90% overall, and today's classes as they happen;
-- offers thirteen colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
-  Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Catppuccin Latte and Flexoki
-  Light, from Omarchy) that restyle the popup, the LMS clear view, CUIMS itself, and the
-  toolbar icon together, with a switch to leave CUIMS pages untouched;
+- offers twenty colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
+  Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Ristretto, Ethereal, Lumon,
+  Hackerman, Last Horizon, Miasma, Catppuccin Latte, Flexoki Light and Rosé Pine, from Omarchy)
+  that restyle the popup, the LMS clear view, CUIMS itself, and the toolbar icon together, with
+  a switch to leave CUIMS pages untouched;
+- keeps every automation and quiet-mode switch on one **Settings** tab, where each switch
+  saves as you flip it;
 - lets you erase the saved UID, password, and attendance from the popup at any time.
 
 CAPTCHA solving happens entirely inside the extension, in plain JavaScript
@@ -49,8 +52,8 @@ This build is unsigned, so normal Firefox keeps it only until the browser restar
 2. Open `about:debugging#/runtime/this-firefox` in Firefox.
 3. Select **Load Temporary Add-on**.
 4. Select the downloaded ZIP, or select `manifest.json` inside the unpacked `cuims-clear-firefox` folder.
-5. Open the CUIMS Clear toolbar popup, enter your UID, and save.
-6. Enter the UID and password in the extension popup, then save.
+5. Open the CUIMS Clear toolbar popup and go to **Login**.
+6. Enter the UID and password, then select **Save login**.
 
 ## Install permanently
 
@@ -77,7 +80,7 @@ after restart.
 
 ## Popup matching
 
-The blocker only acts on dialog-style elements whose text looks like an event or feedback request. Turn either category off from the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
+The blocker only acts on dialog-style elements whose text looks like an event or feedback request. Turn either category off under **Settings** in the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
 
 Because the logged-in CUIMS dashboard was not available during development, the blocker uses conservative Bootstrap, jQuery UI, and SweetAlert modal selectors. If a CUIMS popup survives, inspect it or share a screenshot/HTML sample so its exact selector can be added.
 

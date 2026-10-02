@@ -3,7 +3,7 @@
 Same CUIMS login helper as the Firefox build: optional saved UID/password filling, on-device
 CAPTCHA solving, quiet mode for event/feedback overlays, a cleaner LMS course
 directory that pairs syllabus materials with semester work, and an **Attendance**
-tab that reads your attendance and safe-skip counts without opening CUIMS, and thirteen
+tab that reads your attendance and safe-skip counts without opening CUIMS, and twenty
 colour themes that restyle the popup, LMS pages, CUIMS itself and the toolbar icon together.
 
 Chrome cannot load the Firefox folder. This package is the Chrome MV3 build.
@@ -21,8 +21,9 @@ This is the fastest way to run it yourself or hand it to a classmate.
 3. Turn on **Developer mode**.
 4. Choose **Load unpacked** and select the `cuims-clear-chrome` folder
    (the one that contains `manifest.json`).
-5. Pin **CUIMS Clear** and choose your automation preferences in the popup.
-6. Optionally enter your UID/password in the popup and select **Save changes**, then open CUIMS. Saved credentials are stored locally without extension-provided encryption. **Clear login** removes them. You can also enter credentials directly on the portal.
+5. Pin **CUIMS Clear** and choose your automation preferences under **Settings** in the popup.
+   Each switch saves as you flip it.
+6. Optionally enter your UID/password on the popup's **Login** tab and select **Save login**, then open CUIMS. Saved credentials are stored locally without extension-provided encryption. **Clear login** removes them. You can also enter credentials directly on the portal.
 
 Do not load `outputs/cuims-clear` (old 0.1.0, no CAPTCHA) or
 `outputs/cuims-clear-firefox` (Chrome rejects `background.scripts`).

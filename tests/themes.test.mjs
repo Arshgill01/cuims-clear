@@ -16,8 +16,8 @@ const T = loadThemes();
 const IDS = T.list.map((entry) => entry.id);
 
 test("the themes are the default plus a varied Omarchy set, with no near-duplicate whites", () => {
-  assert.deepEqual([...IDS], ["clear", "tokyo-night", "catppuccin", "gruvbox", "everforest", "kanagawa", "nord", "osaka-jade", "retro-82", "matte-black", "solitude", "catppuccin-latte", "flexoki-light"]);
-  assert.equal(T.list.filter((entry) => entry.scheme === "light").length, 3);
+  assert.deepEqual([...IDS], ["clear", "tokyo-night", "catppuccin", "gruvbox", "everforest", "kanagawa", "nord", "osaka-jade", "retro-82", "matte-black", "solitude", "ristretto", "ethereal", "lumon", "hackerman", "last-horizon", "miasma", "catppuccin-latte", "flexoki-light", "rose-pine"]);
+  assert.equal(T.list.filter((entry) => entry.scheme === "light").length, 4);
 });
 
 test("status colours keep their hue when nudged for contrast", () => {

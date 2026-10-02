@@ -12,6 +12,7 @@
   let originalHeading;
   let heading;
   let loading = false;
+  let loaded = false;
   let failsafe;
 
   function el(tag, className, text) {
@@ -57,6 +58,7 @@
   async function loadCourses() {
     if (loading) return;
     loading = true;
+    loaded = true;
     const courses = readCourses(document);
     const visited = new Set();
     const onDirectory = location.pathname === "/my/courses.php";
@@ -211,6 +213,9 @@
     if (courseNav) courseNav.hidden = !enabled;
     if (heading && originalHeading) heading.textContent = originalHeading;
     if (enabled) renderCourseNav();
+    // A page opened in Original view never read its courses; switching to
+    // the clear view reads them now instead of showing an empty directory.
+    if (enabled && booted && !loaded && (directory || heading)) loadCourses();
     if (!enabled) reveal();
   }
 
@@ -249,8 +254,11 @@
       heading = document.querySelector("#page-header h1, .page-header-headings h1");
       originalHeading = heading?.textContent.trim();
     }
+    // Read once the page has its course data (below), not from applyMode.
+    const reads = enabled && (directory || heading);
+    if (reads) loaded = true;
     applyMode();
-    if (enabled && (directory || heading)) {
+    if (reads) {
       whenCoursesReadable(() => {
         loadCourses();
         reveal();

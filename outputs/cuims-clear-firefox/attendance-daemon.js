@@ -63,7 +63,10 @@
 
   function createDaemon({ storage, fetchImpl, solveCaptcha, now = () => Date.now(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)) }) {
     const client = api;
+    // The CUIMS conversation in progress (a refresh or an open), and the
+    // refresh in progress, if that is what it is.
     let inflight = null;
+    let refreshing = null;
 
     // A tab showing the login form beats every 8 s (loginTabAt), and a tab
     // that has just started loading it says so before its captcha is even
@@ -431,8 +434,15 @@
       }
     }
 
+    // A second refresh joins the one already running. An open that is
+    // running is not a refresh: the refresh waits for it, then reads.
     function refresh(reason = "manual") {
-      return inflight || exclusive(() => run(reason));
+      if (refreshing) return refreshing;
+      const tracked = exclusive(() => run(reason)).finally(() => {
+        if (refreshing === tracked) refreshing = null;
+      });
+      refreshing = tracked;
+      return tracked;
     }
 
     // Before the popup opens CUIMS or LMS: make sure this browser holds a

@@ -22,22 +22,11 @@ const MODAL_SELECTORS = [
   "#divSubjectFeedback",
 ];
 
-const EVENT_WORDS = [
-  "event",
-  "workshop",
-  "seminar",
-  "fest",
-  "competition",
-  "register now",
-];
-
-const FEEDBACK_WORDS = [
-  "feedback",
-  "survey",
-  "rate your",
-  "rating",
-  "share your experience",
-];
+// Whole words only: "rating" inside "generating" or "event" inside "prevent"
+// would hide CUIMS's own progress and error dialogs. Fest names are one word
+// ("Techfest", "Cultfest"), so -fest endings count, except "manifest".
+const EVENT_WORDS = /\b(events?|workshops?|seminars?|competitions?|register now|\w*(?<!mani)fest(?:s|ivals?)?)\b/i;
+const FEEDBACK_WORDS = /\b(feedback|surveys?|rate your|ratings?|share your experience)\b/i;
 
 const CAPTCHA_PLACEHOLDER = "Enter captcha";
 // Hard stop auto-submit well before CUIMS's ~5-fail / ~20-min lockout.
@@ -725,11 +714,22 @@ function solveCaptchaImage(captchaImage, captchaField, passwordField) {
   }
 }
 
+// What a dialog says, without the CSS and scripts inside it: CUIMS's own
+// "My Question Or Queries" modal carries a <style> with "pointer-events".
+// (innerText would skip them, but it is layout-aware and misses closed nodes.)
+function dialogText(element) {
+  let text = element.textContent || element.innerText || "";
+  for (const node of element.querySelectorAll?.("style, script, noscript, template") || []) {
+    const inner = node.textContent || "";
+    if (inner) text = text.replace(inner, " ");
+  }
+  return text.toLowerCase();
+}
+
 function classifyModal(element) {
-  // Chrome innerText is layout-aware and can miss closed/clipped nodes.
-  const text = (element.textContent || element.innerText || "").toLowerCase();
-  const isEvent = EVENT_WORDS.some((word) => text.includes(word));
-  const isFeedback = FEEDBACK_WORDS.some((word) => text.includes(word));
+  const text = dialogText(element);
+  const isEvent = EVENT_WORDS.test(text);
+  const isFeedback = FEEDBACK_WORDS.test(text);
 
   if (settings.blockEvents && isEvent) return "event";
   if (settings.blockFeedback && isFeedback) return "feedback";
@@ -800,12 +800,28 @@ function isCoveringLayer(element) {
   );
 }
 
+const LOADER_RE = /load(?:er|ing)|spinner|progress|pleasewait/i;
+const DIALOG_SELECTOR = MODAL_SELECTORS.join(", ");
+
+// A dim layer around a dialog the page is showing is that dialog's own
+// backdrop, not an orphan: SweetAlert2 draws its wash on .swal2-container,
+// around short alerts like the mock test's "Are you sure to start test?".
+// A dialog we hid, or one inside a hidden parent, has no boxes.
+function holdsShownDialog(element) {
+  const dialogs = [...(element.querySelectorAll?.(DIALOG_SELECTOR) || [])];
+  if (element.matches?.(DIALOG_SELECTOR)) dialogs.push(element);
+  return dialogs.some((dialog) => !dialog.dataset.cuimsClearSuppressed && dialog.getClientRects().length > 0);
+}
+
 function hideOrphanWashes() {
   if (!document.body) return;
   for (const element of document.body.querySelectorAll("div, section")) {
     if (element.dataset.cuimsClearSuppressed || hasDashboardLandmarks(element)) continue;
-    if (!isCoveringLayer(element)) continue;
+    if (!isCoveringLayer(element) || holdsShownDialog(element)) continue;
     const text = (element.textContent || "").replace(/\s+/g, "");
+    // CUIMS's own page loader (#loader-wrapper, "Loading...") is not a wash:
+    // hiding it removes the only sign that a postback is running.
+    if (LOADER_RE.test(`${element.id} ${element.className} ${text}`)) continue;
     const dim = /rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0/.test(
       getComputedStyle(element).backgroundColor || "",
     );
@@ -832,6 +848,69 @@ function scanUniqueFeedbackPrompt() {
 
   if (found) hideHostIframe();
   hideOrphanWashes();
+}
+
+// A dialog the student opened is never hidden: CUIMS's own queries dialog
+// lists a "Give Rating" button per ticket, and keywords alone cannot tell it
+// from a survey. A trusted click or key press shortly before a dialog shows
+// means the student asked for it; the time survives a postback of the same
+// page. A click after a dialog was already up (and hidden) asked for nothing,
+// nor does one on the login page for the dashboard it leads to. CUIMS's
+// class-feedback panel opens by itself and stays hidden regardless.
+const KNOWN_INTERRUPTIONS = new Set(["divSubjectFeedback"]);
+// CUIMS's online tests (Evening CUCAT mock tests, Online Test): every alert
+// there belongs to the test, from the start confirmation to the anti-cheat
+// "Strict Warning!", so quiet mode hides nothing on these pages.
+const TEST_PAGE_RE = /\/(frmMockTestNew|frmTakeTest)\.aspx$/i;
+const STUDENT_OPENED_MS = 15_000;
+const GESTURE_KEY = "cuimsClear.gesture";
+let gestureAt = 0;
+// When each dialog was first seen open; forgotten once the page closes it.
+const shownSince = new WeakMap();
+
+function noteGesture(event) {
+  if (!event?.isTrusted) return;
+  gestureAt = Date.now();
+  try {
+    sessionStorage.setItem(GESTURE_KEY, JSON.stringify({ at: gestureAt, path: location.pathname }));
+  } catch {}
+}
+
+// The latest click or key press; one from before a reload counts only when
+// the reload was this same page (a postback).
+function lastGesture() {
+  let at = gestureAt;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(GESTURE_KEY) || "null");
+    if (saved?.path === location.pathname) at = Math.max(at, Number(saved.at) || 0);
+  } catch {}
+  return at;
+}
+
+function studentOpened(element) {
+  const at = lastGesture();
+  const shown = shownSince.get(element);
+  return at > 0 && shown >= at && shown - at < STUDENT_OPENED_MS;
+}
+
+// The page is showing it, or trying to (its own display write replaced ours).
+function shownByPage(element) {
+  if (element.classList?.contains("in") || element.classList?.contains("show")) return true;
+  const inline = element.style?.getPropertyValue("display");
+  if (inline && inline !== "none") return true;
+  return !suppressedElements.has(element) && getComputedStyle(element).display !== "none";
+}
+
+function allow(element) {
+  element.dataset.cuimsClearAllowed = "1";
+  const original = suppressedElements.get(element);
+  if (!original) return;
+  suppressedElements.delete(element);
+  element.removeAttribute("data-cuims-clear-suppressed");
+  if (element.style.getPropertyValue("display") === "none" && element.style.getPropertyPriority("display") === "important") {
+    if (original.display) element.style.setProperty("display", original.display, original.priority);
+    else element.style.removeProperty("display");
+  }
 }
 
 function suppress(element, category) {
@@ -906,10 +985,25 @@ function scanPage() {
   prepareLogin();
   shareLeavePage();
 
+  if (TEST_PAGE_RE.test(location.pathname)) return;
+
   for (const selector of MODAL_SELECTORS) {
     document.querySelectorAll(selector).forEach((element) => {
+      const shown = shownByPage(element);
+      if (!shown) shownSince.delete(element);
+      else if (!shownSince.has(element)) shownSince.set(element, Date.now());
+      // Open since the student asked for it: leave it until the page closes it.
+      if (element.dataset.cuimsClearAllowed) {
+        if (shown) return;
+        delete element.dataset.cuimsClearAllowed;
+      }
       const category = classifyModal(element);
-      if (category) suppress(element, category);
+      if (!category) return;
+      if (!KNOWN_INTERRUPTIONS.has(element.id) && shown && studentOpened(element)) {
+        allow(element);
+        return;
+      }
+      suppress(element, category);
     });
   }
 
@@ -952,6 +1046,8 @@ function restoreSuppressed() {
 }
 
 function markUserEdits() {
+  document.addEventListener("pointerdown", noteGesture, true);
+  document.addEventListener("keydown", noteGesture, true);
   document.addEventListener(
     "input",
     (event) => {
@@ -1022,7 +1118,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   let settingsChanged = false;
   for (const key of Object.keys(DEFAULT_SETTINGS)) {
     if (changes[key]) {
-      settings[key] = changes[key].newValue;
+      settings[key] = changes[key].newValue ?? DEFAULT_SETTINGS[key];
       settingsChanged = true;
     }
   }

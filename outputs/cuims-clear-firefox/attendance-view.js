@@ -180,11 +180,16 @@
 
   // Waiting on CUIMS (a tab signing in, its throttle, our own backoff) is not
   // a failure, so it reads as a note, not an error.
+  // Problems the student fixes on the Login tab carry a button that goes there.
+  const LOGIN_CODES = new Set(["needs-login", "bad-password", "bad-uid"]);
+  const GOTO_LOGIN = ` <button type="button" class="text-button" data-goto="login">Open Login</button>`;
+
   function message(state) {
     if (!state.error) return "";
     const calm = new Set(["tab-login", "portal-busy", "backoff", "busy", "cooldown"]);
     const kind = calm.has(state.code) ? "attendance-info" : "attendance-error";
-    return `<p class="${kind}" role="status">${escapeHtml(state.error)}</p>`;
+    const jump = LOGIN_CODES.has(state.code) ? GOTO_LOGIN : "";
+    return `<p class="${kind}" role="status">${escapeHtml(state.error)}${jump}</p>`;
   }
 
   function overallStance(analytics) {
@@ -197,6 +202,7 @@
       return `<div class="attendance-empty">
         <p>Reads your attendance from CUIMS in the background. No tab opens.</p>
         <button id="fetch-attendance" class="save-button" type="button"${state.working ? " disabled" : ""}>${escapeHtml(state.working ? state.phase || "Fetching…" : "Fetch attendance")}</button>
+        ${state.needsLogin && !state.working && !state.error ? `<p class="attendance-info">Signed out of CUIMS? Save your UID and password first, so the fetch can sign in.${GOTO_LOGIN}</p>` : ""}
         ${message(state)}
       </div>`;
     }

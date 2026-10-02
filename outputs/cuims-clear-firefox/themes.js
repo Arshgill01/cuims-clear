@@ -74,6 +74,44 @@
       accent: "#798186", good: "#7a8186", warn: "#c9c2b4", bad: "#de6145", brandBg: "#0c0e10", brandInk: "#cacccc",
     },
     {
+      // Monokai Pro's coffee filter: warm browns, candy accents.
+      id: "ristretto", name: "Ristretto", scheme: "dark",
+      canvas: "#2c2525", surface: "#3d2f2a", ink: "#e6d9db", muted: "#948a8b", line: "#403e41", lineStrong: "#5b5353",
+      accent: "#f38d70", good: "#adda78", warn: "#f9cc6c", bad: "#fd6883", brandBg: "#211b1b", brandInk: "#f9cc6c",
+    },
+    {
+      // Deep night blue with peach type.
+      id: "ethereal", name: "Ethereal", scheme: "dark",
+      canvas: "#060b1e", surface: "#131a3a", ink: "#ffcead", muted: "#6d7db6", line: "#252e56", lineStrong: "#3c4777",
+      accent: "#7d82d9", good: "#92a593", warn: "#e9bb4f", bad: "#ed5b5a", brandBg: "#040816", brandInk: "#ffcead",
+    },
+    {
+      // Severance's cold office blues. Lumon has no warm colour of its own, so
+      // sand and a soft red are added for what needs attention.
+      id: "lumon", name: "Lumon", scheme: "dark",
+      canvas: "#16242d", surface: "#1b2d40", ink: "#d6e2ee", muted: "#4d86b0", line: "#243d56", lineStrong: "#456475",
+      accent: "#8bc9eb", good: "#b4e4f6", warn: "#e3c78a", bad: "#e5806b", brandBg: "#101b21", brandInk: "#8bc9eb",
+    },
+    {
+      // Terminal green on near-black. Its "red" is green too, so amber and
+      // red are added for what needs attention.
+      id: "hackerman", name: "Hackerman", scheme: "dark",
+      canvas: "#0b0c16", surface: "#151828", ink: "#ddf7ff", muted: "#6a6e95", line: "#1f253a", lineStrong: "#2d3450",
+      accent: "#82fb9c", good: "#4fe88f", warn: "#e8d07a", bad: "#ff6b81", brandBg: "#080910", brandInk: "#82fb9c",
+    },
+    {
+      // Dusk: near-black with dusty rose. Sand stands in for its missing yellow.
+      id: "last-horizon", name: "Last Horizon", scheme: "dark",
+      canvas: "#0c0b0c", surface: "#171516", ink: "#e2dddc", muted: "#8a8588", line: "#262224", lineStrong: "#584e51",
+      accent: "#b59790", good: "#87a9b0", warn: "#c9a97a", bad: "#c38b7b", brandBg: "#090809", brandInk: "#b59790",
+    },
+    {
+      // Earth and moss, no true red: rust marks what needs attention.
+      id: "miasma", name: "Miasma", scheme: "dark",
+      canvas: "#222222", surface: "#2c2c2c", ink: "#c2c2b0", muted: "#8a8a7e", line: "#383838", lineStrong: "#555555",
+      accent: "#78824b", good: "#5f875f", warn: "#c9a554", bad: "#bb7744", brandBg: "#191919", brandInk: "#c9a554",
+    },
+    {
       id: "catppuccin-latte", name: "Catppuccin Latte", scheme: "light",
       canvas: "#eff1f5", surface: "#ffffff", ink: "#4c4f69", muted: "#6c6f85", line: "#ccd0da", lineStrong: "#acb0be",
       accent: "#1e66f5", good: "#40a02b", warn: "#df8e1d", bad: "#d20f39", brandBg: "#4c4f69", brandInk: "#eff1f5",
@@ -82,6 +120,12 @@
       id: "flexoki-light", name: "Flexoki Light", scheme: "light",
       canvas: "#f2f0e5", surface: "#fffcf0", ink: "#100f0f", muted: "#6f6e69", line: "#e6e4d9", lineStrong: "#cecdc3",
       accent: "#205ea6", good: "#879a39", warn: "#d0a215", bad: "#d14d41", brandBg: "#100f0f", brandInk: "#fffcf0",
+    },
+    {
+      // Rosé Pine Dawn, as Omarchy ships it: pine for good, love for bad.
+      id: "rose-pine", name: "Rosé Pine", scheme: "light",
+      canvas: "#faf4ed", surface: "#fffaf3", ink: "#575279", muted: "#797593", line: "#dfdad9", lineStrong: "#cecacd",
+      accent: "#56949f", good: "#286983", warn: "#ea9d34", bad: "#b4637a", brandBg: "#575279", brandInk: "#ebbcba",
     },
   ];
 

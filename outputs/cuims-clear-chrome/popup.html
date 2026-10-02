@@ -10,140 +10,187 @@
     <script src="theme-boot.js"></script>
   </head>
   <body>
-    <main>
-      <header class="product-header">
+    <div class="app">
+      <nav class="rail" aria-label="CUIMS Clear">
         <div class="mark" aria-hidden="true"><span>//</span></div>
-        <div class="product-name">
-          <p class="eyebrow">Student utility</p>
-          <h1>CUIMS Clear</h1>
+        <div class="rail-tabs" role="tablist" aria-label="Sections" aria-orientation="vertical">
+          <button id="tab-attendance" type="button" role="tab" aria-selected="false" aria-controls="view-attendance" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2.5" /><path d="M3 8h14M7 2.5v3M13 2.5v3M7.5 12.5l1.8 1.8 3.4-3.6" /></svg>
+            <span>Attendance</span>
+          </button>
+          <button id="tab-login" type="button" role="tab" aria-selected="false" aria-controls="view-login" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="10" r="3.5" /><path d="M10.5 10H17.5M15 10v3M17.5 10v2.2" /></svg>
+            <span>Login</span>
+            <span class="rail-dot" id="login-dot" hidden><span class="sr-only">, not saved yet</span></span>
+          </button>
+          <button id="tab-theme" type="button" role="tab" aria-selected="false" aria-controls="view-theme" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" /><path d="M10 3a7 7 0 0 0 0 14z" class="fill" /></svg>
+            <span>Theme</span>
+          </button>
+          <button id="tab-settings" type="button" role="tab" aria-selected="false" aria-controls="view-settings" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h8M15 6h2M3 14h2M9 14h8" /><circle cx="13" cy="6" r="2" /><circle cx="7" cy="14" r="2" /></svg>
+            <span>Settings</span>
+          </button>
         </div>
         <span class="version" id="version"></span>
-      </header>
-
-      <div id="access-banner" class="access-banner" role="alert" hidden>
-        <p>Your browser has switched off CUIMS Clear on CUIMS and LMS, so it only runs when you click it.</p>
-        <button id="grant-access" type="button">Allow access</button>
-      </div>
-
-      <nav class="open-nav" aria-label="Open portals">
-        <a class="open-link cuims-open-link" href="https://students.cuchd.in/StudentHome.aspx" target="_blank" rel="noreferrer">
-          <span>Open CUIMS</span><span aria-hidden="true">↗</span>
-        </a>
-        <a class="open-link lms-open-link" href="https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms" target="_blank" rel="noreferrer">
-          <span>Open LMS</span><span aria-hidden="true">↗</span>
-        </a>
       </nav>
 
-      <div class="view-tabs" role="tablist" aria-label="Sections">
-        <button id="tab-login" type="button" role="tab" aria-selected="true" aria-controls="view-login">Login</button>
-        <button id="tab-attendance" type="button" role="tab" aria-selected="false" aria-controls="view-attendance" tabindex="-1">Attendance</button>
-        <button id="tab-theme" type="button" role="tab" aria-selected="false" aria-controls="view-theme" tabindex="-1">Theme</button>
-      </div>
-
-      <div id="view-login" role="tabpanel" aria-labelledby="tab-login">
-      <form id="settings-form">
-        <fieldset class="login-fields">
-          <legend>Saved login</legend>
-
-          <label for="uid">Student UID</label>
-          <input
-            id="uid"
-            name="uid"
-            type="text"
-            autocomplete="username"
-            autocapitalize="none"
-            spellcheck="false"
-            maxlength="15"
-          />
-
-          <label for="password">CUIMS password</label>
-          <div class="password-field">
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autocomplete="off"
-              aria-describedby="storage-note"
-            />
-            <button id="toggle-password" class="field-action" type="button" aria-label="Show password">
-              Show
-            </button>
+      <main class="pane">
+        <header class="pane-head">
+          <div class="product-name">
+            <p class="eyebrow">Student utility</p>
+            <h1>CUIMS Clear</h1>
           </div>
-        </fieldset>
+          <nav class="open-nav" aria-label="Open portals">
+            <a class="open-link cuims-open-link" href="https://students.cuchd.in/StudentHome.aspx" target="_blank" rel="noreferrer">
+              <span>Open CUIMS</span><span aria-hidden="true">↗</span>
+            </a>
+            <a class="open-link lms-open-link" href="https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms" target="_blank" rel="noreferrer">
+              <span>Open LMS</span><span aria-hidden="true">↗</span>
+            </a>
+          </nav>
+        </header>
 
-        <fieldset class="settings-group">
-          <legend>Login</legend>
-          <label class="check-row">
-            <span>
-              <strong>Move past UID</strong>
-              <small>Presses Next after filling it</small>
-            </span>
-            <input id="auto-advance" type="checkbox" />
-          </label>
-
-          <label class="check-row">
-            <span>
-              <strong>Solve CAPTCHA automatically</strong>
-              <small>Reads the code on-device, retries safely</small>
-            </span>
-            <input id="auto-solve-captcha" type="checkbox" />
-          </label>
-
-          <label class="check-row">
-            <span>
-              <strong>Submit login automatically</strong>
-              <small>Fills captcha and presses Login when the read looks valid</small>
-            </span>
-            <input id="auto-submit-login" type="checkbox" />
-          </label>
-        </fieldset>
-
-        <fieldset class="settings-group">
-          <legend>Quiet mode</legend>
-          <label class="check-row">
-            <span>
-              <strong>Event interruptions</strong>
-              <small>Hide promotional dialogs</small>
-            </span>
-            <input id="block-events" type="checkbox" />
-          </label>
-
-          <label class="check-row">
-            <span>
-              <strong>Feedback interruptions</strong>
-              <small>Hide survey and rating dialogs</small>
-            </span>
-            <input id="block-feedback" type="checkbox" />
-          </label>
-        </fieldset>
-
-        <button id="save-button" class="save-button" type="submit">Save changes</button>
-        <p id="status" role="status" aria-live="polite"></p>
-      </form>
-
-      <section class="local-data" aria-labelledby="local-data-title">
-        <div>
-          <h2 id="local-data-title">Local by design</h2>
-          <p id="storage-note">Your login and attendance stay in this browser profile. CAPTCHA is solved on-device.</p>
+        <div id="access-banner" class="access-banner" role="alert" hidden>
+          <p>Your browser has switched off CUIMS Clear on CUIMS and LMS, so it only runs when you click it.</p>
+          <button id="grant-access" type="button">Allow access</button>
         </div>
-        <button id="clear-login" class="clear-button" type="button">Clear login</button>
-      </section>
-      </div>
 
-      <section id="view-attendance" class="attendance" role="tabpanel" aria-labelledby="tab-attendance" hidden></section>
+        <div class="views" id="views">
+          <section id="view-attendance" class="view attendance" role="tabpanel" aria-labelledby="tab-attendance" tabindex="-1" hidden></section>
 
-      <section id="view-theme" class="themes" role="tabpanel" aria-labelledby="tab-theme" hidden>
-        <ul class="theme-grid" role="radiogroup" aria-label="Theme"></ul>
-        <label class="check-row theme-cuims">
-          <span>
-            <strong>Also restyle CUIMS pages</strong>
-            <small>Recolours the portal itself. Turn off if a page looks wrong.</small>
-          </span>
-          <input id="theme-cuims" type="checkbox" checked />
-        </label>
-        <p class="theme-note">Changes the popup, LMS, CUIMS, and the toolbar icon. Themes from Omarchy.</p>
-      </section>
-    </main>
+          <section id="view-login" class="view" role="tabpanel" aria-labelledby="tab-login" tabindex="-1" hidden>
+            <form id="settings-form" class="login-form">
+              <fieldset class="login-fields">
+                <legend>Saved login</legend>
+
+                <label for="uid">Student UID</label>
+                <input
+                  id="uid"
+                  name="uid"
+                  type="text"
+                  autocomplete="username"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  maxlength="15"
+                  placeholder="e.g. 24BCS10000"
+                />
+
+                <label for="password">CUIMS password</label>
+                <div class="password-field">
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autocomplete="off"
+                    aria-describedby="storage-note"
+                  />
+                  <button id="toggle-password" class="field-action" type="button" aria-label="Show password">
+                    Show
+                  </button>
+                </div>
+              </fieldset>
+
+              <div class="save-row">
+                <button id="save-button" class="save-button" type="submit" disabled>Save login</button>
+                <p id="dirty-note" class="dirty-note" aria-live="polite"></p>
+              </div>
+            </form>
+
+            <section class="summary" aria-labelledby="summary-title">
+              <div class="section-head">
+                <h2 id="summary-title" class="section-label">On the login page</h2>
+                <button type="button" class="text-button" data-goto="settings">Change</button>
+              </div>
+              <ul class="summary-list" id="summary-list"></ul>
+            </section>
+
+            <section class="local-data" aria-labelledby="local-data-title">
+              <div>
+                <h2 id="local-data-title">Local by design</h2>
+                <p id="storage-note">Your login and attendance stay in this browser profile. CAPTCHA is solved on-device.</p>
+              </div>
+              <button id="clear-login" class="clear-button" type="button">Clear login</button>
+            </section>
+          </section>
+
+          <section id="view-theme" class="view themes" role="tabpanel" aria-labelledby="tab-theme" tabindex="-1" hidden>
+            <label class="switch-row theme-cuims">
+              <span>
+                <strong>Also restyle CUIMS pages</strong>
+                <small>Recolours the portal itself. Turn off if a page looks wrong.</small>
+              </span>
+              <input id="theme-cuims" type="checkbox" role="switch" data-key="themeCuims" checked />
+            </label>
+            <div class="theme-groups" id="theme-groups"></div>
+            <p class="theme-note">Changes the popup, LMS, CUIMS, and the toolbar icon. Themes from Omarchy.</p>
+          </section>
+
+          <section id="view-settings" class="view settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="-1" hidden>
+            <fieldset class="settings-group">
+              <legend>Login page</legend>
+              <label class="switch-row">
+                <span>
+                  <strong>Move past UID</strong>
+                  <small>Presses Next after filling your UID</small>
+                </span>
+                <input id="auto-advance" type="checkbox" role="switch" data-key="autoAdvanceUid" />
+              </label>
+
+              <label class="switch-row">
+                <span>
+                  <strong>Solve CAPTCHA automatically</strong>
+                  <small>Reads the code on-device, never sent anywhere</small>
+                </span>
+                <input id="auto-solve-captcha" type="checkbox" role="switch" data-key="autoSolveCaptcha" />
+              </label>
+
+              <label class="switch-row" id="auto-submit-row">
+                <span>
+                  <strong>Submit login automatically</strong>
+                  <small id="auto-submit-note">Presses Login for you, up to three tries</small>
+                </span>
+                <input id="auto-submit-login" type="checkbox" role="switch" data-key="autoSubmitLogin" aria-describedby="auto-submit-note" />
+              </label>
+            </fieldset>
+
+            <fieldset class="settings-group">
+              <legend>Quiet mode</legend>
+              <label class="switch-row">
+                <span>
+                  <strong>Event interruptions</strong>
+                  <small>Hide promotional dialogs</small>
+                </span>
+                <input id="block-events" type="checkbox" role="switch" data-key="blockEvents" />
+              </label>
+
+              <label class="switch-row">
+                <span>
+                  <strong>Feedback interruptions</strong>
+                  <small>Hide survey and rating dialogs</small>
+                </span>
+                <input id="block-feedback" type="checkbox" role="switch" data-key="blockFeedback" />
+              </label>
+            </fieldset>
+
+            <fieldset class="settings-group">
+              <legend>LMS</legend>
+              <label class="switch-row">
+                <span>
+                  <strong>Clear course view</strong>
+                  <small>One row per subject, materials beside semester work</small>
+                </span>
+                <input id="lms-clear" type="checkbox" role="switch" data-key="lmsClear" />
+              </label>
+            </fieldset>
+
+            <p class="settings-note">Each switch saves as you flip it. Open CUIMS and LMS tabs follow along.</p>
+          </section>
+        </div>
+
+        <p id="status" class="toast" role="status" aria-live="polite"></p>
+      </main>
+    </div>
     <script src="attendance-model.js"></script>
     <script src="attendance-view.js"></script>
     <script src="popup.js"></script>

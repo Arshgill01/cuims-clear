@@ -139,14 +139,18 @@ test("Chrome preserves a manually edited CAPTCHA instead of replacing or submitt
 
 test("Chrome popup saves credentials and Clear login removes them without erasing preferences", () => {
   const elements = new Map();
+  const classes = () => {
+    const set = new Set();
+    return { add: (name) => set.add(name), remove: (name) => set.delete(name), contains: (name) => set.has(name), toggle: (name, on) => (on ? set.add(name) : set.delete(name)) };
+  };
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, { value: "", checked: true, hidden: true, innerHTML: "", addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute() {}, querySelector: () => element(`${id} *`), querySelectorAll: () => [] });
+    if (!elements.has(id)) elements.set(id, { value: "", checked: true, hidden: true, innerHTML: "", addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute() {}, querySelector: () => element(`${id} *`), querySelectorAll: () => [], replaceChildren() {}, append() {}, classList: classes() });
     return elements.get(id);
   };
   let saved;
   let removed;
   vm.runInNewContext(source("popup.js"), {
-    document: { querySelector: element },
+    document: { querySelector: element, querySelectorAll: () => [], addEventListener() {}, createElement: () => ({ setAttribute() {}, append() {} }) },
     window: { clearTimeout() {}, setTimeout() {}, setInterval() {}, clearInterval() {} },
     CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; }, escapeHtml: (value) => String(value) },
     CuimsThemes: { list: [], mirrored: () => "clear", valid: (id) => id, tokens: () => ({}), load: () => Promise.resolve("clear"), save() {}, onChange() {}, applyToPopup() {} },
@@ -168,6 +172,8 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   element("#settings-form").submit({ preventDefault() {} });
   assert.equal(saved.uid, "TEST123");
   assert.equal(saved.password, "fixture-password");
+  element("#clear-login").click();
+  assert.equal(removed, undefined, "the first press only asks");
   element("#clear-login").click();
   assert.deepEqual(removed.slice(0, 2), ["uid", "password"]);
   assert.ok(removed.includes("attendanceSnapshot"), "Clear login also forgets attendance");
