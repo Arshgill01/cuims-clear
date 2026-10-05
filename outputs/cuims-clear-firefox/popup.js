@@ -61,6 +61,7 @@ const themeGroups = document.querySelector("#theme-groups");
 let currentTheme = CuimsThemes.mirrored();
 
 const accessBanner = document.querySelector("#access-banner");
+const rateNudge = document.querySelector("#rate-nudge");
 document.querySelector("#version").textContent = `v${chrome.runtime.getManifest().version}`;
 
 let statusTimer;
@@ -72,6 +73,8 @@ let savedLogin = { uid: "", password: "" };
 let attendance = { snapshot: null, status: null, error: "", code: "" };
 // The student's goal is a preference; the skip plan lasts one campus day.
 let prefs = { goal: "standard", plan: { day: "", skips: [] } };
+// Decided once per popup open (rate-nudge.js); hidden again if a read fails.
+let rateShow = false;
 
 function todayKey() {
   return CuimsAttendance.campusParts(new Date()).key;
@@ -303,6 +306,7 @@ function paintAttendance() {
     code: working ? "" : attendance.code || status.code || "",
   });
   carriedFocus = "";
+  paintRate();
   const target = key ? views.attendance.querySelector(key) : null;
   if (target?.disabled) {
     carriedFocus = key;
@@ -345,6 +349,7 @@ function showView(name, { remember = true } = {}) {
   currentView = name;
   if (remember) chrome.storage.local.set({ popupView: name });
   window.clearInterval(repaintTimer);
+  paintRate();
   if (name === "theme") renderThemes();
   if (name !== "attendance") return;
   const working = paintAttendance();
@@ -448,6 +453,47 @@ document.querySelector("#grant-access").addEventListener("click", () => {
 });
 
 checkSiteAccess();
+
+// ---- store rating ----
+
+function readFailed() {
+  const status = attendance.status || {};
+  return Boolean(attendance.error || attendance.code || status.error || status.code);
+}
+
+// Only beside the attendance it is asking about, and never under an error.
+function paintRate() {
+  if (rateNudge) rateNudge.hidden = !(rateShow && currentView === "attendance" && !readFailed());
+}
+
+function finishRate() {
+  rateShow = false;
+  paintRate();
+  chrome.storage.local.get({ rateNudge: null }, (stored) => {
+    chrome.storage.local.set({ rateNudge: globalThis.CuimsRate.finish(stored.rateNudge) });
+  });
+}
+
+function setupRate(stored) {
+  const rate = globalThis.CuimsRate;
+  if (!rate) return;
+  const shop = rate.store(globalThis.location?.protocol);
+  for (const link of document.querySelectorAll(".rate-link")) {
+    link.href = shop.url;
+    link.addEventListener("click", finishRate);
+  }
+  for (const name of document.querySelectorAll(".rate-store")) name.textContent = shop.name;
+  document.querySelector("#rate-dismiss")?.addEventListener("click", finishRate);
+
+  const now = Date.now();
+  const today = todayKey();
+  const fetchedAt = Date.parse(stored.attendanceSnapshot?.fetchedAt || "") || 0;
+  const used = Boolean(stored.attendanceSnapshot?.subjects?.length) && fetchedAt > 0
+    && CuimsAttendance.campusParts(new Date(fetchedAt)).key === today;
+  const { state, show } = rate.step(stored.rateNudge, { now, today, used, healthy: used && !readFailed() });
+  if (JSON.stringify(state) !== JSON.stringify(stored.rateNudge)) chrome.storage.local.set({ rateNudge: state });
+  rateShow = show;
+}
 
 // ---- themes ----
 
@@ -562,6 +608,7 @@ chrome.storage.local.get(
     popupView: "",
     attendanceGoal: "standard",
     attendancePlan: null,
+    rateNudge: null,
   },
   (stored) => {
     for (const key of Object.keys(SWITCH_DEFAULTS)) settings[key] = stored[key] !== false;
@@ -573,6 +620,7 @@ chrome.storage.local.get(
     attendance.snapshot = stored.attendanceSnapshot;
     attendance.status = stored.attendanceStatus;
     prefs = { goal: stored.attendanceGoal || "standard", plan: stored.attendancePlan || { day: "", skips: [] } };
+    setupRate(stored);
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";
     showView(start, { remember: false });

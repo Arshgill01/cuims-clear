@@ -185,14 +185,26 @@
             </fieldset>
 
             <p class="settings-note">Each switch saves as you flip it. Open CUIMS and LMS tabs follow along.</p>
+
+            <p class="rate-line">
+              Finding CUIMS Clear useful?
+              <a class="rate-link" href="https://chromewebstore.google.com/detail/amlobigbjldbogimakmfndkdaekcdbkf/reviews" target="_blank" rel="noreferrer">Rate it on the <span class="rate-store">Chrome Web Store</span><span aria-hidden="true"> ↗</span></a>
+            </p>
           </section>
         </div>
+
+        <aside id="rate-nudge" class="rate-nudge" aria-label="Rate CUIMS Clear" hidden>
+          <p>Saving you some clicks? A rating helps other students find CUIMS Clear.</p>
+          <a class="rate-link rate-cta" href="https://chromewebstore.google.com/detail/amlobigbjldbogimakmfndkdaekcdbkf/reviews" target="_blank" rel="noreferrer">Rate it<span aria-hidden="true">↗</span></a>
+          <button id="rate-dismiss" class="rate-dismiss" type="button" aria-label="Don't ask again">×</button>
+        </aside>
 
         <p id="status" class="toast" role="status" aria-live="polite"></p>
       </main>
     </div>
     <script src="attendance-model.js"></script>
     <script src="attendance-view.js"></script>
+    <script src="rate-nudge.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
