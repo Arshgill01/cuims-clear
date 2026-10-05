@@ -643,28 +643,71 @@ input[role="switch"]:disabled {
   text-decoration-color: currentColor;
 }
 
-/* ---- store rating ask: a quiet strip under the attendance view ---- */
+/* ---- store rating ask: today's first one sits under the header for a few
+   seconds, then it is a quiet strip pinned under the view ---- */
 
 .rate-nudge {
-  display: flex;
+  position: relative;
   flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
   padding: 8px 8px 8px 14px;
   border-top: 1px solid var(--line);
   background: var(--surface);
+  animation: rate-in 220ms ease-out;
 }
 
-.rate-nudge[hidden] {
+.rate-nudge[hidden],
+.rate-nudge [hidden] {
   display: none;
 }
 
+.rate-nudge.is-top {
+  margin: 10px 14px 0;
+  padding: 10px 8px 12px 12px;
+  overflow: hidden;
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  animation-name: rate-drop;
+}
+
 .rate-nudge p {
-  flex: 1 1 auto;
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.rate-nudge.is-top p {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.rate-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* At the top: the full sentence above the buttons. At the bottom: one row. */
+.rate-nudge.is-top .rate-actions {
+  margin-top: 6px;
+}
+
+.rate-long,
+.rate-nudge.is-top .rate-short {
+  display: none;
+}
+
+.rate-nudge.is-top .rate-long {
+  display: block;
+}
+
+.rate-short {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
 }
 
 .rate-cta {
@@ -674,23 +717,24 @@ input[role="switch"]:disabled {
   align-items: center;
   gap: 4px;
   padding: 0 10px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--accent-line);
   border-radius: 8px;
-  color: var(--ink);
-  background: var(--surface);
+  color: var(--accent-ink);
+  background: var(--accent);
   font-size: 11.5px;
   font-weight: 750;
   text-decoration: none;
 }
 
 .rate-cta:hover {
-  background: var(--surface-2);
+  background: var(--accent-hover);
 }
 
 .rate-dismiss {
   flex: 0 0 auto;
   width: 28px;
   min-height: 28px;
+  margin-left: auto;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -704,6 +748,48 @@ input[role="switch"]:disabled {
 .rate-dismiss:hover {
   color: var(--ink);
   background: var(--surface-2);
+}
+
+/* The countdown before the banner moves down; it stops while hovered. */
+.rate-timer {
+  display: none;
+}
+
+.rate-nudge.is-top .rate-timer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  height: 3px;
+  background: var(--accent);
+  transform-origin: left;
+  animation: rate-countdown 8s linear forwards;
+}
+
+.rate-nudge.is-paused .rate-timer {
+  animation-play-state: paused;
+}
+
+@keyframes rate-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes rate-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes rate-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rate-nudge {
+    animation: none;
+  }
 }
 
 .rate-link:focus-visible {

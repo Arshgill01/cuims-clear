@@ -194,9 +194,23 @@
         </div>
 
         <aside id="rate-nudge" class="rate-nudge" aria-label="Rate CUIMS Clear" hidden>
-          <p>Saving you some clicks? A rating helps other students find CUIMS Clear.</p>
-          <a class="rate-link rate-cta" href="https://chromewebstore.google.com/detail/amlobigbjldbogimakmfndkdaekcdbkf/reviews" target="_blank" rel="noreferrer">Rate it<span aria-hidden="true">↗</span></a>
-          <button id="rate-dismiss" class="rate-dismiss" type="button" aria-label="Don't ask again">×</button>
+          <div class="rate-ask">
+            <p class="rate-long">Saving you some clicks? A rating helps other students find CUIMS Clear.</p>
+            <div class="rate-actions">
+              <span class="rate-short">Enjoying it?</span>
+              <a class="rate-link rate-cta" href="https://chromewebstore.google.com/detail/amlobigbjldbogimakmfndkdaekcdbkf/reviews" target="_blank" rel="noreferrer">Rate it<span aria-hidden="true">↗</span></a>
+              <button type="button" class="text-button" data-rate="rated">Already rated</button>
+              <button type="button" class="rate-dismiss" data-rate="snooze" aria-label="Not now">×</button>
+            </div>
+          </div>
+          <div class="rate-confirm" hidden>
+            <div class="rate-actions">
+              <span class="rate-short">Did you leave a rating?</span>
+              <button type="button" class="rate-cta" data-rate="rated">Yes, I rated it</button>
+              <button type="button" class="text-button" data-rate="not-yet">Not yet</button>
+            </div>
+          </div>
+          <span class="rate-timer" aria-hidden="true"></span>
         </aside>
 
         <p id="status" class="toast" role="status" aria-live="polite"></p>

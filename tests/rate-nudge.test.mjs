@@ -14,69 +14,53 @@ function loadRate() {
 const R = loadRate();
 const DAY = 24 * 60 * 60 * 1000;
 const START = Date.UTC(2026, 9, 1, 6);
-const key = (n) => `2026-10-${String(n + 1).padStart(2, "0")}`;
+const open = (state, d, healthy = true) => R.step(state, { now: START + d * DAY, today: `day${d}`, healthy });
 
-// Opens the popup once a day from day `from` to day `to`, every day with a fresh, working read.
-function openDaily(state, from, to, ctx = {}) {
-  const shown = [];
-  for (let d = from; d <= to; d += 1) {
-    const result = R.step(state, { now: START + d * DAY, today: key(d), used: true, healthy: true, ...ctx });
-    state = result.state;
-    if (result.show) shown.push(d);
-  }
-  return { state, shown };
-}
-
-test("the ask waits for a week and five days of working reads", () => {
-  const { shown } = openDaily(null, 0, 7);
-  assert.deepEqual(shown, [7], "first shown on day 7, once five read days and a week have passed");
-
-  // Reads on only four days: never asks, however long it has been.
-  let state = null;
-  for (const d of [0, 10, 20, 30]) state = R.step(state, { now: START + d * DAY, today: key(d), used: true, healthy: true }).state;
-  assert.equal(R.step(state, { now: START + 40 * DAY, today: "2026-11-10", used: false, healthy: true }).show, false);
+test("the ask shows from the first working read, at the top once a day", () => {
+  let r = open(null, 0);
+  assert.equal(r.show, "ask");
+  assert.equal(r.top, true, "the day's first open puts it at the top");
+  r = open(r.state, 0);
+  assert.equal(r.show, "ask");
+  assert.equal(r.top, false, "later opens that day use the bottom strip");
+  r = open(r.state, 1);
+  assert.equal(r.top, true, "the next day starts at the top again");
 });
 
-test("a failed read keeps the ask away", () => {
-  const { state } = openDaily(null, 0, 6);
-  assert.equal(R.step(state, { now: START + 7 * DAY, today: key(7), used: true, healthy: false }).show, false);
+test("no attendance yet, or a failed read, keeps the ask away", () => {
+  assert.equal(open(null, 0, false).show, "");
+  assert.equal(open(null, 0, false).top, false);
 });
 
-test("the ask shows on three days, sleeps 30 days, gets one more round, then stops for good", () => {
-  let { state, shown } = openDaily(null, 0, 9);
-  assert.deepEqual(shown, [7, 8, 9]);
-  // Opening twice on a shown day does not use up a second show.
-  assert.equal(R.step(state, { now: START + 9 * DAY + 1000, today: key(9), used: true, healthy: true }).state.shownDays.length, 3);
+test("Already rated ends it for good", () => {
+  const done = R.rated(open(null, 0).state);
+  for (const d of [0, 1, 30, 365]) assert.equal(open(done, d).show, "");
+});
 
-  const quiet = [];
-  for (let d = 10; d < 40; d += 1) {
-    const result = R.step(state, { now: START + d * DAY, today: `d${d}`, used: true, healthy: true });
-    state = result.state;
-    if (result.show) quiet.push(d);
-  }
-  assert.deepEqual(quiet, [], "snoozed for 30 days after an ignored round");
+test("after Rate the popup asks whether they rated; yes ends it, not yet goes back to asking", () => {
+  const opened = R.opened(open(null, 0).state);
+  const r = open(opened, 0);
+  assert.equal(r.show, "confirm");
+  assert.equal(r.top, false, "the question never jumps to the top");
+  assert.equal(open(R.rated(r.state), 1).show, "");
+  assert.equal(open(R.notYet(r.state), 1).show, "ask");
+});
 
-  const second = [];
-  for (let d = 40; d < 120; d += 1) {
-    const result = R.step(state, { now: START + d * DAY, today: `d${d}`, used: true, healthy: true });
-    state = result.state;
-    if (result.show) second.push(d);
-  }
-  assert.deepEqual(second, [40, 41, 42], "one more round, then never again");
+test("× hides it for three days; the third × hides it for good", () => {
+  let state = R.snooze(open(null, 0).state, START);
+  assert.equal(open(state, 2).show, "");
+  assert.equal(open(state, 3).show, "ask");
+  state = R.snooze(open(state, 3).state, START + 3 * DAY);
+  assert.equal(open(state, 6).show, "ask");
+  state = R.snooze(open(state, 6).state, START + 6 * DAY);
   assert.equal(state.done, true);
-});
-
-test("rating or dismissing ends the ask", () => {
-  const { state } = openDaily(null, 0, 7);
-  const done = R.finish(state);
-  assert.equal(R.step(done, { now: START + 8 * DAY, today: key(8), used: true, healthy: true }).show, false);
+  assert.equal(open(state, 400).show, "");
 });
 
 test("bad stored values are treated as a fresh start", () => {
-  const { state, show } = R.step("junk", { now: START, today: key(0), used: true, healthy: true });
-  assert.equal(show, false);
-  assert.equal(state.firstSeen, START);
-  assert.deepEqual([...state.days], [key(0)]);
+  const { state, show } = R.step("junk", { now: START, today: "day0", healthy: true });
+  assert.equal(show, "ask");
+  assert.equal(state.done, false);
 });
 
 test("each build links to its own store's review page", () => {
@@ -100,10 +84,14 @@ function popup({ rateNudge, snapshot, status = null, view = "attendance" }) {
     return { add: (n) => set.add(n), remove: (n) => set.delete(n), contains: (n) => set.has(n), toggle: (n, on) => (on ? set.add(n) : set.delete(n)) };
   };
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, { id, value: "", checked: true, hidden: true, innerHTML: "", textContent: "", href: "", addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute() {}, querySelector: () => null, querySelectorAll: () => [], replaceChildren() {}, append() {}, classList: classes() });
+    if (!elements.has(id)) elements.set(id, { id, value: "", checked: true, hidden: true, innerHTML: "", textContent: "", href: "", addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute() {}, querySelector: (sel) => (id === "#rate-nudge" ? element(sel) : null), querySelectorAll: () => [], replaceChildren() {}, append() {}, matches: () => false, classList: classes() });
     return elements.get(id);
   };
   const links = [element(".rate-link#1"), element(".rate-link#2")];
+  const moves = [];
+  const timers = [];
+  Object.assign(element("#views"), { before: () => moves.push("before"), after: () => moves.push("after") });
+  const button = (action) => ({ closest: () => ({ dataset: { rate: action } }) });
   const names = [element(".rate-store#1")];
   const store = { rateNudge, attendanceSnapshot: snapshot, attendanceStatus: status, popupView: view, uid: "U", password: "p" };
   const context = vm.createContext({
@@ -114,7 +102,7 @@ function popup({ rateNudge, snapshot, status = null, view = "attendance" }) {
       createElement: () => ({ setAttribute() {}, append() {} }),
     },
     location: { protocol: "moz-extension:" },
-    window: { clearTimeout() {}, setTimeout() {}, setInterval() {}, clearInterval() {} },
+    window: { clearTimeout() {}, setTimeout(fn) { timers.push(fn); return timers.length; }, setInterval() {}, clearInterval() {} },
     CSS: { escape: (v) => v },
     CuimsAttendance: {
       buildAnalytics() { return null; },
@@ -138,40 +126,49 @@ function popup({ rateNudge, snapshot, status = null, view = "attendance" }) {
   });
   vm.runInContext(read("firefox", "rate-nudge.js"), context);
   vm.runInContext(read("firefox", "popup.js"), context);
-  return { element, links, names, store, tabs: (name) => element(`#tab-${name}`) };
+  return { element, links, names, store, moves, timers, button, tabs: (name) => element(`#tab-${name}`) };
 }
 
-const today = new Date().toISOString().slice(0, 10);
-const ready = { firstSeen: Date.now() - 8 * DAY, days: ["a", "b", "c", "d"], shownDays: [], round: 0, snoozeUntil: 0, done: false };
 const fresh = { fetchedAt: new Date().toISOString(), subjects: [{ name: "Maths" }] };
 
-test("popup shows the strip on Attendance once the student qualifies, and × ends it", () => {
-  const p = popup({ rateNudge: ready, snapshot: fresh });
+test("popup: the day's first ask sits at the top, the strip is only on Attendance, × ends today's ask", () => {
+  const p = popup({ rateNudge: null, snapshot: fresh });
   const strip = p.element("#rate-nudge");
   assert.equal(strip.hidden, false);
-  assert.deepEqual([...p.store.rateNudge.days], ["a", "b", "c", "d", today]);
+  assert.equal(strip.classList.contains("is-top"), true);
+  assert.equal(p.moves.at(-1), "before");
   assert.equal(p.links[0].href, "https://addons.mozilla.org/firefox/addon/cuims-clear/");
   assert.equal(p.names[0].textContent, "Firefox Add-ons");
+
+  p.timers.at(-1)();
+  assert.equal(strip.classList.contains("is-top"), false, "the timer moves it down");
+  assert.equal(p.moves.at(-1), "after");
 
   p.tabs("settings").click();
   assert.equal(strip.hidden, true, "only beside the attendance view");
   p.tabs("attendance").click();
   assert.equal(strip.hidden, false);
 
-  p.element("#rate-dismiss").click();
+  strip.click({ target: p.button("snooze") });
   assert.equal(strip.hidden, true);
-  assert.equal(p.store.rateNudge.done, true);
+  assert.equal(p.store.rateNudge.snoozes, 1);
 });
 
-test("popup: pressing Rate ends the ask too", () => {
-  const p = popup({ rateNudge: ready, snapshot: fresh });
+test("popup: Rate turns the strip into the did-you-rate question; yes ends it", () => {
+  const p = popup({ rateNudge: { topDay: "x" }, snapshot: fresh });
+  const strip = p.element("#rate-nudge");
   p.links[0].click();
+  assert.equal(p.store.rateNudge.opened, true);
+  assert.equal(strip.hidden, false);
+  assert.equal(p.element(".rate-confirm").hidden, false);
+  assert.equal(p.element(".rate-ask").hidden, true);
+  strip.click({ target: p.button("rated") });
   assert.equal(p.store.rateNudge.done, true);
-  assert.equal(p.element("#rate-nudge").hidden, true);
+  assert.equal(strip.hidden, true);
 });
 
-test("popup keeps the strip hidden under a failed read or an old one", () => {
-  assert.equal(popup({ rateNudge: ready, snapshot: fresh, status: { error: "Session ended", code: "x" } }).element("#rate-nudge").hidden, true);
-  const old = { ...fresh, fetchedAt: new Date(Date.now() - 3 * DAY).toISOString() };
-  assert.equal(popup({ rateNudge: ready, snapshot: old }).element("#rate-nudge").hidden, true);
+test("popup keeps the strip hidden under a failed read, with no attendance, or once rated", () => {
+  assert.equal(popup({ rateNudge: null, snapshot: fresh, status: { error: "Session ended", code: "x" } }).element("#rate-nudge").hidden, true);
+  assert.equal(popup({ rateNudge: null, snapshot: null }).element("#rate-nudge").hidden, true);
+  assert.equal(popup({ rateNudge: { done: true }, snapshot: fresh }).element("#rate-nudge").hidden, true);
 });

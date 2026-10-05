@@ -1,18 +1,15 @@
-// When the popup asks for a store rating. It asks only after the extension
-// has clearly worked for a while, never after a failed read, and gives up for
-// good once the student answers or ignores it twice. Everything here stays in
-// storage.local; nothing is counted anywhere else.
+// When the popup asks for a store rating. It asks from the first working
+// read, once a day at the top of the popup and otherwise in a strip at the
+// bottom, and never under a failed read. Neither store tells an extension who
+// has reviewed it, so the student's own word ends it: "Already rated", or a
+// yes after pressing Rate. Everything here stays in storage.local.
 (function () {
   const DAY_MS = 24 * 60 * 60 * 1000;
-  // Days the popup showed a read made that same day.
-  const MIN_DAYS = 5;
-  const MIN_AGE_MS = 7 * DAY_MS;
-  // A round is this many days of showing the ask; an ignored round sleeps
-  // before the next, and the last one ends it.
-  const SHOWS_PER_ROUND = 3;
-  const ROUNDS = 2;
-  const SNOOZE_MS = 30 * DAY_MS;
-  const KEEP_DAYS = 10;
+  // × hides the ask for a few days; the last × hides it for good.
+  const SNOOZE_MS = 3 * DAY_MS;
+  const MAX_SNOOZES = 3;
+  // How long the top banner stays before it moves to the bottom strip.
+  const TOP_MS = 8000;
 
   const STORES = {
     chrome: {
@@ -31,46 +28,51 @@
 
   function normalize(state) {
     const s = state && typeof state === "object" ? state : {};
-    const list = (value) => (Array.isArray(value) ? value.filter((v) => typeof v === "string") : []);
     return {
-      firstSeen: Number(s.firstSeen) || 0,
-      days: list(s.days),
-      shownDays: list(s.shownDays),
-      round: Number(s.round) || 0,
-      snoozeUntil: Number(s.snoozeUntil) || 0,
       done: s.done === true,
+      // Pressed Rate but has not said whether they did.
+      opened: s.opened === true,
+      snoozes: Number(s.snoozes) || 0,
+      snoozeUntil: Number(s.snoozeUntil) || 0,
+      topDay: typeof s.topDay === "string" ? s.topDay : "",
     };
   }
 
-  // One popup open. `used`: the popup has a read from today. `healthy`: that
-  // read worked and nothing has failed since. Returns the state to save and
-  // whether to show the ask.
-  function step(state, { now, today, used, healthy }) {
+  // One popup open. `healthy`: attendance is on screen and nothing has failed.
+  // `show` is "" (nothing), "ask", or "confirm" (after Rate was pressed);
+  // `top` puts today's first ask at the top for TOP_MS.
+  function step(state, { now, today, healthy }) {
     const s = normalize(state);
-    if (!s.firstSeen) s.firstSeen = now;
-    if (used && !s.days.includes(today)) s.days = [...s.days, today].slice(-KEEP_DAYS);
-    if (s.done) return { state: s, show: false };
-    if (s.shownDays.length >= SHOWS_PER_ROUND && !s.shownDays.includes(today)) {
-      if (s.round + 1 >= ROUNDS) s.done = true;
-      else {
-        s.round += 1;
-        s.shownDays = [];
-        s.snoozeUntil = now + SNOOZE_MS;
-      }
-    }
-    const show = !s.done
-      && Boolean(healthy)
-      && s.days.length >= MIN_DAYS
-      && now - s.firstSeen >= MIN_AGE_MS
-      && now >= s.snoozeUntil;
-    if (show && !s.shownDays.includes(today)) s.shownDays = [...s.shownDays, today];
-    return { state: s, show };
+    if (s.done || now < s.snoozeUntil || !healthy) return { state: s, show: "", top: false };
+    if (s.opened) return { state: s, show: "confirm", top: false };
+    const top = s.topDay !== today;
+    if (top) s.topDay = today;
+    return { state: s, show: "ask", top };
   }
 
-  // Rated, or said no: either way, never ask again.
-  function finish(state) {
-    return { ...normalize(state), done: true };
+  // Pressed Rate: next, ask whether they did.
+  function opened(state) {
+    return { ...normalize(state), opened: true };
   }
 
-  globalThis.CuimsRate = { step, finish, store, STORES, MIN_DAYS, MIN_AGE_MS, SHOWS_PER_ROUND, ROUNDS, SNOOZE_MS };
+  // "Already rated", or yes after Rate: never ask again.
+  function rated(state) {
+    return { ...normalize(state), done: true, opened: false };
+  }
+
+  // Did not rate after all: back to the plain ask.
+  function notYet(state) {
+    return { ...normalize(state), opened: false };
+  }
+
+  function snooze(state, now) {
+    const s = normalize(state);
+    s.snoozes += 1;
+    s.opened = false;
+    if (s.snoozes >= MAX_SNOOZES) s.done = true;
+    else s.snoozeUntil = now + SNOOZE_MS;
+    return s;
+  }
+
+  globalThis.CuimsRate = { step, opened, rated, notYet, snooze, store, STORES, SNOOZE_MS, MAX_SNOOZES, TOP_MS };
 })();

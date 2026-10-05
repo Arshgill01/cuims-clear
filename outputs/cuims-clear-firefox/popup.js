@@ -73,8 +73,8 @@ let savedLogin = { uid: "", password: "" };
 let attendance = { snapshot: null, status: null, error: "", code: "" };
 // The student's goal is a preference; the skip plan lasts one campus day.
 let prefs = { goal: "standard", plan: { day: "", skips: [] } };
-// Decided once per popup open (rate-nudge.js); hidden again if a read fails.
-let rateShow = false;
+// "", "ask" or "confirm", decided once per popup open (rate-nudge.js).
+let rateShow = "";
 
 function todayKey() {
   return CuimsAttendance.campusParts(new Date()).key;
@@ -456,6 +456,13 @@ checkSiteAccess();
 
 // ---- store rating ----
 
+const rateAsk = rateNudge?.querySelector(".rate-ask");
+const rateConfirm = rateNudge?.querySelector(".rate-confirm");
+let rateState = null;
+let rateTimer = 0;
+let rateLeft = 0;
+let rateStarted = 0;
+
 function readFailed() {
   const status = attendance.status || {};
   return Boolean(attendance.error || attendance.code || status.error || status.code);
@@ -463,36 +470,84 @@ function readFailed() {
 
 // Only beside the attendance it is asking about, and never under an error.
 function paintRate() {
-  if (rateNudge) rateNudge.hidden = !(rateShow && currentView === "attendance" && !readFailed());
+  if (!rateNudge) return;
+  rateNudge.hidden = !(rateShow && currentView === "attendance" && !readFailed());
+  if (rateAsk) rateAsk.hidden = rateShow !== "ask";
+  if (rateConfirm) rateConfirm.hidden = rateShow !== "confirm";
+  if (rateNudge.hidden) settleRate();
 }
 
-function finishRate() {
-  rateShow = false;
+function saveRate(next, show) {
+  rateState = next;
+  rateShow = show;
+  chrome.storage.local.set({ rateNudge: next });
+  settleRate();
   paintRate();
-  chrome.storage.local.get({ rateNudge: null }, (stored) => {
-    chrome.storage.local.set({ rateNudge: globalThis.CuimsRate.finish(stored.rateNudge) });
-  });
+}
+
+// The day's first ask sits under the header for a few seconds, then moves to
+// the bottom strip. The countdown waits while the pointer or focus is on it.
+function liftRate() {
+  if (!rateNudge || !viewport) return;
+  viewport.before?.(rateNudge);
+  rateNudge.classList.add("is-top");
+  rateLeft = globalThis.CuimsRate.TOP_MS;
+  runRateTimer();
+}
+
+function runRateTimer() {
+  window.clearTimeout(rateTimer);
+  rateStarted = Date.now();
+  rateNudge.classList.remove("is-paused");
+  rateTimer = window.setTimeout(settleRate, rateLeft);
+}
+
+function pauseRateTimer() {
+  if (!rateNudge?.classList.contains("is-top") || rateNudge.classList.contains("is-paused")) return;
+  window.clearTimeout(rateTimer);
+  rateLeft = Math.max(0, rateLeft - (Date.now() - rateStarted));
+  rateNudge.classList.add("is-paused");
+}
+
+function resumeRateTimer() {
+  if (!rateNudge?.classList.contains("is-top") || rateNudge.matches?.(":hover, :focus-within")) return;
+  runRateTimer();
+}
+
+function settleRate() {
+  window.clearTimeout(rateTimer);
+  if (!rateNudge?.classList.contains("is-top")) return;
+  rateNudge.classList.remove("is-top", "is-paused");
+  viewport.after?.(rateNudge);
 }
 
 function setupRate(stored) {
   const rate = globalThis.CuimsRate;
-  if (!rate) return;
+  if (!rate || !rateNudge) return;
   const shop = rate.store(globalThis.location?.protocol);
   for (const link of document.querySelectorAll(".rate-link")) {
     link.href = shop.url;
-    link.addEventListener("click", finishRate);
+    link.addEventListener("click", () => saveRate(rate.opened(rateState), rateState?.done ? "" : "confirm"));
   }
   for (const name of document.querySelectorAll(".rate-store")) name.textContent = shop.name;
-  document.querySelector("#rate-dismiss")?.addEventListener("click", finishRate);
+  rateNudge.addEventListener("click", (event) => {
+    const action = event.target.closest?.("[data-rate]")?.dataset.rate;
+    if (action === "rated") {
+      saveRate(rate.rated(rateState), "");
+      showStatus("Thank you!");
+    } else if (action === "not-yet") saveRate(rate.notYet(rateState), "ask");
+    else if (action === "snooze") saveRate(rate.snooze(rateState, Date.now()), "");
+  });
+  for (const type of ["pointerenter", "focusin"]) rateNudge.addEventListener(type, pauseRateTimer);
+  rateNudge.addEventListener("pointerleave", resumeRateTimer);
+  rateNudge.addEventListener("focusout", () => window.setTimeout(resumeRateTimer));
 
-  const now = Date.now();
-  const today = todayKey();
-  const fetchedAt = Date.parse(stored.attendanceSnapshot?.fetchedAt || "") || 0;
-  const used = Boolean(stored.attendanceSnapshot?.subjects?.length) && fetchedAt > 0
-    && CuimsAttendance.campusParts(new Date(fetchedAt)).key === today;
-  const { state, show } = rate.step(stored.rateNudge, { now, today, used, healthy: used && !readFailed() });
+  const healthy = Boolean(stored.attendanceSnapshot?.subjects?.length) && !readFailed();
+  const { state, show, top } = rate.step(stored.rateNudge, { now: Date.now(), today: todayKey(), healthy });
+  rateState = state;
   if (JSON.stringify(state) !== JSON.stringify(stored.rateNudge)) chrome.storage.local.set({ rateNudge: state });
   rateShow = show;
+  if (top && currentView === "attendance") liftRate();
 }
 
 // ---- themes ----
@@ -620,9 +675,10 @@ chrome.storage.local.get(
     attendance.snapshot = stored.attendanceSnapshot;
     attendance.status = stored.attendanceStatus;
     prefs = { goal: stored.attendanceGoal || "standard", plan: stored.attendancePlan || { day: "", skips: [] } };
-    setupRate(stored);
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";
     showView(start, { remember: false });
+    setupRate(stored);
+    paintRate();
   },
 );
