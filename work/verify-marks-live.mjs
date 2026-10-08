@@ -1,0 +1,12 @@
+import fs from "node:fs";
+import vm from "node:vm";
+import assert from "node:assert/strict";
+const root = new URL("../outputs/cuims-clear-firefox/", import.meta.url);
+const ctx = vm.createContext({ URL });
+for (const file of ["attendance-parse.js", "attendance-client.js", "marks.js"]) vm.runInContext(fs.readFileSync(new URL(file, root), "utf8"), ctx);
+const parsed = ctx.CuimsMarks.parseRegularMarks(fs.readFileSync(new URL("marks-live.html", import.meta.url), "utf8"));
+assert.equal(parsed.sessionId, "26271");
+assert.equal(parsed.subjects.length, 7);
+assert.equal(parsed.subjects.reduce((n, subject) => n + subject.exams.length, 0), 18);
+assert.equal(parsed.subjects.find(subject => subject.code === "24CST-302").exams[0].obtained, "15.5");
+console.log(`Live Regular Marks markup: ${parsed.subjects.length} subjects, 18 assessments parsed; current session ${parsed.sessionId}.`);

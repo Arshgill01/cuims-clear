@@ -39,10 +39,18 @@ function startAttendanceBackground(solveCaptcha) {
     if (message?.type !== "cuims-clear:marks-read" || !fromExtensionPage(sender)) return;
     hasAccess()
       .then((granted) => granted
-        ? attendance.fetchRegularMarks(String(message.sessionId || ""))
+        ? attendance.fetchRegularMarks({ force: message.refresh === true })
         : { error: "Allow access to CUIMS at the top of the popup first.", code: "no-access" })
       .then(sendResponse)
       .catch(() => sendResponse({ error: "Could not read marks. Try again.", code: "network" }));
+    return true;
+  });
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== "cuims-clear:timetable-read" || !fromExtensionPage(sender)) return;
+    hasAccess().then(granted => granted ? attendance.fetchCachedTimetable()
+      : { error: "Allow access to CUIMS at the top of the popup first.", code: "no-access" })
+      .then(sendResponse).catch(() => sendResponse({ error: "Could not read the timetable. Try again.", code: "network" }));
     return true;
   });
 

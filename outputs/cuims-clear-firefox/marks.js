@@ -49,7 +49,7 @@
     return { sessionId: session.id, label: session.label, sessions: sessions.map(({ id, label }) => ({ id, label })), subjects, uid: identity };
   }
 
-  async function readRegularMarks(request, sessionId = "") {
+  async function readRegularMarks(request) {
     let page = await request(PAGE);
     function check(result) {
       if (api.isLoginUrl(result.url) || api.isLoginDocument(result.html)) throw api.coded("signed-out");
@@ -59,20 +59,26 @@
       return parseRegularMarks(result.html);
     }
     let parsed = check(page);
-    if (sessionId && parsed.sessionId !== sessionId) {
-      if (!parsed.sessions.some((entry) => entry.id === sessionId)) throw api.coded("marks-session", "That session is not offered by CUIMS.");
+    const current = parsed.sessions.find((entry) => /^Current\s*Session\b|^CurrentSession[-\s(]/i.test(entry.label));
+    if (!current) throw api.coded("marks-session", "CUIMS did not identify the current examination session.");
+    if (parsed.sessionId !== current.id) {
       // A full ASP.NET postback, just like the existing UID and timetable
       // requests. Do not persist viewstate, event-validation or SSO tokens.
-      const body = new URLSearchParams({ ...api.hiddenFields(page.html), __EVENTTARGET: SESSION_NAME, __EVENTARGUMENT: "", [SESSION_NAME]: sessionId });
+      const body = new URLSearchParams({ ...api.hiddenFields(page.html), __EVENTTARGET: SESSION_NAME, __EVENTARGUMENT: "", [SESSION_NAME]: current.id });
       page = await request(PAGE, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: body.toString() });
       parsed = check(page);
-      if (parsed.sessionId !== sessionId) throw api.coded("marks-session", "CUIMS did not switch the examination session.");
+      if (parsed.sessionId !== current.id) throw api.coded("marks-session", "CUIMS did not switch to the current examination session.");
     }
     return parsed;
   }
 
   function marksCacheFor(cache, uid) {
-    return cache?.v === CACHE_VERSION && cache.uid === String(uid || "").trim() ? cache : null;
+    if (cache?.v !== CACHE_VERSION || cache.uid !== String(uid || "").trim()) return null;
+    // Old builds could cache previous sessions. Only expose the session that
+    // CUIMS labels CurrentSession, even if the old popup last showed another.
+    const current = cache.sessions?.find((entry) => /^Current\s*Session\b|^CurrentSession[-\s(]/i.test(entry.label));
+    if (!current || !cache.snapshots?.[current.id]) return null;
+    return { ...cache, currentSession: current.id, sessions: [current], snapshots: { [current.id]: cache.snapshots[current.id] } };
   }
 
   root.CuimsMarks = { PAGE, SESSION_NAME, CACHE_VERSION, parseRegularMarks, readRegularMarks, marksCacheFor };

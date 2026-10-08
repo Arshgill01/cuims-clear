@@ -60,23 +60,58 @@ test("a marks read is one GET; concurrent calls and background restarts reuse pe
   assert.equal(s.state.loginPosts, 0);
 });
 
-test("previous session uses the page's ASP.NET fields once, then both sessions remain cached", async () => {
+test("Refresh bypasses the cache once, updates marks, and concurrent refreshes share one GET", async () => {
   const s = server(), storage = saved(), d = daemon(s, storage);
   await d.fetchRegularMarks();
-  await d.fetchRegularMarks("25262");
-  assert.equal(s.requests.length, 3);
-  const post = s.requests[2];
+  s.setHTML(fixture.replace('<td>13</td>', '<td>18</td>'));
+  const reads = await Promise.all([d.fetchRegularMarks({ force: true }), d.fetchRegularMarks({ force: true }), d.fetchRegularMarks({ force: true })]);
+  assert.equal(s.requests.length, 2);
+  assert.ok(reads.every(result => result.cache.snapshots["26271"].subjects[0].exams[0].obtained === "18"));
+  await daemon(s, storage).fetchRegularMarks();
+  assert.equal(s.requests.length, 2);
+  assert.equal(storage.data.marksCache.sessions.length, 1);
+  assert.doesNotMatch(JSON.stringify(storage.data.marksCache), /PreviousSession|25262|VIEWSTATE|validation|browser-token/);
+});
+
+test("a page defaulting to previous marks is switched only to CurrentSession with a valid postback", async () => {
+  const requests = [];
+  const request = A.createRequest({ fetchImpl: async (target, options) => {
+    requests.push(options);
+    return { url: target, status: 200, text: async () => options.method === "POST" ? fixture : previous };
+  } });
+  const parsed = await M.readRegularMarks(request);
+  assert.equal(parsed.sessionId, "26271");
+  const post = requests[1];
   const fields = new URLSearchParams(post.body);
   assert.equal(post.method, "POST");
   assert.equal(fields.get("__VIEWSTATE"), "marks&state");
   assert.equal(fields.get("__EVENTVALIDATION"), "validation");
   assert.equal(fields.get("hfcurrentbackground"), "browser-token");
   assert.equal(fields.get("__EVENTTARGET"), M.SESSION_NAME);
-  assert.equal(fields.get(M.SESSION_NAME), "25262");
-  await d.fetchRegularMarks("26271");
-  await daemon(s, storage).fetchRegularMarks("25262");
-  assert.equal(s.requests.length, 3);
-  assert.doesNotMatch(JSON.stringify(storage.data.marksCache), /VIEWSTATE|validation|browser-token/);
+  assert.equal(fields.get(M.SESSION_NAME), "26271");
+});
+
+test("a failed Refresh preserves the previous successful marks", async () => {
+  const s = server(), storage = saved(), d = daemon(s, storage);
+  await d.fetchRegularMarks();
+  const before = JSON.stringify(storage.data.marksCache);
+  s.setHTML("<html>Please wait</html>");
+  const result = await d.fetchRegularMarks({ force: true });
+  assert.equal(result.code, "marks-shape");
+  assert.equal(result.cache.snapshots["26271"].subjects.length, 3);
+  assert.equal(JSON.stringify(storage.data.marksCache), before);
+});
+
+test("old previous-session caches are hidden without requiring another fetch", async () => {
+  const s = server(), storage = saved(), d = daemon(s, storage);
+  await d.fetchRegularMarks();
+  storage.data.marksCache.sessions.push({ id: "25262", label: "PreviousSession-25262" });
+  storage.data.marksCache.snapshots["25262"] = { subjects: [{title:"Old subject"}] };
+  storage.data.marksCache.currentSession = "25262";
+  const result = await daemon(s, storage).fetchRegularMarks();
+  assert.equal(result.cache.currentSession, "26271");
+  assert.equal(result.cache.snapshots["25262"], undefined);
+  assert.equal(s.requests.length, 1);
 });
 
 test("signed-out marks reuses the existing guarded background sign-in", async () => {
@@ -138,11 +173,9 @@ test("clearing or changing login during a fetch prevents stale marks from being 
   assert.equal(storage.data.marksCache, undefined);
 });
 
-test("unoffered sessions and missing UID send no marks request", async () => {
+test("missing UID sends no marks request", async () => {
   const s = server(), storage = saved(), d = daemon(s, storage);
   await d.fetchRegularMarks();
-  assert.equal((await d.fetchRegularMarks("99999")).code, "marks-session");
-  assert.equal(s.requests.length, 1);
   storage.data.uid = "";
   assert.equal((await d.fetchRegularMarks()).code, "needs-login");
   assert.equal(s.requests.length, 1);
@@ -152,14 +185,17 @@ test("marks view escapes portal text and preserves the published values without 
   const s = server(), storage = saved();
   const { cache } = await daemon(s, storage).fetchRegularMarks();
   cache.snapshots["26271"].subjects[0].title = '<img src=x onerror=alert(1)>';
-  const html = context.CuimsMarksView.render(cache, "26271");
+  const html = context.CuimsMarksView.render(cache);
   assert.doesNotMatch(html, /<img|onerror=alert\(1\)>/);
   assert.match(html, /&lt;img/);
   assert.match(html, />15.5</);
   assert.match(html, />0</);
   assert.match(html, />A</);
-  assert.match(html, /Reopening this tab uses the saved marks/);
-  assert.doesNotMatch(html, /id="fetch-marks"/);
+  assert.match(html, /id="fetch-marks" class="refresh-button"/);
+  assert.doesNotMatch(html, /Regular marks|Open page|Saved |Clear login|marks-session|<select/);
+  assert.match(html, /Updated /);
+  const working = context.CuimsMarksView.render(cache, { working: true });
+  assert.match(working, /disabled>Refreshing/);
 });
 
 test("Firefox alone has the Marks tab and 0.10.0 background wiring", () => {

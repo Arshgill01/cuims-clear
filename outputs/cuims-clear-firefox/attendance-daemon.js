@@ -36,6 +36,7 @@
     autoSolveCaptcha: true,
     attendanceSnapshot: null,
     attendanceTimetable: null,
+    timetableCache: null,
     attendanceLeaves: null,
     attendanceCourses: null,
     attendanceRequests: [],
@@ -67,6 +68,8 @@
     // refresh in progress, if that is what it is.
     let inflight = null;
     let refreshing = null;
+    let marksReading = null;
+    let timetableReading = null;
 
     // A tab showing the login form beats every 8 s (loginTabAt), and a tab
     // that has just started loading it says so before its captcha is even
@@ -193,6 +196,8 @@
     // heavy attendance page: CUIMS throttles a session that opens several
     // inner pages at once.
     async function readTimetable(state, request, today, heavy) {
+      const weekly = root.CuimsTimetable?.cacheFor(state.timetableCache, state.uid);
+      if (weekly) return weekly.slots;
       const cached = state.attendanceTimetable;
       const slots = cached?.slots || [];
       if (cached?.day === today && slots.length) return slots;
@@ -501,19 +506,18 @@
     }
 
     // Marks shares attendance's session lock, request meter and sign-in guard.
-    // A successful read (including an explicitly empty result) is permanent
-    // for this saved UID and session. There is no refresh timer or expiry.
-    function fetchRegularMarks(sessionId = "") {
-      return exclusive(async () => {
+    // Reopening uses the current-session cache. Only an explicit Refresh
+    // bypasses it; concurrent clicks share one read. There is no timer.
+    function fetchRegularMarks({ force = false } = {}) {
+      if (marksReading) return marksReading;
+      const reading = exclusive(async () => {
         const state = await storage.get({ ...DEFAULTS, marksCache: null, marksStatus: null });
         const uid = String(state.uid || "").trim();
         const marks = root.CuimsMarks;
         const cached = marks.marksCacheFor(state.marksCache, uid);
-        const target = sessionId || cached?.currentSession || "";
-        if (cached?.snapshots?.[target]) return { cache: cached, sessionId: target, cached: true };
+        const target = cached?.currentSession || "";
+        if (!force && cached) return { cache: cached, sessionId: target, cached: true };
         if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
-        if (sessionId && !/^\d{1,10}$/.test(sessionId)) return { error: "Invalid examination session.", code: "marks-session" };
-        if (cached && sessionId && !cached.sessions.some((item) => item.id === sessionId)) return { error: "That session is not offered by CUIMS.", code: "marks-session" };
         const attemptedAt = state.marksStatus?.uid === uid && state.marksStatus.error ? Number(state.marksStatus.at || 0) : 0;
         if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying marks again.", code: "busy" };
         if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try marks again later.", code: "backoff" };
@@ -524,23 +528,23 @@
           return String(current.uid || "").trim() === uid && current.password === state.password;
         };
         const status = async (patch) => {
-          if (await sameLogin()) await storage.set({ marksStatus: { ...patch, uid, sessionId: sessionId || target, at: now() } });
+          if (await sameLogin()) await storage.set({ marksStatus: { ...patch, uid, at: now() } });
         };
         await status({ working: true, phase: "Reading regular marks…" });
         try {
           let result;
           try {
-            result = await marks.readRegularMarks(request, sessionId);
+            result = await marks.readRegularMarks(request);
           } catch (error) {
             if (error.code !== "signed-out") throw error;
             await ensureSignedIn(state, request, "marks", (phase) => status({ working: true, phase }));
-            result = await marks.readRegularMarks(request, sessionId);
+            result = await marks.readRegularMarks(request);
           }
           if (!(await sameLogin())) throw client.coded("cancelled", "Saved login changed. Marks were not saved.");
           if (!result.uid) throw client.coded("marks-shape", "Could not identify the signed-in student. Marks were not saved.");
           if (result.uid.toUpperCase() !== uid.toUpperCase()) throw client.coded("account-mismatch", "CUIMS is signed in with a different UID. Open CUIMS and sign in with your saved UID.");
           const snapshot = { sessionId: result.sessionId, label: result.label, subjects: result.subjects, fetchedAt: new Date(now()).toISOString() };
-          const cache = { v: marks.CACHE_VERSION, uid, currentSession: cached?.currentSession || result.sessionId, sessions: result.sessions, snapshots: { ...(cached?.snapshots || {}), [result.sessionId]: snapshot } };
+          const cache = { v: marks.CACHE_VERSION, uid, currentSession: result.sessionId, sessions: result.sessions.filter((session) => session.id === result.sessionId), snapshots: { [result.sessionId]: snapshot } };
           await storage.set({ marksCache: cache });
           await status({ working: false, error: "", code: "" });
           return { cache, sessionId: result.sessionId };
@@ -548,14 +552,72 @@
           const code = error.code || "network";
           const message = error.code ? error.message : client.MESSAGES.network;
           await status({ working: false, error: message, code });
-          return { error: message, code };
+          return { cache: cached, error: message, code };
         } finally {
           await storage.set({ attendanceRequests: budget.log });
         }
+      }).finally(() => {
+        if (marksReading === reading) marksReading = null;
       });
+      marksReading = reading;
+      return reading;
     }
 
-    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage, fetchRegularMarks };
+    function fetchCachedTimetable() {
+      if (timetableReading) return timetableReading;
+      const reading = exclusive(async () => {
+        const state = await storage.get({ ...DEFAULTS, timetableCache: null, timetableStatus: null });
+        const uid = String(state.uid || "").trim();
+        const timetable = root.CuimsTimetable;
+        const cached = timetable.cacheFor(state.timetableCache, uid);
+
+        if (cached) return { cache: cached, cached: true };
+        if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
+        const attemptedAt = state.timetableStatus?.uid === uid && state.timetableStatus.error ? Number(state.timetableStatus.at || 0) : 0;
+        if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying the timetable again.", code: "busy" };
+        if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try the timetable again later.", code: "backoff" };
+        const budget = meter(state);
+        const request = createRequest(budget);
+        const sameLogin = async () => {
+          const current = await storage.get({ uid: "", password: "" });
+          return String(current.uid || "").trim() === uid && current.password === state.password;
+        };
+        const status = async (patch) => {
+          if (await sameLogin()) await storage.set({ timetableStatus: { ...patch, uid, at: now() } });
+        };
+        await status({ working: true, phase: "Reading timetable…" });
+        try {
+          let result;
+          try {
+            result = await timetable.read(request);
+          } catch (error) {
+            if (error.code !== "signed-out") throw error;
+            await ensureSignedIn(state, request, "timetable", (phase) => status({ working: true, phase }));
+            result = await timetable.read(request);
+          }
+          if (!(await sameLogin())) throw client.coded("cancelled", "Saved login changed. Timetable was not saved.");
+          if (!result.uid) throw client.coded("timetable-shape", "Could not identify the signed-in student. Timetable was not saved.");
+          if (result.uid.toUpperCase() !== uid.toUpperCase()) throw client.coded("account-mismatch", "CUIMS is signed in with a different UID. Open CUIMS and sign in with your saved UID.");
+          const cache = { v: timetable.CACHE_VERSION, uid, slots: result.slots, fetchedAt: new Date(now()).toISOString() };
+          await storage.set({ timetableCache: cache });
+          await status({ working: false, error: "", code: "" });
+          return { cache };
+        } catch (error) {
+          const code = error.code || "network";
+          const message = error.code ? error.message : client.MESSAGES.network;
+          await status({ working: false, error: message, code });
+          return { cache: cached, error: message, code };
+        } finally {
+          await storage.set({ attendanceRequests: budget.log });
+        }
+      }).finally(() => {
+        if (timetableReading === reading) timetableReading = null;
+      });
+      timetableReading = reading;
+      return reading;
+    }
+
+    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage, fetchRegularMarks, fetchCachedTimetable };
   }
 
   api.DAEMON_DEFAULTS = DEFAULTS;

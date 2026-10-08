@@ -280,7 +280,7 @@
     return /^(mon|tue|wed|thu|fri|sat|sun)/i.test(String(value || "").trim());
   }
 
-  function parseTimetable(html) {
+  function parseTimetable(html, { details = false } = {}) {
     const courseNames = courseNamesFrom(html);
     const rows = tableRows(tableInner(html, "ContentPlaceHolder1_gvMyTimeTable"));
     const headerIndex = rows.findIndex((row) => row.some(isWeekday));
@@ -295,7 +295,7 @@
       for (const day of days) {
         const label = parseSlotLabel(row[day.index] || "", courseNames);
         if (!label) continue;
-        slots.push({ weekday: day.weekday, start: range.start, end: range.end, ...label });
+        slots.push({ weekday: day.weekday, start: range.start, end: range.end, ...label, ...(details ? { rawLabel: row[day.index] || "" } : {}) });
       }
     }
     return slots;

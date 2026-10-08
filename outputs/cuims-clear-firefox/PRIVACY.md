@@ -33,10 +33,17 @@ extension popup, or remove all stored settings by uninstalling the extension.
 The Marks tab reads the signed-in student's Regular Marks page on CUIMS using
 the same session and guarded sign-in as attendance. Published assessment names,
 maximum marks, obtained marks, and examination session labels are saved in local
-extension storage, once per saved UID and selected session. Reopening the popup
-does not fetch them again. Viewstate and other postback tokens are not saved in
+extension storage for the saved UID and current examination session. Reopening
+the popup does not fetch them again; pressing **Refresh** fetches current marks
+again on demand. Previous sessions are not fetched. Viewstate and other postback tokens are not saved in
 the marks cache. Changing the saved UID stops the old account's marks from being
 shown; **Clear login** removes the marks cache as well.
+
+The Timetable tab reads My Time Table through the same guarded session. Class
+days, times, course titles and the published class details stay in local storage
+for the saved UID. A successful result is fetched once and reused, including by
+attendance. Changing UID hides the old cache; Clear login removes it. No
+viewstate, cookies or sign-in tokens are included in the timetable cache.
 
 The extension has access only to pages under `https://students.cuchd.in/*` and
 `https://lms.cuchd.in/*`.
