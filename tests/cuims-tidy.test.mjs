@@ -99,6 +99,13 @@ const MARKS = `
   <tr><td data-label="Course Code:">B</td><td data-label="Eligible Delivered:">40</td><td data-label="Eligible Percentage:">91</td></tr>
   <tr><td data-label="Course Code:">C</td><td data-label="Eligible Delivered:">0</td><td data-label="Eligible Percentage:">0</td></tr>
 </tbody></table>
+<table class="table" id="ContentPlaceHolder1_wucStudentDateSheet_gvStudentDateSheet"><tbody>
+  <tr><th>Exam Type</th><th>datesheettype</th><th>Course code</th><th>Course Name</th><th>UID</th><th>New SlotNo</th><th>Exam Date</th><th>Exam Timing</th><th>Exam Venue</th><th>Mode OF Exam</th></tr>
+  <tr><td>Regular</td><td>MST-2</td><td>24CSE-341</td><td>INTRODUCTION TO IOT AND AI/ML</td><td>24BCS10000</td><td>&nbsp;</td><td>02 Oct 2026</td><td>15:00</td><td>B1</td><td>Offline</td></tr>
+  <tr><td>Regular</td><td>MST-2</td><td>24TDT-312</td><td>APTITUDE-III</td><td>24BCS10000</td><td>&nbsp;</td><td>01 Oct 2026</td><td>15:00</td><td><a href="https://example.test/exam">Online Exam Link</a></td><td>Online-CBT</td></tr>
+  <tr><td>Regular</td><td>MST-2</td><td>24CSH-301</td><td>PROJECT BASED LEARNING IN JAVA</td><td>24BCS10000</td><td>&nbsp;</td><td>01 Oct 2026</td><td>12:30</td><td>B1</td><td>Offline</td></tr>
+  <tr><td>Regular</td><td>MST-1</td><td>24CST-302</td><td>COMPUTER NETWORKS</td><td>24BCS10000</td><td>&nbsp;</td><td>25 Aug 2026</td><td>12:30</td><td>B1</td><td>Offline</td></tr>
+</tbody></table>
 <table id="fullreport"><tbody>
   <tr><td data-label="Attendance">Present</td></tr>
   <tr><td data-label="Attendance">Absent</td></tr>
@@ -106,7 +113,7 @@ const MARKS = `
   <tr><td data-label="Attendance">Present</td></tr>
 </tbody></table>`;
 
-browserTest("the tidy layer orders the week, marks today and now, totals marks, tallies a subject, and steps aside when off", async () => {
+browserTest("the tidy layer orders the week, marks today and now, totals marks, tallies a subject, lists upcoming exams, and steps aside when off", async () => {
   const { default: puppeteer } = await import("puppeteer-core");
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-sandbox"] });
   try {
@@ -130,7 +137,11 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
       globalThis.__flip = (value) => listeners.forEach((fn) => fn({ cuimsTidy: { newValue: value } }, "local"));
     }, now);
     await page.goto("about:blank");
-    await page.setContent(`<html><head><style>${read("cuims-tidy.css")}</style></head><body><div class="inner-wrapper">${NEW_TIMETABLE}${MARKS}</div></body></html>`);
+    const SIDEBAR = `<div id="uims_sidebar"><ul id="menu-content">
+      <li data-toggle="collapse" data-target="#3563"><a class="a-uims-nav" href="javascript:void(0);">Academics</a></li>
+      <ul id="3563" class="sub-menu collapse"><li><a class="a-uims-nav" href="frmMyTimeTable.aspx">My Time Table</a></li><li><a class="a-uims-nav" href="frmMyCourse.aspx">My Courses</a></li></ul>
+    </ul></div><div id="loader-wrapper"></div>`;
+    await page.setContent(`<html><head><style>${read("cuims-tidy.css")}</style></head><body>${SIDEBAR}<div class="inner-wrapper">${NEW_TIMETABLE}${MARKS}</div></body></html>`);
     await page.evaluate(read("attendance-model.js"));
     // The timetable is only rebuilt on its own page; hand the script that URL.
     await page.evaluate((source) => new Function("location", source)(new URL("https://students.cuchd.in/frmMyTimeTable.aspx")), read("cuims-tidy.js"));
@@ -147,6 +158,12 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
       low: [...document.querySelectorAll("#SortTable td.is-low")].map((cell) => cell.textContent),
       ok: [...document.querySelectorAll("#SortTable td.is-ok")].map((cell) => cell.textContent),
       tally: document.querySelector(".cc-tally")?.textContent,
+      revealed: document.body.classList.contains("loaded"),
+      here: [...document.querySelectorAll("#menu-content .cc-here")].map((link) => link.textContent),
+      hereGroup: document.querySelector("#menu-content li.cc-here-group")?.textContent,
+      exams: [...document.querySelectorAll(".cc-ds-exam")].map((item) => [item.querySelector(".cc-ds-count").textContent, item.querySelector(".cc-ds-name").textContent, item.querySelector(".cc-ds-meta").textContent, item.querySelector(".cc-ds-link")?.href || ""]),
+      dsRows: [...document.querySelectorAll('table[id$="gvStudentDateSheet"] tr')].slice(1).map((row) => row.className),
+      dsShown: [...document.querySelectorAll('table[id$="gvStudentDateSheet"] th')].filter((cell) => getComputedStyle(cell).display !== "none").map((cell) => cell.textContent),
       marks: [...document.querySelectorAll("#fullreport td.cc-mark")].map((cell) => cell.className.replace("cc-mark ", "")),
     }));
     assert.deepEqual(view.times, ["9:30 AM", "12:50 PM", "1:40 PM"]);
@@ -161,6 +178,19 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
     assert.equal(view.code, "24CST-302");
     assert.deepEqual(view.low, ["72.5"]);
     assert.deepEqual(view.ok, ["91"]);
+    // Shown at once, not a second after CUIMS is ready; the sidebar knows where we are.
+    assert.equal(view.revealed, true);
+    assert.deepEqual(view.here, ["My Time Table"]);
+    assert.equal(view.hereGroup, "Academics");
+    // Exams still to come, nearest first, with a countdown; past ones dimmed;
+    // the own-UID and empty columns hidden.
+    assert.deepEqual(view.exams, [
+      ["Tomorrow", "Project Based Learning in Java", "MST\u20112 · 12:30 PM · B1 · Offline", ""],
+      ["Tomorrow", "Aptitude-III", "MST\u20112 · 3:00 PM · Online\u2011CBT", "https://example.test/exam"],
+      ["in 2 days", "Introduction to IoT and AI/ML", "MST\u20112 · 3:00 PM · B1 · Offline", ""],
+    ]);
+    assert.deepEqual(view.dsRows, ["", "cc-ds-next", "cc-ds-next", "cc-ds-past"]);
+    assert.deepEqual(view.dsShown, ["Exam Type", "datesheettype", "Course code", "Course Name", "Exam Date", "Exam Timing", "Exam Venue", "Mode OF Exam"]);
     // Leave is told apart from a plain absence.
     assert.equal(view.tally, "4 classes · 2 present · 1 absent · 1 on leave");
     assert.deepEqual(view.marks, ["is-present", "is-absent", "is-leave", "is-present"]);

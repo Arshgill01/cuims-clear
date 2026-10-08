@@ -48,6 +48,171 @@ html.cc-tidy .inner-wrapper .form_header {
   box-shadow: none !important;
 }
 
+/* ---- every inner page ---- */
+
+/* The five shortcut tiles sit above every page's own content. On inner pages
+   they become one slim row; StudentHome keeps them as they are. */
+html.cc-tidy:not([data-cc-page="studenthome"]) .inner-wrapper #short_links {
+  margin-bottom: 4px;
+}
+
+html.cc-tidy:not([data-cc-page="studenthome"]) .inner-wrapper #short_links .shortLinks__item > a {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 9px 12px !important;
+}
+
+html.cc-tidy:not([data-cc-page="studenthome"]) .inner-wrapper #short_links .shortLinks__item > a h6 {
+  order: 1;
+  margin: 0 !important;
+  font-size: 13.5px !important;
+  line-height: 1.25 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.cc-tidy:not([data-cc-page="studenthome"]) .inner-wrapper #short_links .shortLinks__item > a small {
+  display: none !important;
+}
+
+html.cc-tidy:not([data-cc-page="studenthome"]) .inner-wrapper #short_links .shortLinks__item > a > span {
+  position: static !important;
+  order: 0;
+  flex: none;
+  display: grid !important;
+  place-items: center;
+  width: 30px !important;
+  height: 30px !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+html.cc-tidy:not([data-cc-page="studenthome"]) .inner-wrapper #short_links .shortLinks__item > a > span svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Pages are shown as soon as they are ready (cuims-tidy.js), before CUIMS's
+   own scripts fill in tables like My Attendance. Keeping the content area a
+   screen tall leaves the footer below the fold, so nothing visible jumps
+   when they arrive. */
+html.cc-tidy .inner-wrapper > .container-fluid {
+  min-height: calc(100vh - 150px);
+}
+
+/* Where you are, in the sidebar. */
+html.cc-tidy #menu-content a.cc-here {
+  background: var(--cc-today) !important;
+  color: var(--cc-accent) !important;
+  font-weight: 600 !important;
+  box-shadow: inset 3px 0 0 var(--cc-accent);
+}
+
+html.cc-tidy #menu-content li.cc-here-group > a {
+  color: var(--cc-accent) !important;
+  font-weight: 600 !important;
+}
+
+/* One look for CUIMS's own tables. */
+html.cc-tidy .inner-wrapper table.table {
+  font-variant-numeric: tabular-nums;
+  border-color: var(--cc-line) !important;
+}
+
+html.cc-tidy .inner-wrapper table.table > thead > tr > th,
+html.cc-tidy .inner-wrapper table.table > tbody > tr > th {
+  background: var(--cc-soft) !important;
+  color: var(--cc-ink) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  vertical-align: bottom !important;
+  border-color: var(--cc-line) !important;
+}
+
+/* An explicit ink colour: without one, the dark CUIMS themes paint table
+   text in their accent, so every cell reads like a link. Cells CUIMS colours
+   on purpose (text-danger and friends, inline colours) keep theirs. */
+html.cc-tidy .inner-wrapper table.table > tbody > tr > td:not([class*="text-"]) {
+  color: var(--cc-ink);
+}
+
+html.cc-tidy .inner-wrapper table.table > tbody > tr > td {
+  padding: 8px 10px !important;
+  vertical-align: middle !important;
+  border-color: var(--cc-line) !important;
+}
+
+/* My Profile's wide tables run past the page edge; their own box scrolls
+   sideways instead. Only there: elsewhere a table's box can be CUIMS's own
+   vertical scroller (StudentHome), which this would clip. */
+html.cc-tidy[data-cc-page="frmstudentprofile"] .inner-wrapper .container-fluid div:has(> table.table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Download PDF on My Courses: one quiet button per row, not a green column. */
+html.cc-tidy #ContentPlaceHolder1_gvMyCourses a.btn,
+html.cc-tidy #ContentPlaceHolder1_divDateSheet .col-sm-12 input[type="submit"] {
+  background: var(--cc-surface) !important;
+  color: var(--cc-accent) !important;
+  border: 1px solid var(--cc-line-strong) !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  padding: 4px 12px !important;
+  height: auto !important;
+  line-height: 1.4 !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+html.cc-tidy #ContentPlaceHolder1_gvMyCourses a.btn:hover,
+html.cc-tidy #ContentPlaceHolder1_divDateSheet .col-sm-12 input[type="submit"]:hover {
+  border-color: var(--cc-accent) !important;
+  background: var(--cc-today) !important;
+}
+
+/* An UpdatePanel postback: a thin bar at the top over a light veil, instead
+   of a near-opaque white sheet with a spinner. Clicks stay blocked. */
+html.cc-tidy #UpdateProgress1 #loader-wrapper {
+  background: rgba(255, 255, 255, 0.45) !important;
+}
+
+html.cc-tidy #UpdateProgress1 #loader {
+  display: none !important;
+}
+
+html.cc-tidy #UpdateProgress1 #loader-wrapper::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 3px;
+  background: var(--cc-accent);
+  animation: cc-progress 1.1s ease-in-out infinite;
+}
+
+/* The 40% bar sweeps the width of the page: 250% of itself is 100vw. */
+@keyframes cc-progress {
+  0% { transform: translateX(-75%); }
+  100% { transform: translateX(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.cc-tidy #UpdateProgress1 #loader-wrapper::before {
+    width: 100%;
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
 /* ---- My Time Table ---- */
 
 html.cc-tidy .cc-tt + .cc-tt-original {
@@ -326,15 +491,15 @@ html.cc-tidy table.cc-att td[data-label^="Title"] {
   color: var(--cc-ink);
 }
 
-html.cc-tidy table.cc-att td.cc-att-pct {
+html.cc-tidy td.cc-att-pct {
   font-weight: 700;
 }
 
-html.cc-tidy table.cc-att td.cc-att-pct.is-ok {
+html.cc-tidy td.cc-att-pct.is-ok {
   color: var(--cc-good) !important;
 }
 
-html.cc-tidy table.cc-att td.cc-att-pct.is-low {
+html.cc-tidy td.cc-att-pct.is-low {
   color: var(--cc-bad) !important;
   background: var(--cc-bad-bg) !important;
 }
@@ -425,6 +590,137 @@ html.cc-tidy #fullreport td.cc-mark.is-leave {
 html.cc-tidy #fullreport td[data-label="Marked By"] {
   color: var(--cc-muted);
   font-size: 12px;
+}
+
+/* ---- Datesheet ---- */
+
+html.cc-tidy .inner-wrapper table.table td.cc-col-quiet,
+html.cc-tidy .inner-wrapper table.table th.cc-col-quiet {
+  display: none !important;
+}
+
+html.cc-tidy .inner-wrapper table.table td.cc-nowrap {
+  white-space: nowrap;
+}
+
+html.cc-tidy tr.cc-ds-past > td {
+  color: var(--cc-muted) !important;
+  opacity: 0.6;
+}
+
+html.cc-tidy tr.cc-ds-next > td:first-child {
+  box-shadow: inset 3px 0 0 var(--cc-accent);
+}
+
+html:not(.cc-tidy) .cc-ds {
+  display: none !important;
+}
+
+.cc-ds {
+  clear: both;
+  margin: 8px 0 16px;
+  color: var(--cc-ink);
+}
+
+.cc-ds-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 8px !important;
+  font-size: 14px;
+}
+
+.cc-ds-head span {
+  color: var(--cc-muted);
+  font-size: 12.5px;
+}
+
+.cc-ds-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none;
+}
+
+.cc-ds-exam {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--cc-line);
+  border-radius: 8px;
+  background: var(--cc-surface);
+}
+
+.cc-ds-exam.is-soon {
+  border-color: var(--cc-ink);
+  box-shadow: 0 0 0 1px var(--cc-ink);
+}
+
+.cc-ds-when {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--cc-soft);
+  line-height: 1.15;
+}
+
+.cc-ds-day {
+  color: var(--cc-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cc-ds-date {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cc-ds-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+.cc-ds-count {
+  color: var(--cc-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cc-ds-exam.is-soon .cc-ds-count {
+  color: var(--cc-bad);
+}
+
+.cc-ds-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.cc-ds-meta {
+  color: var(--cc-muted);
+}
+
+.cc-ds-link {
+  align-self: flex-start;
+  margin-top: 4px;
+  color: var(--cc-accent) !important;
+  font-weight: 600;
+  text-decoration: underline !important;
 }
 
 /* ---- Marks ---- */

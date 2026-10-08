@@ -9,6 +9,13 @@
 //   student's goal, so a subject under it stands out; a subject's
 //   class-by-class list gets coloured marks and a tally.
 // - Marks: each subject's header carries its running total.
+// - Datesheet: the exams still to come, in date order with a countdown,
+//   above the table; past exams dimmed, and columns that say nothing
+//   (the student's own UID on every row, empty columns) hidden.
+// - Everywhere: the sidebar marks the page you are on, tables share one
+//   look, and the page is shown as soon as it is ready. CUIMS keeps every
+//   page behind a white "Loading..." sheet for a fixed second after it is
+//   ready; we lift it at DOMContentLoaded, the way CUIMS itself does later.
 //
 // The page is restyled by cuims-tidy.css under html.cc-tidy, which is set
 // before CUIMS paints and dropped when the switch is off.
@@ -29,6 +36,8 @@
   let clockTimer = 0;
 
   root.classList.add("cc-tidy");
+  // Lets the stylesheet treat StudentHome (the dashboard) apart from inner pages.
+  root.dataset.ccPage = location.pathname.replace(/^\/+|\.aspx$/gi, "").toLowerCase() || "home";
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -38,7 +47,7 @@
   }
 
   function clean(text) {
-    return String(text || "").replace(/ /g, " ").replace(/\s+/g, " ").trim();
+    return String(text || "").replace(/\s+/g, " ").trim();
   }
 
   function clock(minutes) {
@@ -296,6 +305,200 @@
     if (tally.textContent !== text) tally.textContent = text;
   }
 
+  // ---- datesheet ----
+
+  const SMALL_WORDS = new Set(["and", "in", "of", "for", "the", "to", "with", "on", "a", "an", "at", "by"]);
+  // Longer acronyms that turn up in course names, in their usual casing.
+  const ACRONYMS = new Map(["IOT:IoT", "DBMS", "DSA", "OOP", "OOPS", "SQL", "API", "AWS", "VLSI", "DSP", "HTML", "CSS", "PHP", "EVS", "SAP", "MST", "CBT", "NLP", "GIS", "CAD"].map((entry) => {
+    const [key, value = key] = entry.split(":");
+    return [key, value];
+  }));
+
+  // "PROJECT BASED LEARNING IN JAVA" -> "Project Based Learning in Java".
+  // Roman numerals and two-letter acronyms keep their capitals
+  // ("APTITUDE-III", "AI/ML"); names CUIMS already cases are left alone.
+  function titleCase(text) {
+    const value = clean(text);
+    if (value !== value.toUpperCase()) return value;
+    return value
+      .split(" ")
+      .map((word, index) =>
+        word
+          .split(/([-/&])/)
+          .map((part) => {
+            const lower = part.toLowerCase();
+            if (/^(i|ii|iii|iv|v|vi|vii|viii|ix|x)$/.test(lower)) return part;
+            if (index > 0 && SMALL_WORDS.has(lower)) return lower;
+            if (ACRONYMS.has(part)) return ACRONYMS.get(part);
+            if (/^[A-Z]{2}$/.test(part)) return part;
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+          })
+          .join(""),
+      )
+      .join(" ");
+  }
+
+  function dayCount(fromKey, toKey) {
+    return Math.round((Date.parse(`${toKey}T00:00:00Z`) - Date.parse(`${fromKey}T00:00:00Z`)) / 86400000);
+  }
+
+  function countdown(days) {
+    if (days === 0) return "Today";
+    if (days === 1) return "Tomorrow";
+    return `in ${days} days`;
+  }
+
+  // A column every row leaves empty, or fills with the student's own UID.
+  function quietColumns(table, headers) {
+    const rows = [...table.rows].slice(1);
+    const quiet = [];
+    headers.forEach((name, index) => {
+      const cells = rows.map((row) => row.cells[index]).filter(Boolean);
+      if (!cells.length) return;
+      const texts = cells.map((cell) => clean(cell.textContent));
+      const visible = cells.some((cell) => cell.querySelector("a, button, select, input:not([type=hidden]), img"));
+      const empty = !visible && texts.every((text) => !text);
+      const ownUid = /^uid$/i.test(name) && texts.every((text) => text && text === texts[0]);
+      if (empty || ownUid) quiet.push(index);
+    });
+    return quiet;
+  }
+
+  function tidyDatesheet() {
+    const table = document.querySelector('table[id$="gvStudentDateSheet"]');
+    if (!table || table.rows.length < 2) return;
+    const headers = [...table.rows[0].cells].map((cell) => clean(cell.textContent));
+    const col = (pattern) => headers.findIndex((name) => pattern.test(name));
+    const at = { type: col(/^datesheettype$/i), code: col(/^course\s*code$/i), name: col(/^course\s*name$/i), date: col(/^exam\s*date$/i), time: col(/^exam\s*timing$/i), venue: col(/^exam\s*venue$/i), mode: col(/^mode/i) };
+    if (at.date < 0 || at.name < 0) return;
+
+    const now = api.campusParts(new Date());
+    const exams = [];
+    for (const row of [...table.rows].slice(1)) {
+      const cells = [...row.cells];
+      const key = api.parseDateKey(clean(cells[at.date]?.textContent));
+      if (!key) continue;
+      const start = api.parseRange(`${clean(cells[at.time]?.textContent)} - 23:59`)?.start ?? null;
+      const days = dayCount(now.key, key);
+      // An exam counts as past once its day is over.
+      const past = days < 0;
+      row.classList.toggle("cc-ds-past", past);
+      row.classList.remove("cc-ds-next");
+      if (past) continue;
+      const link = cells[at.venue]?.querySelector("a[href]");
+      exams.push({
+        row,
+        key,
+        days,
+        start,
+        name: titleCase(cells[at.name]?.textContent),
+        code: clean(cells[at.code]?.textContent),
+        type: clean(cells[at.type]?.textContent),
+        venue: link ? "" : clean(cells[at.venue]?.textContent),
+        mode: clean(cells[at.mode]?.textContent),
+        link,
+      });
+    }
+    exams.sort((a, b) => a.key.localeCompare(b.key) || (a.start ?? 0) - (b.start ?? 0));
+    // Every exam on the nearest exam day.
+    for (const exam of exams) exam.row.classList.toggle("cc-ds-next", exam.key === exams[0].key);
+
+    const quiet = quietColumns(table, headers);
+    for (const row of table.rows) {
+      [...row.cells].forEach((cell, index) => {
+        cell.classList.toggle("cc-col-quiet", quiet.includes(index));
+        cell.classList.toggle("cc-nowrap", index === at.date || index === at.time || index === at.code);
+      });
+    }
+
+    const signature = exams.map((exam) => `${exam.key}${exam.start}${exam.code}`).join("|") + now.key;
+    let strip = table.closest('div[id$="upPnale"]')?.previousElementSibling;
+    if (!strip?.classList.contains("cc-ds")) strip = document.querySelector(".cc-ds");
+    if (strip?.dataset.signature === signature) return;
+    const fresh = el("section", "cc-ds");
+    fresh.dataset.signature = signature;
+    fresh.setAttribute("aria-label", "Upcoming exams");
+    const head = el("p", "cc-ds-head");
+    head.append(el("b", "", exams.length ? "Upcoming exams" : "No exams coming up"));
+    if (exams.length) head.append(el("span", "", `${exams.length} left on this datesheet`));
+    fresh.append(head);
+    if (exams.length) {
+      const list = el("ol", "cc-ds-list");
+      for (const exam of exams) {
+        const item = el("li", `cc-ds-exam${exam.days <= 1 ? " is-soon" : ""}`);
+        const date = new Date(`${exam.key}T00:00:00Z`);
+        const when = el("span", "cc-ds-when");
+        when.append(
+          el("span", "cc-ds-day", new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short" }).format(date)),
+          el("span", "cc-ds-date", new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", month: "short" }).format(date)),
+        );
+        const body = el("span", "cc-ds-body");
+        body.append(el("span", "cc-ds-count", countdown(exam.days)), el("span", "cc-ds-name", exam.name || exam.code));
+        // Non-breaking hyphens keep "Online-CBT" on one line.
+        const meta = [exam.type, exam.start != null ? clock(exam.start) : "", exam.venue, exam.mode].filter(Boolean).join(" · ").replace(/-/g, "\u2011");
+        body.append(el("span", "cc-ds-meta", meta));
+        if (exam.link) {
+          const open = el("a", "cc-ds-link", "Exam link");
+          open.href = exam.link.href;
+          open.target = "_blank";
+          open.rel = "noreferrer";
+          body.append(open);
+        }
+        item.append(when, body);
+        list.append(item);
+      }
+      fresh.append(list);
+    }
+    if (strip?.classList.contains("cc-ds")) strip.replaceWith(fresh);
+    else (table.closest('div[id$="upPnale"]') || table).before(fresh);
+  }
+
+  // ---- everywhere ----
+
+  // The sidebar never shows where you are. Mark the link for this page and
+  // the group it sits in.
+  function tidyNav() {
+    const here = location.pathname.toLowerCase();
+    const type = new URLSearchParams(location.search).get("type");
+    for (const link of document.querySelectorAll("#menu-content a.a-uims-nav[href]")) {
+      let target;
+      try {
+        target = new URL(link.getAttribute("href").trim(), location.href);
+      } catch {
+        continue;
+      }
+      const match = target.pathname.toLowerCase() === here && (!type || target.searchParams.get("type") === type);
+      link.classList.toggle("cc-here", match);
+      if (!match) continue;
+      link.setAttribute("aria-current", "page");
+      for (let group = link.closest("ul.sub-menu"); group; group = group.parentElement?.closest("ul.sub-menu")) {
+        document.querySelector(`#menu-content li[data-target="#${CSS.escape(group.id)}"]`)?.classList.add("cc-here-group");
+      }
+    }
+  }
+
+  // StudentHome's "My Course & Attendance" card, read against the goal.
+  function tidyHome() {
+    for (const table of document.querySelectorAll("#div-subject-details table")) {
+      for (const row of [...table.rows].slice(1)) {
+        const cell = row.cells[row.cells.length - 1];
+        const value = Number.parseFloat(clean(cell?.textContent));
+        if (!cell || !Number.isFinite(value)) continue;
+        // 0 here is a course with no classes held yet, not a failing one.
+        const low = value > 0 && value < subjectMin * 100;
+        cell.classList.add("cc-att-pct");
+        cell.classList.toggle("is-low", low);
+        cell.classList.toggle("is-ok", value > 0 && !low);
+      }
+    }
+  }
+
+  // Signed-in pages only (they have the sidebar); the login page is left
+  // to content.js.
+  function revealEarly() {
+    if (document.getElementById("uims_sidebar") && document.getElementById("loader-wrapper")) document.body.classList.add("loaded");
+  }
+
   // ---- marks ----
 
   function number(text) {
@@ -351,19 +554,27 @@
   // ---- lifecycle ----
 
   let queued = false;
+  let navDone = false;
   function run() {
     queued = false;
     if (!enabled || !document.body) return;
+    // The sidebar is server-rendered and never changes; mark it once.
+    if (!navDone && document.getElementById("menu-content")) {
+      tidyNav();
+      navDone = true;
+    }
+    tidyHome();
     tidyTimetable();
     tidyAttendance();
     tidyDetail();
     tidyMarks();
+    tidyDatesheet();
   }
 
   // UpdatePanels and CUIMS's own scripts (the attendance table, the marks
   // accordion) build these after load, so look again whenever nodes arrive.
   // Our own insertions are ignored, so this never feeds itself.
-  const ours = (node) => node.nodeType === 1 && (node.classList.contains("cc-tt") || node.classList.contains("cc-score") || node.classList.contains("cc-code") || node.classList.contains("cc-tally"));
+  const ours = (node) => node.nodeType === 1 && (node.classList.contains("cc-tt") || node.classList.contains("cc-score") || node.classList.contains("cc-code") || node.classList.contains("cc-tally") || node.classList.contains("cc-ds"));
   const observer = new MutationObserver((records) => {
     if (queued) return;
     if (!records.some((record) => [...record.addedNodes].some((node) => node.nodeType === 1 && !ours(node)))) return;
@@ -383,6 +594,7 @@
   }
 
   function start() {
+    if (enabled) revealEarly();
     run();
     observer.observe(document.body, { childList: true, subtree: true });
   }
