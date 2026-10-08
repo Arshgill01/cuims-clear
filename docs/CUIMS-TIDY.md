@@ -83,7 +83,6 @@ edge of the screen.
 - Every signed-in page embeds the student's university Outlook one-time
   password in plain text (`#divUniEmail`), so saved pages and screenshots of
   CUIMS need care. None are committed here.
-
 - StudentHome logs three script errors of its own on every load
   (`$(...).multiselect is not a function` and two more); they happen with the
   tidy layer off as well.
