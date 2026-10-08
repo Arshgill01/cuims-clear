@@ -17,6 +17,8 @@ html.cc-tidy {
   --cc-good-bg: #edf7ee;
   --cc-bad: #b3261e;
   --cc-bad-bg: #fdeeed;
+  --cc-warn: #8a5a00;
+  --cc-warn-bg: #fdf5e4;
 }
 
 .cc-sr {
@@ -360,6 +362,69 @@ html.cc-tidy table.cc-att input[type="button"] {
 html.cc-tidy table.cc-att input[type="button"]:hover {
   border-color: var(--cc-accent) !important;
   background: var(--cc-today) !important;
+}
+
+/* The duty leave key under the table: a footnote, not a warning. */
+html.cc-tidy .rowNote > div {
+  color: var(--cc-muted) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+}
+
+/* One subject's class-by-class list (the View overlay). */
+html.cc-tidy #popupid h2 {
+  color: var(--cc-muted) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+  max-width: 760px;
+  margin: 0 auto 12px !important;
+}
+
+html.cc-tidy #popupid h2 input[type="button"] {
+  display: block;
+  margin: 0 auto 8px;
+}
+
+.cc-tally {
+  margin: 4px 0 10px !important;
+  padding: 0 10px;
+  color: var(--cc-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+html:not(.cc-tidy) .cc-tally {
+  display: none !important;
+}
+
+html.cc-tidy #fullreport {
+  font-variant-numeric: tabular-nums;
+}
+
+html.cc-tidy #fullreport td.cc-mark {
+  font-weight: 600;
+}
+
+html.cc-tidy #fullreport td.cc-mark.is-present {
+  color: var(--cc-good) !important;
+}
+
+html.cc-tidy #fullreport td.cc-mark.is-absent {
+  color: var(--cc-bad) !important;
+  background: var(--cc-bad-bg) !important;
+}
+
+html.cc-tidy #fullreport td.cc-mark.is-leave {
+  color: var(--cc-warn) !important;
+  background: var(--cc-warn-bg) !important;
+}
+
+html.cc-tidy #fullreport td[data-label="Marked By"] {
+  color: var(--cc-muted);
+  font-size: 12px;
 }
 
 /* ---- Marks ---- */

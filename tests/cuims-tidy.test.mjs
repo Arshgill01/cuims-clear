@@ -98,9 +98,15 @@ const MARKS = `
   <tr><td data-label="Course Code:">A</td><td data-label="Eligible Delivered:">40</td><td data-label="Eligible Percentage:">72.5</td></tr>
   <tr><td data-label="Course Code:">B</td><td data-label="Eligible Delivered:">40</td><td data-label="Eligible Percentage:">91</td></tr>
   <tr><td data-label="Course Code:">C</td><td data-label="Eligible Delivered:">0</td><td data-label="Eligible Percentage:">0</td></tr>
+</tbody></table>
+<table id="fullreport"><tbody>
+  <tr><td data-label="Attendance">Present</td></tr>
+  <tr><td data-label="Attendance">Absent</td></tr>
+  <tr><td data-label="Attendance">Absent(Duty Leave)</td></tr>
+  <tr><td data-label="Attendance">Present</td></tr>
 </tbody></table>`;
 
-browserTest("the tidy layer orders the week, marks today and now, totals marks, and steps aside when off", async () => {
+browserTest("the tidy layer orders the week, marks today and now, totals marks, tallies a subject, and steps aside when off", async () => {
   const { default: puppeteer } = await import("puppeteer-core");
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-sandbox"] });
   try {
@@ -140,6 +146,8 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
       code: document.querySelector(".cc-code")?.textContent,
       low: [...document.querySelectorAll("#SortTable td.is-low")].map((cell) => cell.textContent),
       ok: [...document.querySelectorAll("#SortTable td.is-ok")].map((cell) => cell.textContent),
+      tally: document.querySelector(".cc-tally")?.textContent,
+      marks: [...document.querySelectorAll("#fullreport td.cc-mark")].map((cell) => cell.className.replace("cc-mark ", "")),
     }));
     assert.deepEqual(view.times, ["9:30 AM", "12:50 PM", "1:40 PM"]);
     // Saturday has no classes, so it is dropped.
@@ -153,6 +161,9 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
     assert.equal(view.code, "24CST-302");
     assert.deepEqual(view.low, ["72.5"]);
     assert.deepEqual(view.ok, ["91"]);
+    // Leave is told apart from a plain absence.
+    assert.equal(view.tally, "4 classes · 2 present · 1 absent · 1 on leave");
+    assert.deepEqual(view.marks, ["is-present", "is-absent", "is-leave", "is-present"]);
 
     await page.evaluate(() => globalThis.__flip(false));
     const off = await page.evaluate(() => ({

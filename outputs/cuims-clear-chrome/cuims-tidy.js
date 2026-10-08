@@ -6,7 +6,8 @@
 //   progress marked, and empty days dropped. The original table stays in the
 //   page, hidden, and comes back when the switch is turned off.
 // - My Attendance: each subject's eligible percentage read against the
-//   student's goal, so a subject under it stands out.
+//   student's goal, so a subject under it stands out; a subject's
+//   class-by-class list gets coloured marks and a tally.
 // - Marks: each subject's header carries its running total.
 //
 // The page is restyled by cuims-tidy.css under html.cc-tidy, which is set
@@ -262,6 +263,33 @@
     }
   }
 
+  // One subject's class-by-class list (the View overlay): each mark
+  // coloured by what it means, and a tally above the list.
+  function tidyDetail() {
+    const report = document.getElementById("fullreport");
+    if (!report) return;
+    const count = { present: 0, absent: 0, leave: 0 };
+    for (const cell of report.querySelectorAll('td[data-label="Attendance"]')) {
+      const text = clean(cell.textContent);
+      const kind = /leave/i.test(text) ? "leave" : /^present/i.test(text) ? "present" : /^absent/i.test(text) ? "absent" : "";
+      cell.classList.add("cc-mark");
+      for (const name of Object.keys(count)) cell.classList.toggle(`is-${name}`, kind === name);
+      if (kind) count[kind] += 1;
+    }
+    const total = count.present + count.absent + count.leave;
+    let tally = report.previousElementSibling?.classList.contains("cc-tally") ? report.previousElementSibling : null;
+    if (!total) {
+      tally?.remove();
+      return;
+    }
+    const text = [`${total} classes`, `${count.present} present`, `${count.absent} absent`, count.leave ? `${count.leave} on leave` : ""].filter(Boolean).join(" · ");
+    if (!tally) {
+      tally = el("p", "cc-tally");
+      report.before(tally);
+    }
+    if (tally.textContent !== text) tally.textContent = text;
+  }
+
   // ---- marks ----
 
   function number(text) {
@@ -322,13 +350,14 @@
     if (!enabled || !document.body) return;
     tidyTimetable();
     tidyAttendance();
+    tidyDetail();
     tidyMarks();
   }
 
   // UpdatePanels and CUIMS's own scripts (the attendance table, the marks
   // accordion) build these after load, so look again whenever nodes arrive.
   // Our own insertions are ignored, so this never feeds itself.
-  const ours = (node) => node.nodeType === 1 && (node.classList.contains("cc-tt") || node.classList.contains("cc-score") || node.classList.contains("cc-code"));
+  const ours = (node) => node.nodeType === 1 && (node.classList.contains("cc-tt") || node.classList.contains("cc-score") || node.classList.contains("cc-code") || node.classList.contains("cc-tally"));
   const observer = new MutationObserver((records) => {
     if (queued) return;
     if (!records.some((record) => [...record.addedNodes].some((node) => node.nodeType === 1 && !ours(node)))) return;
