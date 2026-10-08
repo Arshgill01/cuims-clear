@@ -224,7 +224,7 @@
     let page = await request(target, { manual: true });
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
     if (isErrorPage(page.url)) throw coded("portal-busy");
-    if (!/gvMyTimeTable/i.test(page.html || "")) {
+    if (!api.hasTimetable(page.html)) {
       page = await postForm(request, target, { ...api.hiddenFields(page.html), __EVENTTARGET: TIMETABLE_TARGET, __EVENTARGUMENT: "" });
     }
     return api.parseTimetable(page.html);

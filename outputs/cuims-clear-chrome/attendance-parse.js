@@ -251,9 +251,22 @@
     return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   }
 
+  // CUIMS has shipped this page under two sets of ids: the older
+  // gvMyTimeTable pair, and grdMain with grdCourseDetail (October 2026).
+  const TIMETABLE_IDS = ["ContentPlaceHolder1_gvMyTimeTable", "grdMain"];
+  const COURSE_TABLE_IDS = ["ContentPlaceHolder1_gvMyTimeTableDetails", "ContentPlaceHolder1_grdCourseDetail"];
+
+  function firstTable(html, ids) {
+    for (const id of ids) {
+      const inner = tableInner(html, id);
+      if (inner) return inner;
+    }
+    return "";
+  }
+
   function courseNamesFrom(html) {
     const names = {};
-    for (const row of tableRows(tableInner(html, "ContentPlaceHolder1_gvMyTimeTableDetails"))) {
+    for (const row of tableRows(firstTable(html, COURSE_TABLE_IDS))) {
       if (row.length < 2) continue;
       const code = row[0].toUpperCase();
       if (!/^[A-Z0-9-]{2,}$/.test(code)) continue;
@@ -282,7 +295,7 @@
 
   function parseTimetable(html) {
     const courseNames = courseNamesFrom(html);
-    const rows = tableRows(tableInner(html, "ContentPlaceHolder1_gvMyTimeTable"));
+    const rows = tableRows(firstTable(html, TIMETABLE_IDS));
     const headerIndex = rows.findIndex((row) => row.some(isWeekday));
     if (headerIndex < 0) return [];
     const days = rows[headerIndex]
@@ -313,6 +326,7 @@
   api.normalizeSummary = normalizeSummary;
   api.normalizeMarks = normalizeMarks;
   api.parseTimetable = parseTimetable;
+  api.hasTimetable = (html) => Boolean(firstTable(html, TIMETABLE_IDS));
   api.leaveState = leaveState;
   api.parseDutyLeaves = parseDutyLeaves;
   api.parseMedicalLeaves = parseMedicalLeaves;

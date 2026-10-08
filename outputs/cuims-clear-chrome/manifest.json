@@ -49,6 +49,19 @@
         "https://students.cuchd.in/*"
       ],
       "js": [
+        "attendance-model.js",
+        "cuims-tidy.js"
+      ],
+      "css": [
+        "cuims-tidy.css"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://students.cuchd.in/*"
+      ],
+      "js": [
         "lms-open-wrap.js"
       ],
       "run_at": "document_start",

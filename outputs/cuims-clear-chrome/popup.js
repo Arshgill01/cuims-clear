@@ -8,6 +8,7 @@ const SWITCH_DEFAULTS = {
   blockFeedback: true,
   lmsClear: true,
   themeCuims: true,
+  cuimsTidy: true,
 };
 
 const ATTENDANCE_KEYS = [
