@@ -20,7 +20,7 @@
       : { group: "", teacher: "", room: "", other: raw };
   }
   function render(cache, status = {}, { day = "", now = new Date() } = {}) {
-    if (!cache) return `<p class="marks-note" role="status">${escape(status.working ? status.phase || "Reading timetable…" : status.error || "Your weekly timetable appears here after one fetch.")}</p>${!status.working ? '<button id="fetch-timetable" class="refresh-button" type="button">'+(status.error ? "Try again" : "Fetch timetable")+'</button>' : ""}`;
+    if (!cache) return root.CuimsAttendance.renderFetchEmpty({ id: "fetch-timetable", label: "Fetch timetable", description: "Reads your weekly timetable from CUIMS in the background. No tab opens." }, status);
     const days = root.CuimsTimetable.DAYS;
     const selected = days.includes(day) ? day : today(now);
     const slots = root.CuimsTimetable.sort(cache.slots);

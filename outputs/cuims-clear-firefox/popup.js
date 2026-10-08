@@ -147,6 +147,10 @@ form.addEventListener("submit", (event) => {
   }
   chrome.storage.local.set(next, () => {
     savedLogin = next;
+    if (hasLogin()) {
+      if (marksState.status?.code === "needs-login") marksState.status = null;
+      if (timetableState.status?.code === "needs-login") timetableState.status = null;
+    }
     uid.value = next.uid;
     syncLoginState();
     showStatus("Login saved");
@@ -375,10 +379,15 @@ function paintMarks() {
   if (state?.working && !marksPending && Date.now() - Number(state.at || 0) > 2 * 60 * 1000) {
     state = { working: false, error: "The previous marks read stopped. Try again." };
   }
-  views.marks.innerHTML = CuimsMarksView.render(cache, state || {});
+  views.marks.innerHTML = CuimsMarksView.render(cache, { ...state, needsLogin: !hasLogin() });
 }
 
 function fetchMarks(refresh = false) {
+  if (!hasLogin()) {
+    marksState.status = { error: "Save your UID and password on the Login tab first.", code: "needs-login" };
+    paintMarks();
+    return;
+  }
   if (marksPending) return;
   const sequence = ++marksReadSequence;
   const uidAtStart = savedLogin.uid;
@@ -407,9 +416,14 @@ function paintTimetable() {
   let state = timetableState.status?.uid && timetableState.status.uid !== savedLogin.uid ? null : timetableState.status;
   if (state?.working && !timetablePending && Date.now() - Number(state.at || 0) > 2 * 60 * 1000)
     state = { error: "The previous read stopped. Try again." };
-  views.timetable.innerHTML = CuimsTimetableView.render(cache, state || {}, { day: timetableDay });
+  views.timetable.innerHTML = CuimsTimetableView.render(cache, { ...state, needsLogin: !hasLogin() }, { day: timetableDay });
 }
 function fetchTimetable() {
+  if (!hasLogin()) {
+    timetableState.status = { error: "Save your UID and password on the Login tab first.", code: "needs-login" };
+    paintTimetable();
+    return;
+  }
   if (timetablePending) return;
   const sequence = ++timetableSequence, uidAtStart = savedLogin.uid;
   timetablePending = true;
@@ -466,13 +480,13 @@ function showView(name, { remember = true } = {}) {
   if (name === "theme") renderThemes();
   if (name === "timetable") {
     paintTimetable();
-    if (!CuimsTimetable.cacheFor(timetableState.cache, savedLogin.uid) && (!timetableState.status || (!timetableState.status.working && !timetableState.status.error) || timetableState.status.code === "tab-login") && savedLogin.uid) fetchTimetable();
+    if (!CuimsTimetable.cacheFor(timetableState.cache, savedLogin.uid) && (!timetableState.status || (!timetableState.status.working && !timetableState.status.error) || timetableState.status.code === "tab-login") && hasLogin()) fetchTimetable();
   }
   if (name === "marks") {
     paintMarks();
     // A failure is retried only with the button; a successful read never
     // expires. Switching tabs or reopening the popup sends no repeat read.
-    if (!CuimsMarks.marksCacheFor(marksState.cache, savedLogin.uid) && (!marksState.status || (!marksState.status.working && !marksState.status.error) || marksState.status.code === "tab-login") && savedLogin.uid) fetchMarks();
+    if (!CuimsMarks.marksCacheFor(marksState.cache, savedLogin.uid) && (!marksState.status || (!marksState.status.working && !marksState.status.error) || marksState.status.code === "tab-login") && hasLogin()) fetchMarks();
   }
   if (name !== "attendance") return;
   const working = paintAttendance();

@@ -3,6 +3,7 @@
   function render(cache, status = {}, now = new Date()) {
     const snapshot = cache?.snapshots?.[cache.currentSession];
     const working = Boolean(status.working);
+    if (!snapshot) return root.CuimsAttendance.renderFetchEmpty({ id: "fetch-marks", label: "Fetch marks", description: "Reads your current examination marks from CUIMS in the background. No tab opens." }, status);
     const updated = snapshot ? new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(snapshot.fetchedAt)) : "";
     const note = working ? status.phase || "Refreshing…" : snapshot ? `Updated ${updated} (${root.CuimsAttendance.ago(snapshot.fetchedAt, now)})` : "";
     const toolbar = `<div class="attendance-bar"><p class="attendance-note" role="status" aria-live="polite">${escape(note)}</p><button id="fetch-marks" class="refresh-button" type="button"${working ? " disabled" : ""}>${working ? "Refreshing" : "Refresh"}</button></div>`;
