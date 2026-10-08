@@ -198,7 +198,7 @@ test("marks view escapes portal text and preserves the published values without 
   assert.match(working, /disabled>Refreshing/);
 });
 
-test("Firefox alone has the Marks tab and 0.10.0 background wiring", () => {
+test("Firefox and Chrome both have the Marks tab and matching versions", () => {
   const manifest = JSON.parse(readFileSync(new URL("manifest.json", root)));
   assert.equal(manifest.version, "0.10.0");
   assert.ok(manifest.background.scripts.indexOf("marks.js") < manifest.background.scripts.indexOf("attendance-daemon.js"));
@@ -206,5 +206,8 @@ test("Firefox alone has the Marks tab and 0.10.0 background wiring", () => {
   assert.match(html, /id="tab-marks"/);
   assert.match(html, /id="view-marks"/);
   const chromeManifest = JSON.parse(readFileSync(new URL("../cuims-clear-chrome/manifest.json", root)));
-  assert.equal(chromeManifest.version, "0.9.0");
+  assert.equal(chromeManifest.version, manifest.version);
+  const chromeHtml = readFileSync(new URL("../cuims-clear-chrome/popup.html", root), "utf8");
+  assert.match(chromeHtml, /id="tab-marks"/);
+  assert.match(chromeHtml, /id="tab-timetable"/);
 });

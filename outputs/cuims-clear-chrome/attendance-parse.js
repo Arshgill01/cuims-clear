@@ -253,7 +253,7 @@
 
   function courseNamesFrom(html) {
     const names = {};
-    for (const row of tableRows(tableInner(html, "ContentPlaceHolder1_gvMyTimeTableDetails"))) {
+    for (const row of tableRows(tableInner(html, "ContentPlaceHolder1_grdCourseDetail") || tableInner(html, "ContentPlaceHolder1_gvMyTimeTableDetails"))) {
       if (row.length < 2) continue;
       const code = row[0].toUpperCase();
       if (!/^[A-Z0-9-]{2,}$/.test(code)) continue;
@@ -280,9 +280,9 @@
     return /^(mon|tue|wed|thu|fri|sat|sun)/i.test(String(value || "").trim());
   }
 
-  function parseTimetable(html) {
+  function parseTimetable(html, { details = false } = {}) {
     const courseNames = courseNamesFrom(html);
-    const rows = tableRows(tableInner(html, "ContentPlaceHolder1_gvMyTimeTable"));
+    const rows = tableRows(tableInner(html, "grdMain") || tableInner(html, "ContentPlaceHolder1_gvMyTimeTable"));
     const headerIndex = rows.findIndex((row) => row.some(isWeekday));
     if (headerIndex < 0) return [];
     const days = rows[headerIndex]
@@ -295,7 +295,7 @@
       for (const day of days) {
         const label = parseSlotLabel(row[day.index] || "", courseNames);
         if (!label) continue;
-        slots.push({ weekday: day.weekday, start: range.start, end: range.end, ...label });
+        slots.push({ weekday: day.weekday, start: range.start, end: range.end, ...label, ...(details ? { rawLabel: row[day.index] || "" } : {}) });
       }
     }
     return slots;
@@ -312,6 +312,7 @@
   api.unwrapReport = unwrapReport;
   api.normalizeSummary = normalizeSummary;
   api.normalizeMarks = normalizeMarks;
+  api.hasTimetableGrid = html => /<table\b[^>]*\bid\s*=\s*["'](?:grdMain|ContentPlaceHolder1_gvMyTimeTable)["']/i.test(html || "");
   api.parseTimetable = parseTimetable;
   api.leaveState = leaveState;
   api.parseDutyLeaves = parseDutyLeaves;

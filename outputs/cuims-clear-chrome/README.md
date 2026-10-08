@@ -6,6 +6,13 @@ directory that pairs syllabus materials with semester work, and an **Attendance*
 tab that reads your attendance and safe-skip counts without opening CUIMS, and twenty
 colour themes that restyle the popup, LMS pages, CUIMS itself and the toolbar icon together.
 
+Version **0.10.0** also includes:
+
+- **Marks** for current-session examination results, cached until you press Refresh.
+- **Timetable** with weekday buttons, today selected in India time, and classes sorted by time. Teacher, class type, room and group appear beside a fixed time column.
+- Background sign-in for both tabs when needed, without an open CUIMS tab. Timetable is fetched once per saved UID and reused by Attendance; switching days sends no requests.
+- A 30-second gap between Marks refreshes and shared backoff when CUIMS refuses requests. Clear login removes the cached marks and timetable too.
+
 Chrome cannot load the Firefox folder. This package is the Chrome MV3 build.
 
 Requires Chrome 120 or newer. Edge and Brave use the same steps with
@@ -42,13 +49,8 @@ Unpacked extensions stay installed. If Chrome disabled it, open
 
 ## Chrome Web Store release
 
-Version 0.6.3 restores the login behavior from before 0.6.2: saved UID/password
-fields, automatic filling, on-device CAPTCHA filling, and the original optional
-auto-submit timing. The Chrome password-manager-only change in 0.6.2 is reverted.
-If 0.6.2 removed your saved extension login, enter and save it once more;
-those deleted values cannot be recovered. Chrome's own saved passwords are unaffected.
-
-Version 0.6.2 is published. Version 0.6.3 is being prepared for store review.
+Version 0.10.0 packages the shared Marks, Timetable and login fixes for Chrome.
+The release zip is built locally; publishing this Git branch does not submit it to the Chrome Web Store.
 
 `scripts/sync-chrome-build.sh` synchronizes the shared login, popup, solver,
 and LMS files from the Firefox build. Chrome manifest and service-worker files

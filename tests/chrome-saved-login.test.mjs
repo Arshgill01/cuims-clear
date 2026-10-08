@@ -159,7 +159,7 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
         local: {
           get(defaults, callback) { callback(defaults); },
           set(values, callback) { saved = values; callback?.(); },
-          remove(keys, callback) { removed = Array.from(keys); callback(); },
+          remove(keys, callback) { removed = Array.from(keys); callback?.(); },
         },
         onChanged: { addListener() {} },
       },
@@ -172,11 +172,17 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   element("#settings-form").submit({ preventDefault() {} });
   assert.equal(saved.uid, "TEST123");
   assert.equal(saved.password, "fixture-password");
+  assert.ok(removed.includes("marksCache"), "saving a new UID clears the previous marks cache");
+  assert.ok(removed.includes("timetableCache"), "saving a new UID clears the previous timetable cache");
+  removed = undefined;
   element("#clear-login").click();
   assert.equal(removed, undefined, "the first press only asks");
   element("#clear-login").click();
   assert.deepEqual(removed.slice(0, 2), ["uid", "password"]);
   assert.ok(removed.includes("attendanceSnapshot"), "Clear login also forgets attendance");
+  assert.ok(removed.includes("marksCache"));
+  assert.ok(removed.includes("timetableCache"));
+  assert.ok(removed.includes("newTabRequestCounts"));
   assert.equal(removed.includes("autoSubmitLogin"), false, "preferences stay");
   assert.equal(element("#password").value, "");
 });

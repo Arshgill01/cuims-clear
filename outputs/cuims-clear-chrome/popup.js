@@ -25,6 +25,14 @@ const ATTENDANCE_KEYS = [
   "attendanceLeaves",
   "attendanceCourses",
   "attendancePlan",
+  "marksCache",
+  "marksStatus",
+  "marksRefreshAt",
+  "marksSession",
+  "timetableCache",
+  "timetableStatus",
+  "newTabRequests",
+  "newTabRequestCounts",
 ];
 const STALE_MS = 10 * 60 * 1000;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
@@ -46,12 +54,16 @@ const switches = [...document.querySelectorAll('input[role="switch"][data-key]')
 // Rail order: what a student checks daily first, setup after.
 const tabs = {
   attendance: document.querySelector("#tab-attendance"),
+  marks: document.querySelector("#tab-marks"),
+  timetable: document.querySelector("#tab-timetable"),
   login: document.querySelector("#tab-login"),
   theme: document.querySelector("#tab-theme"),
   settings: document.querySelector("#tab-settings"),
 };
 const views = {
   attendance: document.querySelector("#view-attendance"),
+  marks: document.querySelector("#view-marks"),
+  timetable: document.querySelector("#view-timetable"),
   login: document.querySelector("#view-login"),
   theme: document.querySelector("#view-theme"),
   settings: document.querySelector("#view-settings"),
@@ -70,6 +82,13 @@ let currentView = "";
 let settings = { ...SWITCH_DEFAULTS };
 let savedLogin = { uid: "", password: "" };
 let attendance = { snapshot: null, status: null, error: "", code: "" };
+let marksState = { cache: null, status: null };
+let timetableState = { cache: null, status: null };
+let timetablePending = false;
+let timetableSequence = 0;
+let timetableDay = "";
+let marksPending = false;
+let marksReadSequence = 0;
 // The student's goal is a preference; the skip plan lasts one campus day.
 let prefs = { goal: "standard", plan: { day: "", skips: [] } };
 
@@ -117,6 +136,15 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!loginDirty()) return;
   const next = { uid: uid.value.trim(), password: password.value };
+  if (next.uid !== savedLogin.uid) {
+    marksReadSequence += 1;
+    marksPending = false;
+    marksState = { cache: null, status: null };
+    timetableState = { cache: null, status: null };
+    timetablePending = false;
+    timetableSequence += 1;
+    chrome.storage.local.remove(["marksCache", "marksStatus", "marksSession", "timetableCache", "timetableStatus"]);
+  }
   chrome.storage.local.set(next, () => {
     savedLogin = next;
     uid.value = next.uid;
@@ -151,6 +179,12 @@ clearLogin.addEventListener("click", () => {
   resetClearButton();
   chrome.storage.local.remove(["uid", "password", ...ATTENDANCE_KEYS], () => {
     attendance = { snapshot: null, status: null, error: "", code: "" };
+    marksReadSequence += 1;
+    marksPending = false;
+    marksState = { cache: null, status: null };
+    timetableState = { cache: null, status: null };
+    timetablePending = false;
+    timetableSequence += 1;
     savedLogin = { uid: "", password: "" };
     uid.value = "";
     password.value = "";
@@ -159,7 +193,9 @@ clearLogin.addEventListener("click", () => {
     togglePassword.setAttribute("aria-label", "Show password");
     syncLoginState();
     if (!views.attendance.hidden) paintAttendance();
-    showStatus("Saved login and attendance cleared");
+    if (!views.timetable.hidden) paintTimetable();
+    if (!views.marks.hidden) paintMarks();
+    showStatus("Saved login, attendance, marks, and timetable cleared");
     uid.focus();
   });
 });
@@ -333,6 +369,88 @@ function fetchAttendance() {
 
 // ---- views ----
 
+function paintMarks() {
+  const cache = CuimsMarks.marksCacheFor(marksState.cache, savedLogin.uid);
+  let state = marksState.status?.uid && marksState.status.uid !== savedLogin.uid ? null : marksState.status;
+  if (state?.working && !marksPending && Date.now() - Number(state.at || 0) > 2 * 60 * 1000) {
+    state = { working: false, error: "The previous marks read stopped. Try again." };
+  }
+  views.marks.innerHTML = CuimsMarksView.render(cache, state || {});
+}
+
+function fetchMarks(refresh = false) {
+  if (marksPending) return;
+  const sequence = ++marksReadSequence;
+  const uidAtStart = savedLogin.uid;
+  marksPending = true;
+  marksState.status = { working: true, phase: "Reading regular marks…" };
+  paintMarks();
+  chrome.runtime.sendMessage({ type: "cuims-clear:marks-read", refresh }, (response) => {
+    if (sequence !== marksReadSequence || uidAtStart !== savedLogin.uid) return;
+    marksPending = false;
+    if (chrome.runtime.lastError || !response) {
+      marksState.status = { error: "Could not reach the extension background. Try again.", working: false };
+    } else {
+      if (response.cache) marksState.cache = response.cache;
+      marksState.status = { working: false, error: response.error || "", code: response.code || "" };
+    }
+    if (!views.marks.hidden) paintMarks();
+  });
+}
+
+views.marks.addEventListener("click", (event) => {
+  if (event.target.closest("#fetch-marks")) fetchMarks(true);
+});
+
+function paintTimetable() {
+  const cache = CuimsTimetable.cacheFor(timetableState.cache, savedLogin.uid);
+  let state = timetableState.status?.uid && timetableState.status.uid !== savedLogin.uid ? null : timetableState.status;
+  if (state?.working && !timetablePending && Date.now() - Number(state.at || 0) > 2 * 60 * 1000)
+    state = { error: "The previous read stopped. Try again." };
+  views.timetable.innerHTML = CuimsTimetableView.render(cache, state || {}, { day: timetableDay });
+}
+function fetchTimetable() {
+  if (timetablePending) return;
+  const sequence = ++timetableSequence, uidAtStart = savedLogin.uid;
+  timetablePending = true;
+  timetableState.status = { working: true };
+  paintTimetable();
+  chrome.runtime.sendMessage({ type: "cuims-clear:timetable-read" }, response => {
+    if (sequence !== timetableSequence || uidAtStart !== savedLogin.uid) return;
+    timetablePending = false;
+    if (chrome.runtime.lastError || !response) timetableState.status = { error: "Could not reach the extension background. Try again." };
+    else {
+      if (response.cache) timetableState.cache = response.cache;
+      timetableState.status = { error: response.error || "", code: response.code || "" };
+    }
+    if (!views.timetable.hidden) paintTimetable();
+  });
+}
+views.timetable.addEventListener("click", event => {
+  if (event.target.closest("#fetch-timetable")) fetchTimetable();
+  const day = event.target.closest("[data-timetable-day]")?.dataset.timetableDay;
+  if (day && CuimsTimetable.DAYS.includes(day)) {
+    timetableDay = day;
+    paintTimetable();
+    viewport.scrollTop = 0;
+    views.timetable.querySelector('[data-timetable-day="' + day + '"]')?.focus({ preventScroll: true });
+  }
+});
+
+views.timetable.addEventListener("keydown", event => {
+  const day = event.target.closest("[data-timetable-day]")?.dataset.timetableDay;
+  const index = CuimsTimetable.DAYS.indexOf(day);
+  if (index < 0) return;
+  let next;
+  if (event.key === "ArrowRight") next = (index + 1) % 7;
+  else if (event.key === "ArrowLeft") next = (index + 6) % 7;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = 6;
+  else return;
+  event.preventDefault();
+  views.timetable.querySelector('[data-timetable-day="' + CuimsTimetable.DAYS[next] + '"]')?.click();
+});
+
 function showView(name, { remember = true } = {}) {
   if (!views[name]) name = "login";
   for (const key of Object.keys(views)) {
@@ -346,6 +464,16 @@ function showView(name, { remember = true } = {}) {
   if (remember) chrome.storage.local.set({ popupView: name });
   window.clearInterval(repaintTimer);
   if (name === "theme") renderThemes();
+  if (name === "timetable") {
+    paintTimetable();
+    if (!CuimsTimetable.cacheFor(timetableState.cache, savedLogin.uid) && (!timetableState.status || (!timetableState.status.working && !timetableState.status.error) || timetableState.status.code === "tab-login") && savedLogin.uid) fetchTimetable();
+  }
+  if (name === "marks") {
+    paintMarks();
+    // A failure is retried only with the button; a successful read never
+    // expires. Switching tabs or reopening the popup sends no repeat read.
+    if (!CuimsMarks.marksCacheFor(marksState.cache, savedLogin.uid) && (!marksState.status || (!marksState.status.working && !marksState.status.error) || marksState.status.code === "tab-login") && savedLogin.uid) fetchMarks();
+  }
   if (name !== "attendance") return;
   const working = paintAttendance();
   repaintTimer = window.setInterval(paintAttendance, 30_000);
@@ -411,6 +539,21 @@ views.attendance.addEventListener("click", (event) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
+  if (changes.uid) {
+    savedLogin.uid = String(changes.uid.newValue || "");
+    marksReadSequence += 1;
+    marksPending = false;
+    marksState = { cache: null, status: null };
+    timetableState = { cache: null, status: null };
+    timetablePending = false;
+    timetableSequence += 1;
+  }
+  if (changes.timetableCache) timetableState.cache = changes.timetableCache.newValue || null;
+  if (changes.timetableStatus) timetableState.status = changes.timetableStatus.newValue || null;
+  if ((changes.uid || changes.timetableCache || changes.timetableStatus) && !views.timetable.hidden) paintTimetable();
+  if (changes.marksCache) marksState.cache = changes.marksCache.newValue || null;
+  if (changes.marksStatus) marksState.status = changes.marksStatus.newValue || null;
+  if ((changes.uid || changes.marksCache || changes.marksStatus) && !views.marks.hidden) paintMarks();
   // Opening CUIMS or LMS may sign in first; say so on the button.
   const phase = changes.attendanceStatus?.newValue?.working && changes.attendanceStatus.newValue.phase;
   const busy = document.querySelector(".open-link[aria-busy='true'] span");
@@ -562,6 +705,10 @@ chrome.storage.local.get(
     popupView: "",
     attendanceGoal: "standard",
     attendancePlan: null,
+    timetableCache: null,
+    timetableStatus: null,
+    marksCache: null,
+    marksStatus: null,
   },
   (stored) => {
     for (const key of Object.keys(SWITCH_DEFAULTS)) settings[key] = stored[key] !== false;
@@ -572,6 +719,8 @@ chrome.storage.local.get(
     paintSwitches();
     attendance.snapshot = stored.attendanceSnapshot;
     attendance.status = stored.attendanceStatus;
+    marksState = { cache: stored.marksCache, status: stored.marksStatus?.uid === savedLogin.uid ? stored.marksStatus : null };
+    timetableState = { cache: stored.timetableCache, status: stored.timetableStatus?.uid === savedLogin.uid ? stored.timetableStatus : null };
     prefs = { goal: stored.attendanceGoal || "standard", plan: stored.attendancePlan || { day: "", skips: [] } };
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";

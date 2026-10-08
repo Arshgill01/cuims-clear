@@ -4,7 +4,8 @@ import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { fakeCuims, memoryStorage } from "./fake-cuims.mjs";
 
-const root = new URL("../outputs/cuims-clear-firefox/", import.meta.url);
+for (const build of ["firefox", "chrome"]) {
+const root = new URL(`../outputs/cuims-clear-${build}/`, import.meta.url);
 const marks = readFileSync(new URL("fixtures/marks/regular.html", import.meta.url), "utf8");
 const timetable = readFileSync(new URL("fixtures/timetable/current.html", import.meta.url), "utf8");
 function setup({ signedIn = false, openLoginTab = false, stale = true } = {}) {
@@ -35,7 +36,7 @@ function setup({ signedIn = false, openLoginTab = false, stale = true } = {}) {
 }
 
 for (const [tab, method] of [["marks", "fetchRegularMarks"], ["timetable", "fetchCachedTimetable"]]) {
-  test(`${tab}: closed CUIMS tabs and stale login flags still allow exactly one guarded sign-in`, async () => {
+  test(`${build}: ${tab}: closed CUIMS tabs and stale login flags still allow exactly one guarded sign-in`, async () => {
     const s = setup();
     const result = await s.daemon()[method]();
     assert.ok(result.cache, result.error);
@@ -53,7 +54,7 @@ for (const [tab, method] of [["marks", "fetchRegularMarks"], ["timetable", "fetc
     await s.daemon()[method]();
     assert.equal(s.requests.length, 7, "restart reads from cache");
   });
-  test(`${tab}: a real login tab blocks requests; closing it lifts the block immediately`, async () => {
+  test(`${build}: ${tab}: a real login tab blocks requests; closing it lifts the block immediately`, async () => {
     const s = setup({ openLoginTab: true });
     const d = s.daemon();
     assert.equal((await d[method]()).code, "tab-login");
@@ -62,7 +63,7 @@ for (const [tab, method] of [["marks", "fetchRegularMarks"], ["timetable", "fetc
     assert.ok((await d[method]()).cache);
     assert.equal(s.requests.length, 7);
   });
-  test(`${tab}: throttled data page backs off without another login or repeated page attempts`, async () => {
+  test(`${build}: ${tab}: throttled data page backs off without another login or repeated page attempts`, async () => {
     const s = setup({ signedIn: true, stale: false });
     s.refuse();
     const d = s.daemon();
@@ -76,7 +77,7 @@ for (const [tab, method] of [["marks", "fetchRegularMarks"], ["timetable", "fetc
   });
 }
 
-test("the actual timetable grid parses all days and sorts morning classes before afternoon", async () => {
+test(build + ": " + "the actual timetable grid parses all days and sorts morning classes before afternoon", async () => {
   const s = setup({ signedIn: true, stale: false });
   const result = await s.daemon().fetchCachedTimetable();
   assert.equal(s.requests.length, 2, "no invented ReportViewer postback");
@@ -92,7 +93,7 @@ test("the actual timetable grid parses all days and sorts morning classes before
   assert.ok(html.indexOf("9:30 AM") < html.indexOf("1:40 PM"));
   assert.match(html, /Sunday/);
 });
-test("request counts cover only the two new flows and use rolling minute and ten-minute windows", async () => {
+test(build + ": " + "request counts cover only the two new flows and use rolling minute and ten-minute windows", async () => {
   const s = setup({ signedIn: true, stale: false });
   s.storage.data.attendanceRequests = Array(5).fill(Date.UTC(2026, 9, 8, 6));
   const d = s.daemon();
@@ -112,7 +113,7 @@ test("request counts cover only the two new flows and use rolling minute and ten
   assert.equal(ten.timetable.perTenMinutes, 0);
   assert.equal(s.requests.length, 4);
 });
-test("Marks refresh clicks share a read and successful refreshes wait 30 seconds", async () => {
+test(build + ": " + "Marks refresh clicks share a read and successful refreshes wait 30 seconds", async () => {
   const s = setup({ signedIn: true, stale: false }), d = s.daemon();
   await d.fetchRegularMarks();
   await Promise.all([d.fetchRegularMarks({ force: true }), d.fetchRegularMarks({ force: true })]);
@@ -123,3 +124,5 @@ test("Marks refresh clicks share a read and successful refreshes wait 30 seconds
   assert.ok((await d.fetchRegularMarks({ force: true })).cache);
   assert.equal(s.requests.length, 6);
 });
+
+}
