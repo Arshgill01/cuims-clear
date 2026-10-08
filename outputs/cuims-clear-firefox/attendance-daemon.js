@@ -500,7 +500,62 @@
       return { refreshed: await refresh("manual") };
     }
 
-    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage };
+    // Marks shares attendance's session lock, request meter and sign-in guard.
+    // A successful read (including an explicitly empty result) is permanent
+    // for this saved UID and session. There is no refresh timer or expiry.
+    function fetchRegularMarks(sessionId = "") {
+      return exclusive(async () => {
+        const state = await storage.get({ ...DEFAULTS, marksCache: null, marksStatus: null });
+        const uid = String(state.uid || "").trim();
+        const marks = root.CuimsMarks;
+        const cached = marks.marksCacheFor(state.marksCache, uid);
+        const target = sessionId || cached?.currentSession || "";
+        if (cached?.snapshots?.[target]) return { cache: cached, sessionId: target, cached: true };
+        if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
+        if (sessionId && !/^\d{1,10}$/.test(sessionId)) return { error: "Invalid examination session.", code: "marks-session" };
+        if (cached && sessionId && !cached.sessions.some((item) => item.id === sessionId)) return { error: "That session is not offered by CUIMS.", code: "marks-session" };
+        const attemptedAt = state.marksStatus?.uid === uid && state.marksStatus.error ? Number(state.marksStatus.at || 0) : 0;
+        if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying marks again.", code: "busy" };
+        if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try marks again later.", code: "backoff" };
+        const budget = meter(state);
+        const request = createRequest(budget);
+        const sameLogin = async () => {
+          const current = await storage.get({ uid: "", password: "" });
+          return String(current.uid || "").trim() === uid && current.password === state.password;
+        };
+        const status = async (patch) => {
+          if (await sameLogin()) await storage.set({ marksStatus: { ...patch, uid, sessionId: sessionId || target, at: now() } });
+        };
+        await status({ working: true, phase: "Reading regular marks…" });
+        try {
+          let result;
+          try {
+            result = await marks.readRegularMarks(request, sessionId);
+          } catch (error) {
+            if (error.code !== "signed-out") throw error;
+            await ensureSignedIn(state, request, "marks", (phase) => status({ working: true, phase }));
+            result = await marks.readRegularMarks(request, sessionId);
+          }
+          if (!(await sameLogin())) throw client.coded("cancelled", "Saved login changed. Marks were not saved.");
+          if (!result.uid) throw client.coded("marks-shape", "Could not identify the signed-in student. Marks were not saved.");
+          if (result.uid.toUpperCase() !== uid.toUpperCase()) throw client.coded("account-mismatch", "CUIMS is signed in with a different UID. Open CUIMS and sign in with your saved UID.");
+          const snapshot = { sessionId: result.sessionId, label: result.label, subjects: result.subjects, fetchedAt: new Date(now()).toISOString() };
+          const cache = { v: marks.CACHE_VERSION, uid, currentSession: cached?.currentSession || result.sessionId, sessions: result.sessions, snapshots: { ...(cached?.snapshots || {}), [result.sessionId]: snapshot } };
+          await storage.set({ marksCache: cache });
+          await status({ working: false, error: "", code: "" });
+          return { cache, sessionId: result.sessionId };
+        } catch (error) {
+          const code = error.code || "network";
+          const message = error.code ? error.message : client.MESSAGES.network;
+          await status({ working: false, error: message, code });
+          return { error: message, code };
+        } finally {
+          await storage.set({ attendanceRequests: budget.log });
+        }
+      });
+    }
+
+    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage, fetchRegularMarks };
   }
 
   api.DAEMON_DEFAULTS = DEFAULTS;

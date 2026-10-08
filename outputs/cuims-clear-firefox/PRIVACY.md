@@ -30,10 +30,18 @@ local extension storage. Nothing is sent anywhere else.
 The user can delete the stored UID, password, and attendance at any time with **Clear login** in the
 extension popup, or remove all stored settings by uninstalling the extension.
 
+The Marks tab reads the signed-in student's Regular Marks page on CUIMS using
+the same session and guarded sign-in as attendance. Published assessment names,
+maximum marks, obtained marks, and examination session labels are saved in local
+extension storage, once per saved UID and selected session. Reopening the popup
+does not fetch them again. Viewstate and other postback tokens are not saved in
+the marks cache. Changing the saved UID stops the old account's marks from being
+shown; **Clear login** removes the marks cache as well.
+
 The extension has access only to pages under `https://students.cuchd.in/*` and
 `https://lms.cuchd.in/*`.
 
 Firefox extension storage is not encrypted. Anyone with access to the user's Firefox
 profile may be able to read locally stored values.
 
-Last updated: 30 September 2026.
+Last updated: 8 October 2026.

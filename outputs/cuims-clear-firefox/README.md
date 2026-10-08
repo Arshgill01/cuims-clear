@@ -21,6 +21,11 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - shows attendance on an **Attendance** tab without opening CUIMS: overall and
   per-subject percentages, how many classes you can skip while staying at 75% per
   subject and 90% overall, and today's classes as they happen;
+- shows published regular examination marks on a **Marks** tab, with each
+  subject's assessment, maximum marks, and obtained marks exactly as CUIMS lists them;
+- reads each examination session only once and saves it locally: reopening the
+  popup, switching tabs, or restarting Firefox reuses the saved marks. Selecting
+  a previous session fetches it once using CUIMS's own session selector;
 - offers twenty colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
   Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Ristretto, Ethereal, Lumon,
   Hackerman, Last Horizon, Miasma, Catppuccin Latte, Flexoki Light and Rosé Pine, from Omarchy)
@@ -29,6 +34,8 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - keeps every automation and quiet-mode switch on one **Settings** tab, where each switch
   saves as you flip it;
 - lets you erase the saved UID, password, and attendance from the popup at any time.
+  **Clear login** also erases the saved marks. Failed reads can be retried with
+  **Try again**; successful reads have no automatic refresh or expiry.
 
 CAPTCHA solving happens entirely inside the extension, in plain JavaScript
 (`captcha-solver.js`, with the font's glyphs in `captcha-glyphs.js`): CUIMS

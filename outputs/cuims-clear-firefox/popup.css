@@ -46,6 +46,26 @@
   box-sizing: border-box;
 }
 
+/* Regular marks uses the same theme tokens as the rest of the popup. */
+.marks-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.marks-head h2 { margin: 0; font-size: 18px; }
+.marks-head a { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.marks-session { display: grid; gap: 6px; margin-bottom: 16px; font-size: 12px; color: var(--muted); }
+.marks-session select { width: 100%; min-height: 40px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.marks-subject { margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.marks-subject summary { padding: 12px; cursor: pointer; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.marks-subject summary small { display: block; padding-top: 4px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.marks-subject table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.marks-subject th, .marks-subject td { padding: 9px 10px; border-top: 1px solid var(--line); text-align: right; overflow-wrap: anywhere; }
+.marks-subject th:first-child { width: 54%; text-align: left; }
+.marks-subject thead th { background: var(--surface-2); color: var(--muted); font-size: 10px; font-weight: 500; }
+.marks-subject tbody th { font-weight: 400; }
+.marks-subject tbody td:last-child { font-weight: 700; }
+.marks-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.marks-subject .marks-note { padding: 0 12px; }
+.marks-cache-note { margin-top: 16px; font-size: 11px; }
+.marks-error { color: var(--bad-ink); font-size: 12px; line-height: 1.6; }
+
 /* A fixed frame: the rail and the portal buttons stay put, the view scrolls.
    600px is the tallest popup Chrome and Firefox both allow. */
 html,

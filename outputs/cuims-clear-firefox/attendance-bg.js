@@ -35,6 +35,17 @@ function startAttendanceBackground(solveCaptcha) {
     return true;
   });
 
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== "cuims-clear:marks-read" || !fromExtensionPage(sender)) return;
+    hasAccess()
+      .then((granted) => granted
+        ? attendance.fetchRegularMarks(String(message.sessionId || ""))
+        : { error: "Allow access to CUIMS at the top of the popup first.", code: "no-access" })
+      .then(sendResponse)
+      .catch(() => sendResponse({ error: "Could not read marks. Try again.", code: "network" }));
+    return true;
+  });
+
   // The student opened a leave page on CUIMS; its content script sends it.
   chrome.runtime.onMessage.addListener((message, sender) => {
     if (message?.type !== "cuims-clear:leave-page" || !/^https:\/\/students\.cuchd\.in\//i.test(String(sender?.url || sender?.tab?.url || ""))) return;
