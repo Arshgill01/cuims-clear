@@ -75,6 +75,7 @@ const SERVER_ERROR_PATTERNS = [
 let settings = { ...DEFAULT_SETTINGS };
 const suppressedElements = new Map();
 let scanQueued = false;
+let pendingPromptRoots = null;
 let programmaticEdit = false;
 let lastErrorFingerprint = "";
 
@@ -829,21 +830,28 @@ function hideOrphanWashes() {
   }
 }
 
-function scanUniqueFeedbackPrompt() {
+function scanUniqueFeedbackPrompt(roots = [document.body]) {
   if (!settings.blockFeedback || !document.body) return;
 
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let found = false;
-
-  while (walker.nextNode()) {
-    const value = (walker.currentNode.nodeValue || "").toLowerCase().replace(/\s+/g, " ");
-    if (!UNIQUE_FEEDBACK_PROMPTS.some((prompt) => value.includes(prompt))) continue;
-
-    const host = walker.currentNode.parentElement;
-    if (!host) continue;
-    const root = promptRoot(host);
-    if (root) suppress(root, "feedback");
-    found = true;
+  const candidates = new Set(roots);
+  for (const candidate of candidates) {
+    if (!candidate || candidate.isConnected === false) continue;
+    let covered = false;
+    for (let up = candidate.parentElement; up; up = up.parentElement) {
+      if (candidates.has(up)) { covered = true; break; }
+    }
+    if (covered) continue;
+    const walker = document.createTreeWalker(candidate, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const value = (walker.currentNode.nodeValue || "").toLowerCase().replace(/\s+/g, " ");
+      if (!UNIQUE_FEEDBACK_PROMPTS.some((prompt) => value.includes(prompt))) continue;
+      const host = walker.currentNode.parentElement;
+      if (!host) continue;
+      const root = promptRoot(host);
+      if (root) suppress(root, "feedback");
+      found = true;
+    }
   }
 
   if (found) hideHostIframe();
@@ -969,6 +977,8 @@ function clearStaleSuppress() {
 
 function scanPage() {
   scanQueued = false;
+  const promptRoots = pendingPromptRoots;
+  pendingPromptRoots = null;
 
   // Successful landing clears the login circuit so the next session starts fresh.
   if (/studenthome\.aspx$/i.test(location.pathname)) {
@@ -1007,7 +1017,7 @@ function scanPage() {
     });
   }
 
-  scanUniqueFeedbackPrompt();
+  scanUniqueFeedbackPrompt(promptRoots ? [...promptRoots] : [document.body]);
   cleanupBackdrop();
 }
 
@@ -1024,10 +1034,47 @@ function shareLeavePage() {
   } catch {}
 }
 
-function queueScan() {
-  if (scanQueued) return;
+function queueScan(roots = null) {
+  if (scanQueued) {
+    // A settings/login-triggered full scan wins over a partial mutation scan.
+    if (!roots) pendingPromptRoots = null;
+    else if (pendingPromptRoots) for (const root of roots) pendingPromptRoots.add(root);
+    return;
+  }
   scanQueued = true;
+  pendingPromptRoots = roots ? new Set(roots) : null;
   requestAnimationFrame(scanPage);
+}
+
+// The page theme writes colours on hundreds of elements. Those writes cannot
+// open a dialog or change login controls, and must not trigger a full scan.
+// Keep visibility/position/size changes, classes, inserted nodes and text
+// updates: CUIMS uses all of them when showing overlays or validation errors.
+function scanStyle(value) {
+  return String(value || "")
+    .replace(/(?:^|;)\s*(?:color|background-(?:color|image)|border-(?:(?:top|right|bottom|left)-)?color|transition-(?:property|duration|timing-function|delay))\s*:[^;]*/gi, "")
+    .split(";").map((part) => part.trim()).filter(Boolean).sort().join(";");
+}
+
+function queuePageMutations(records) {
+  const roots = new Set();
+  for (const record of records) {
+    const target = record.target;
+    const element = target.nodeType === 1 ? target : target.parentElement;
+    if (/^(STYLE|SCRIPT|NOSCRIPT|TEMPLATE)$/.test(element?.tagName || "")) continue;
+    if (record.type === "attributes") {
+      const value = target.getAttribute(record.attributeName);
+      if (record.oldValue === value) continue;
+      if (record.attributeName === "style" && scanStyle(record.oldValue) === scanStyle(value)) continue;
+    }
+    const changed = record.type === "childList" && record.addedNodes?.length ? record.addedNodes : [target];
+    for (const node of changed) {
+      const root = node.nodeType === 1 ? node : node.parentElement;
+      if (!root || /^(STYLE|SCRIPT|NOSCRIPT|TEMPLATE)$/.test(root.tagName || "")) continue;
+      roots.add(root);
+    }
+  }
+  if (roots.size) queueScan(roots);
 }
 
 function restoreSuppressed() {
@@ -1075,10 +1122,12 @@ function startExtension() {
     clearStaleSuppress();
     scanPage();
 
-    new MutationObserver(queueScan).observe(document.documentElement, {
+    new MutationObserver(queuePageMutations).observe(document.documentElement, {
       childList: true,
       subtree: true,
+      characterData: true,
       attributes: true,
+      attributeOldValue: true,
       attributeFilter: ["class", "style", "open", "hidden"],
     });
   });

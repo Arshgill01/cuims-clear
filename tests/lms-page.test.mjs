@@ -204,7 +204,7 @@ function mount({
     replace: (url) => { replaced = url; },
   };
   const context = vm.createContext({
-    URL, URLSearchParams, Date, AbortSignal, Set, Map, setTimeout, clearTimeout,
+    URL, URLSearchParams, Date, AbortSignal, AbortController, Set, Map, setTimeout, clearTimeout,
     window: {},
     globalThis: {},
     chrome: {
@@ -314,4 +314,35 @@ test("clear view mounts while the document is still loading", () => {
   assert.ok(body.querySelector("#cc-directory"));
   assert.equal(body.querySelector("h2").textContent, "Computer Networks");
   assert.equal(document.documentElement.className.includes("cc-lms-pending"), false);
+});
+
+test("course search keeps link nodes and creates no new DOM while typing", () => {
+  const { body, document } = mount({ cards: [
+    card("CONT_24CST-302 :: COMPUTER NETWORKS", href(2)),
+    card("24CST-302_24BCS_KRG-601A_ALL :: COMPUTER NETWORKS", href(3)),
+    card("CONT_24CSP-304 :: FULL STACK DEVELOPMENT", href(4)),
+  ] });
+  const rows = body.querySelectorAll(".cc-course-row");
+  const links = body.querySelectorAll(".cc-course-link");
+  const input = body.querySelector("#cc-course-search");
+  let created = 0;
+  const create = document.createElement;
+  document.createElement = (tag) => { created += 1; return create(tag); };
+  for (const query of ["computer", "24csp-304", "  NO MATCH  ", "", "601a"]) {
+    input.value = query;
+    input.listeners.input();
+    assert.deepEqual(body.querySelectorAll(".cc-course-row"), rows);
+    assert.deepEqual(body.querySelectorAll(".cc-course-link"), links);
+  }
+  assert.equal(created, 0);
+  assert.equal(rows[0].hidden, false);
+  assert.equal(rows[1].hidden, true);
+  assert.equal(body.querySelector(".cc-results").textContent, "1 of 2 subjects");
+  input.value = "missing";
+  input.listeners.input();
+  assert.equal(body.querySelector(".cc-empty").hidden, false);
+  input.value = "";
+  input.listeners.input();
+  assert.equal(body.querySelector(".cc-empty").hidden, true);
+  assert.ok(rows.every((row) => !row.hidden));
 });

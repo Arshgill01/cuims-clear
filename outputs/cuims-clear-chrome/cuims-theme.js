@@ -40,6 +40,8 @@
   let enabled = true;
   let observer = null;
   let cloakTimer = 0;
+  // Only valid during one paint, after all originals have been read.
+  let surfaces = null;
 
   // ---- colour helpers ----
 
@@ -247,15 +249,22 @@
 
   // What an element is drawn on, after mapping, as a solid colour.
   function surfaceUnder(el, t) {
+    const path = [];
+    let under = t.canvas;
     for (let node = el; node && node.nodeType === 1 && node !== document.body; node = node.parentElement) {
+      if (surfaces?.has(node)) { under = surfaces.get(node); break; }
+      path.push(node);
+    }
+    // Iterative so even deeply nested portal markup cannot exhaust the stack.
+    for (let index = path.length - 1; index >= 0; index -= 1) {
+      const node = path[index];
       const record = originals.get(node);
       const bg = record ? fillOf(record) : null;
-      if (bg && bg.a >= 0.3) {
-        const mapped = mapBackground(bg, t, node);
-        if (mapped) return over(mapped, surfaceUnder(node.parentElement, t));
-      }
+      const mapped = bg && bg.a >= 0.3 ? mapBackground(bg, t, node) : null;
+      if (mapped) under = over(mapped, under);
+      surfaces?.set(node, under);
     }
-    return t.canvas;
+    return under;
   }
 
   // A computed list, split on top-level commas (cubic-bezier(…) has its own).
@@ -290,13 +299,16 @@
     eased.add(el);
   }
 
+  function restoreEasing(el) {
+    if (!eased.delete(el)) return;
+    (easing.get(el)?.inline || []).forEach(([value, priority], index) => {
+      if (value) el.style.setProperty(EASE_PROPS[index], value, priority);
+      else el.style.removeProperty(EASE_PROPS[index]);
+    });
+  }
+
   function unease() {
-    for (const el of eased) {
-      (easing.get(el)?.inline || []).forEach(([value, priority], index) => {
-        if (value) el.style.setProperty(EASE_PROPS[index], value, priority);
-        else el.style.removeProperty(EASE_PROPS[index]);
-      });
-    }
+    for (const el of eased) restoreEasing(el);
     eased.clear();
   }
 
@@ -366,7 +378,12 @@
     quietly(() => {
       for (const node of nodes) unpaint(node);
       for (const node of nodes) remember(node);
-      for (const node of nodes) paint(node);
+      surfaces = new WeakMap();
+      try {
+        for (const node of nodes) paint(node);
+      } finally {
+        surfaces = null;
+      }
     });
   }
 
@@ -485,6 +502,19 @@ input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`
 
   // Which subtrees the page changed in a way that can change colours.
   function handle(records) {
+    // UpdatePanels remove entire trees. Strong maps must not keep those
+    // trees alive; restore them before forgetting so reinsertion is clean.
+    const removed = records.flatMap((record) => record.type === "childList" ? [...record.removedNodes] : []);
+    if (removed.length) quietly(() => {
+      for (const root of removed) {
+        if (root.isConnected) continue;
+        for (const node of elementsOf(root)) {
+          unpaint(node);
+          restoreEasing(node);
+          easing.delete(node);
+        }
+      }
+    });
     // Until the first paint, which reads the whole page anyway.
     if (!theme || !document.body || holds.has("paint")) return;
     const dirty = new Set();
