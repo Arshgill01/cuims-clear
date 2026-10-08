@@ -26,6 +26,9 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
   Hackerman, Last Horizon, Miasma, Catppuccin Latte, Flexoki Light and Rosé Pine, from Omarchy)
   that restyle the popup, the LMS clear view, CUIMS itself, and the toolbar icon together, with
   a switch to leave CUIMS pages untouched;
+- tidies CUIMS's own pages: the time table in time order with today and the class in progress
+  marked, each subject's attendance read against your goal, coloured class-by-class marks, and
+  running totals on the marks page (Settings → CUIMS pages → Tidier pages);
 - keeps every automation and quiet-mode switch on one **Settings** tab, where each switch
   saves as you flip it;
 - lets you erase the saved UID, password, and attendance from the popup at any time.
