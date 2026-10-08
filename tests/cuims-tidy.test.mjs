@@ -81,10 +81,12 @@ test("tidy greys stay neutral for the CUIMS theme engine", () => {
   }
 });
 
-// The page behaviour itself, in a real Chrome when one is available:
-// CHROME_BIN=/path/to/chrome npm test
-const CHROME = process.env.CHROME_BIN;
-const browserTest = CHROME && existsSync(CHROME) ? test : test.skip;
+// The page behaviour itself, in real browsers when they are available:
+// CHROME_BIN=/path/to/chrome FIREFOX_BIN=/path/to/firefox npm test
+const BROWSERS = [
+  ["Chrome", "chrome", process.env.CHROME_BIN],
+  ["Firefox", "firefox", process.env.FIREFOX_BIN],
+];
 
 const MARKS = `
 <div id="accordion">
@@ -113,9 +115,11 @@ const MARKS = `
   <tr><td data-label="Attendance">Present</td></tr>
 </tbody></table>`;
 
-browserTest("the tidy layer orders the week, marks today and now, totals marks, tallies a subject, lists upcoming exams, and steps aside when off", async () => {
+for (const [label, kind, executablePath] of BROWSERS) {
+const browserTest = executablePath && existsSync(executablePath) ? test : test.skip;
+browserTest(`${label}: the tidy layer orders the week, marks today and now, totals marks, tallies a subject, lists upcoming exams, and steps aside when off`, async () => {
   const { default: puppeteer } = await import("puppeteer-core");
-  const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-sandbox"] });
+  const browser = await puppeteer.launch({ browser: kind, executablePath, headless: true, ...(kind === "chrome" ? { args: ["--no-sandbox"] } : {}) });
   try {
     const page = await browser.newPage();
     // Wednesday 30 Sep 2026, 13:00 IST: the 12:50 lab is in progress.
@@ -153,6 +157,14 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
       now: [...document.querySelectorAll(".cc-class.is-now .cc-class-title")].map((node) => node.textContent),
       line: document.querySelector(".cc-tt-now").textContent,
       originalHidden: getComputedStyle(document.getElementById("grdMain")).display === "none",
+      // Every card holds its own text and sits inside its cell (in Firefox,
+      // cards once collapsed and their text ran over the next row).
+      spilled: [...document.querySelectorAll(".cc-tt-grid td .cc-class")].filter((card) => {
+        const box = card.getBoundingClientRect();
+        const cell = card.closest("td").getBoundingClientRect();
+        const text = card.lastElementChild.getBoundingClientRect();
+        return text.bottom > box.bottom + 1 || box.bottom > cell.bottom + 1;
+      }).length,
       scores: [...document.querySelectorAll(".cc-score")].map((chip) => chip.textContent),
       code: document.querySelector(".cc-code")?.textContent,
       low: [...document.querySelectorAll("#SortTable td.is-low")].map((cell) => cell.textContent),
@@ -173,6 +185,7 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
     assert.deepEqual(view.now, ["Competitive Coding‑II"]);
     assert.match(view.line, /^NowCompetitive Coding-II in C1-307, until 1:40 PM/);
     assert.equal(view.originalHidden, true);
+    assert.equal(view.spilled, 0);
     // Unposted marks are left out of the total; a subject with none has no chip.
     assert.deepEqual(view.scores, ["22.5 / 25"]);
     assert.equal(view.code, "24CST-302");
@@ -216,3 +229,4 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
     await browser.close();
   }
 });
+}

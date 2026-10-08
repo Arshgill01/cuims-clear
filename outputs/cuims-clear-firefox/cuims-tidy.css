@@ -280,8 +280,6 @@ html.cc-tidy .cc-tt {
 
 .cc-tt-grid th,
 .cc-tt-grid td {
-  /* A definite height lets each card fill its row. */
-  height: 1px;
   border: 0 !important;
   border-bottom: 1px solid var(--cc-line) !important;
   vertical-align: top;
@@ -364,7 +362,6 @@ html.cc-tidy .cc-tt {
   flex-direction: column;
   gap: 2px;
   box-sizing: border-box;
-  height: 100%;
   padding: 7px 9px 8px 12px;
   border: 1px solid var(--cc-line);
   border-radius: 7px;
@@ -376,7 +373,6 @@ html.cc-tidy .cc-tt {
 }
 
 .cc-class + .cc-class {
-  height: auto;
   margin-top: 6px;
 }
 
