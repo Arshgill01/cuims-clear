@@ -3,6 +3,44 @@
 Drives Chrome and Firefox with the packaged extension. `node_modules` is not
 committed: run `npm install` here first.
 
+## Portable UX checks
+
+From the repository root, run `npm ci` first. Set `CHROME_BIN` / `FIREFOX_BIN`
+when the browser is not at a standard Linux/macOS path.
+
+```
+node work/e2e/ux-browsers.mjs firefox outputs/cuims-clear-firefox
+node work/e2e/ux-browsers.mjs chrome outputs/cuims-clear-chrome
+node work/e2e/ux-browsers.mjs firefox /path/to/unpacked-store-package --baseline
+```
+
+The harness installs a disposable instrumented copy of the actual extension.
+It intercepts every portal request, tests search/pagination/focus, dialog safety,
+theme switching and removed-panel cleanup, and records JSON/screenshot evidence
+in ignored `work/e2e/results`. Test instrumentation never enters the build.
+`--baseline` records regressions without enforcing the new performance assertions.
+`FIREFOX_TEST_SANDBOX=off` is available for constrained test containers only.
+If a test environment uses a trusted proxy CA, `FIREFOX_CA_FILE` imports that
+certificate into the disposable profile using `certutil` (`libnss3-tools`);
+certificate verification remains enabled.
+
+For one ordinary live page/login flow (no bursts or deliberate failures):
+
+```
+node work/e2e/live-observe.mjs firefox outputs/cuims-clear-firefox
+# Fill the git-ignored .env using .env.example first:
+node work/e2e/live-observe.mjs firefox outputs/cuims-clear-firefox --with-login
+```
+
+The live observer logs path/status/timing and selected rate headers only. It does
+not log query strings, request bodies, cookies, page contents or credentials.
+Account mode seeds a disposable extension/profile; both are deleted afterward.
+An ordinary successful session is a lower bound on accepted traffic, never proof
+of a numeric rate limit. Browser document/resources and extension background API
+requests are different categories; this page observer does not capture worker
+traffic. The extension's 40/10-minute budget and 30-second manual gap are local
+policy, not measured CUIMS limits.
+
 Offline (mocked CUIMS, no account needed):
 
 - `node e2e-captcha.mjs <chrome|firefox> <package dir> [labels.json] [count]`:

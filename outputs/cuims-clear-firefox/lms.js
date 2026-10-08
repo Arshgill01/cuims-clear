@@ -12,8 +12,13 @@
   let originalHeading;
   let heading;
   let loading = false;
+  let loadController;
   let loaded = false;
   let failsafe;
+  // Keep links mounted while filtering: typing should not rebuild the list
+  // or discard a focused course link when another page arrives.
+  let rows = new Map();
+  let emptyRow;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -50,15 +55,18 @@
       } else if (!groups.length) {
         status.textContent = "No courses found. Use Original view to check your enrolments.";
       }
+      syncRows();
       renderRows();
     }
     renderCourseNav();
   }
 
   async function loadCourses() {
-    if (loading) return;
+    if (loading || !enabled) return;
     loading = true;
     loaded = true;
+    const controller = new AbortController();
+    loadController = controller;
     const courses = readCourses(document);
     const visited = new Set();
     const onDirectory = location.pathname === "/my/courses.php";
@@ -68,13 +76,15 @@
     let failed = false;
     try {
       while (queue.length) {
+        if (controller.signal.aborted) break;
         const url = queue.shift();
         if (visited.has(url)) continue;
         if (visited.size >= 20) throw new Error("Too many course pages");
         visited.add(url);
-        const response = await fetch(url, { credentials: "same-origin", signal: AbortSignal.timeout(15000) });
+        const response = await fetch(url, { credentials: "same-origin", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
         if (!response.ok || new URL(response.url).origin !== ORIGIN) throw new Error("Courses unavailable");
         const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+        if (controller.signal.aborted) break;
         if (doc.querySelector("body.notloggedin, #login, .loginform")) throw new Error("Sign-in required");
         const found = readCourses(doc);
         if (!found.length) throw new Error("Course layout unavailable");
@@ -83,9 +93,17 @@
         showCourses(courses, { pending: remaining(queue, visited) });
       }
     } catch {
-      failed = true;
+      failed = !controller.signal.aborted;
+    } finally {
+      loading = false;
+      loadController = null;
     }
-    loading = false;
+    if (controller.signal.aborted) {
+      loaded = false;
+      // A fast Original → Clear switch may happen before fetch rejects.
+      if (enabled) loadCourses();
+      return;
+    }
     showCourses(courses, { failed, pending: false });
   }
 
@@ -110,23 +128,45 @@
     return cell;
   }
 
+  function syncRows() {
+    const list = directory.querySelector(".cc-course-list");
+    const next = new Map();
+    for (const group of groups) {
+      const signature = JSON.stringify(group);
+      let entry = rows.get(group.key);
+      if (entry?.signature !== signature) {
+        const row = el("li", "cc-course-row");
+        const subject = el("div", "cc-subject");
+        subject.append(el("h2", "", displayName(group.name)), el("span", "cc-code", group.code));
+        row.append(subject, destination(group.materials, "materials", group.name), destination(group.work, "work", group.name));
+        entry = { row, signature, search: [group.name, group.code, ...group.materials.map((c) => c.original), ...group.work.map((c) => c.original)].map((value) => value.toLowerCase()) };
+      }
+      next.set(group.key, entry);
+    }
+    // Search changes only visibility. Replace children only when course data
+    // really changed, and reuse rows whose destinations are unchanged.
+    const previousKeys = [...rows.keys()];
+    const changed = rows.size !== next.size || [...next].some(([key, entry], index) => previousKeys[index] !== key || rows.get(key) !== entry);
+    rows = next;
+    if (!emptyRow) emptyRow = el("li", "cc-empty", "No matching courses. Try a subject name or course code.");
+    if (changed || !emptyRow.parentElement) {
+      const focused = document.activeElement;
+      const hadFocus = list.contains?.(focused);
+      list.replaceChildren(...[...rows.values()].map((entry) => entry.row), emptyRow);
+      if (hadFocus && focused.isConnected) focused.focus({ preventScroll: true });
+    }
+  }
+
   function renderRows() {
     const query = directory.querySelector("input").value.toLowerCase().trim();
-    const list = directory.querySelector(".cc-course-list");
-    list.replaceChildren();
-    const filtered = groups.filter((group) =>
-      [group.name, group.code, ...group.materials.map((c) => c.original), ...group.work.map((c) => c.original)]
-        .some((value) => value.toLowerCase().includes(query)),
-    );
-    for (const group of filtered) {
-      const row = el("li", "cc-course-row");
-      const subject = el("div", "cc-subject");
-      subject.append(el("h2", "", displayName(group.name)), el("span", "cc-code", group.code));
-      row.append(subject, destination(group.materials, "materials", group.name), destination(group.work, "work", group.name));
-      list.append(row);
+    let count = 0;
+    for (const { row, search } of rows.values()) {
+      const hidden = !search.some((value) => value.includes(query));
+      if (row.hidden !== hidden) row.hidden = hidden;
+      if (!hidden) count += 1;
     }
-    directory.querySelector(".cc-results").textContent = query ? `${filtered.length} of ${groups.length} subjects` : "";
-    if (!filtered.length && query) list.append(el("li", "cc-empty", "No matching courses. Try a subject name or course code."));
+    emptyRow.hidden = Boolean(count || !query);
+    directory.querySelector(".cc-results").textContent = query ? `${count} of ${groups.length} subjects` : "";
   }
 
   function buildDirectory() {
@@ -202,6 +242,7 @@
   }
 
   function applyMode() {
+    if (!enabled) loadController?.abort();
     document.body.classList.toggle("cc-lms", enabled);
     document.documentElement.classList.toggle("cc-lms-original", !enabled);
     const toggle = document.querySelector("#cc-view-toggle");

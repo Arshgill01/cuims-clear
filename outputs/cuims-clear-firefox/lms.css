@@ -1,4 +1,5 @@
 /* Cover the native LMS until clear view has mounted. Do not depend on Moodle body classes. */
+.cc-course-list > [hidden] { display: none !important; }
 html.cc-lms-pending {
   background: oklch(0.97 0.004 125) !important;
 }
