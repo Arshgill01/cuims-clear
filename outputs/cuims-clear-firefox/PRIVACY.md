@@ -45,6 +45,12 @@ for the saved UID. A successful result is fetched once and reused, including by
 attendance. Changing UID hides the old cache; Clear login removes it. No
 viewstate, cookies or sign-in tokens are included in the timetable cache.
 
+Marks and Timetable count their own extension requests in a local rolling
+10-minute log (tab name and timestamp only), including the session check and
+guarded sign-in. Attendance and other features are excluded from these counts.
+The log is cleared by Clear login. Login-tab checks read CUIMS tab URLs locally
+to avoid stale sign-in flags after a tab closes; no tab URLs are saved or sent.
+
 The extension has access only to pages under `https://students.cuchd.in/*` and
 `https://lms.cuchd.in/*`.
 

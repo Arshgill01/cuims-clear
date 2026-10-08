@@ -25,10 +25,13 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
   subject's assessment, maximum marks, and obtained marks exactly as CUIMS lists them;
 - fetches only the current examination session and saves it locally. Reopening
   the popup, switching tabs, or restarting Firefox reuses the saved marks;
-  **Refresh** fetches the latest current marks from CUIMS on demand;
+  **Refresh** fetches the latest current marks from CUIMS on demand, with a
+  30-second gap between refreshes;
 - shows a **Timetable** tab sorted Monday–Sunday and by class start time, with
   course, teacher and room details. One successful read is cached for the saved UID;
-  reopening the popup does not fetch it again;
+  reopening the popup does not fetch it again. Neither Marks nor Timetable needs
+  an open CUIMS tab: an uncached read checks the session and signs in once with
+  the saved login if needed;
 - offers twenty colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
   Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Ristretto, Ethereal, Lumon,
   Hackerman, Last Horizon, Miasma, Catppuccin Latte, Flexoki Light and Rosé Pine, from Omarchy)

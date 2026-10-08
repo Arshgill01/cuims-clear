@@ -50,9 +50,10 @@
   }
 
   async function readRegularMarks(request) {
-    let page = await request(PAGE);
+    let page = await request(PAGE, { manual: true });
     function check(result) {
       if (api.isLoginUrl(result.url) || api.isLoginDocument(result.html)) throw api.coded("signed-out");
+      if (/\/error\.html$/i.test(new URL(result.url).pathname)) throw api.coded("portal-busy");
       if (new URL(result.url).origin !== new URL(PAGE).origin || new URL(result.url).pathname.toLowerCase() !== "/frmstudentmarksview.aspx") {
         throw api.coded("portal-redirect", "CUIMS did not open the Regular Marks page. Open CUIMS once, then try again.");
       }
@@ -65,7 +66,7 @@
       // A full ASP.NET postback, just like the existing UID and timetable
       // requests. Do not persist viewstate, event-validation or SSO tokens.
       const body = new URLSearchParams({ ...api.hiddenFields(page.html), __EVENTTARGET: SESSION_NAME, __EVENTARGUMENT: "", [SESSION_NAME]: current.id });
-      page = await request(PAGE, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: body.toString() });
+      page = await request(PAGE, { manual: true, method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: body.toString() });
       parsed = check(page);
       if (parsed.sessionId !== current.id) throw api.coded("marks-session", "CUIMS did not switch to the current examination session.");
     }

@@ -13,6 +13,13 @@ function startAttendanceBackground(solveCaptcha) {
     },
     fetchImpl: (url, options) => fetch(url, options),
     solveCaptcha,
+    loginTabPresent: async () => {
+      const tabs = await chrome.tabs.query({});
+      return tabs.some(tab => [tab.url, tab.pendingUrl].some(value => {
+        try { return new URL(value).origin === "https://students.cuchd.in" && CuimsAttendance.isLoginUrl(value); }
+        catch { return false; }
+      }));
+    },
   });
 
   const hasAccess = () => chrome.permissions.contains(CUIMS_ORIGINS);

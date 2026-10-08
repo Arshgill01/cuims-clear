@@ -52,9 +52,9 @@ test("timetable rejects an account mismatch, missing identity, malformed respons
   }
 });
 test("timetable caching is scoped to the saved UID including explicit empty timetable", async () => {
-  assert.equal(T.cacheFor({ v: 1, uid: "other", slots: [] }, "24BCS00000"), null);
+  assert.equal(T.cacheFor({ v: T.CACHE_VERSION, uid: "other", slots: [] }, "24BCS00000"), null);
   const s = setup();
-  s.storage.data.timetableCache = { v: 1, uid: "24BCS00000", slots: [] };
+  s.storage.data.timetableCache = { v: T.CACHE_VERSION, uid: "24BCS00000", slots: [] };
   assert.equal((await s.daemon().fetchCachedTimetable()).cached, true);
   assert.equal(s.count(), 0);
 });
@@ -66,7 +66,7 @@ test("attendance reuses the weekly cache across days without another timetable r
   const prior = s.base.state.requests.length;
   await nextDay.refresh("manual");
   assert.equal(s.count(), 1);
-  assert.ok(!s.base.state.requests.slice(prior).some(request => /frmMyTimeTable/i.test(request.url || request.path || "")));
+  assert.ok(!s.base.state.requests.slice(prior).some(request => /frmMyTimeTable/i.test(String(request))));
 });
 test("timetable displays Monday first and sorts times numerically with 12-hour labels and escaped details", () => {
   const slots = [

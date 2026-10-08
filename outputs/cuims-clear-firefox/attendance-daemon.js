@@ -40,6 +40,7 @@
     attendanceLeaves: null,
     attendanceCourses: null,
     attendanceRequests: [],
+    newTabRequests: [],
     attendanceRunUntil: 0,
     attendanceStatus: null,
     attendanceMeta: null,
@@ -62,7 +63,7 @@
     };
   }
 
-  function createDaemon({ storage, fetchImpl, solveCaptcha, now = () => Date.now(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)) }) {
+  function createDaemon({ storage, fetchImpl, solveCaptcha, loginTabPresent, now = () => Date.now(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)) }) {
     const client = api;
     // The CUIMS conversation in progress (a refresh or an open), and the
     // refresh in progress, if that is what it is.
@@ -76,6 +77,18 @@
     // requested (tabLoginTouchAt). Either one means the session's captcha
     // belongs to that tab.
     async function tabOnLoginPage() {
+      if (loginTabPresent) {
+        try {
+          const present = await loginTabPresent();
+          if (present === true) return true;
+          if (present === false) {
+            const stale = await storage.get({ loginTabAt: 0, tabLoginTouchAt: 0, pageLoginAt: 0 });
+            if (stale.loginTabAt || stale.tabLoginTouchAt || stale.pageLoginAt)
+              await storage.set({ loginTabAt: 0, tabLoginTouchAt: 0, pageLoginAt: 0 });
+            return false;
+          }
+        } catch { /* A failed tab lookup keeps the timestamp guard. */ }
+      }
       const { loginTabAt, tabLoginTouchAt } = await storage.get({ loginTabAt: 0, tabLoginTouchAt: 0 });
       const latest = Math.max(Number(loginTabAt || 0), Number(tabLoginTouchAt || 0));
       return now() - latest < LOGIN_TAB_FRESH_MS;
@@ -102,6 +115,42 @@
           log.push(now());
         },
       };
+    }
+
+    // Attribute all requests in a new tab read (including sign-in) separately.
+    // Attendance and other old features never enter this log.
+    function newTabMeter(state, tab) {
+      const budget = meter(state);
+      const entries = (state.newTabRequests || []).filter(item => now() - item.at < BUDGET_WINDOW_MS);
+      const take = budget.take;
+      budget.take = () => {
+        take();
+        entries.push({ at: now(), tab });
+      };
+      budget.entries = entries;
+      return budget;
+    }
+    function newTabCounts(entries) {
+      return Object.fromEntries(["marks", "timetable"].map(tab => [tab, {
+        perMinute: entries.filter(item => item.tab === tab && now() - item.at < MINUTE).length,
+        perTenMinutes: entries.filter(item => item.tab === tab && now() - item.at < BUDGET_WINDOW_MS).length,
+      }]));
+    }
+    async function prepareDataSession(state, request, tab, status) {
+      await status({ working: true, phase: "Checking your CUIMS session…" });
+      if (!await client.pingHome(request)) {
+        await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
+        await ensureSignedIn(state, request, tab, phase => status({ working: true, phase }));
+        return true;
+      }
+      return false;
+    }
+    async function dataPageFailure(code, state) {
+      if (!BACKOFF_CODES.has(code)) return;
+      const streak = Number(state.attendanceFailStreak || 0) + 1;
+      const steps = code === "portal-busy" || code === "busy" ? THROTTLE_MINUTES : BACKOFF_MINUTES;
+      const minutes = steps[Math.min(streak, steps.length) - 1];
+      await storage.set({ attendanceFailStreak: streak, attendanceBackoffUntil: now() + minutes * MINUTE });
     }
 
     async function recordFailure(guard, patch = {}) {
@@ -132,11 +181,14 @@
       if (guard.rejectedUid && guard.rejectedUid === uid) throw client.coded("bad-password");
       if (guard.failures.length >= BACKGROUND_FAILURE_LIMIT) throw client.coded("cooldown");
 
-      if (now() - Number(state.pageLoginAt || 0) < PAGE_LOGIN_GRACE_MS) {
+      const waitingForTab = loginTabPresent ? await tabOnLoginPage() : true;
+      if (waitingForTab && now() - Number(state.pageLoginAt || 0) < PAGE_LOGIN_GRACE_MS) {
         onStep("Waiting for the CUIMS tab to sign in…");
         await sleep(4000);
         try {
-          await client.openAttendance(request);
+          if (reason === "marks" || reason === "timetable") {
+            if (!await client.pingHome(request)) throw client.coded("signed-out");
+          } else await client.openAttendance(request);
           return;
         } catch (error) {
           if (error.code !== "signed-out") throw error;
@@ -511,17 +563,22 @@
     function fetchRegularMarks({ force = false } = {}) {
       if (marksReading) return marksReading;
       const reading = exclusive(async () => {
-        const state = await storage.get({ ...DEFAULTS, marksCache: null, marksStatus: null });
+        const state = await storage.get({ ...DEFAULTS, marksCache: null, marksStatus: null, marksRefreshAt: null });
         const uid = String(state.uid || "").trim();
         const marks = root.CuimsMarks;
         const cached = marks.marksCacheFor(state.marksCache, uid);
         const target = cached?.currentSession || "";
-        if (!force && cached) return { cache: cached, sessionId: target, cached: true };
+        if (!force && cached) return { cache: cached, sessionId: target, cached: true, requestCounts: newTabCounts(state.newTabRequests || []) };
         if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
-        const attemptedAt = state.marksStatus?.uid === uid && state.marksStatus.error ? Number(state.marksStatus.at || 0) : 0;
+        const loginBlocked = await tabOnLoginPage();
+        if (loginBlocked) return { cache: cached, error: "A CUIMS tab is signing in. Try again after it finishes.", code: "tab-login" };
+        const attemptedAt = state.marksStatus?.uid === uid && state.marksStatus.error && state.marksStatus.code !== "tab-login" ? Number(state.marksStatus.at || 0) : 0;
         if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying marks again.", code: "busy" };
         if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try marks again later.", code: "backoff" };
-        const budget = meter(state);
+        if (force && state.marksRefreshAt?.uid === uid && now() - state.marksRefreshAt.at < MANUAL_GAP_MS)
+          return { cache: cached, error: "Wait 30 seconds between marks refreshes.", code: "busy" };
+        if (force) await storage.set({ marksRefreshAt: { uid, at: now() } });
+        const budget = newTabMeter(state, "marks");
         const request = createRequest(budget);
         const sameLogin = async () => {
           const current = await storage.get({ uid: "", password: "" });
@@ -532,11 +589,13 @@
         };
         await status({ working: true, phase: "Reading regular marks…" });
         try {
+          const signedIn = await prepareDataSession(state, request, "marks", status);
           let result;
           try {
             result = await marks.readRegularMarks(request);
           } catch (error) {
             if (error.code !== "signed-out") throw error;
+            if (signedIn) throw client.coded("login-shape", "CUIMS accepted sign-in but did not keep the session. Try again later.");
             await ensureSignedIn(state, request, "marks", (phase) => status({ working: true, phase }));
             result = await marks.readRegularMarks(request);
           }
@@ -547,14 +606,15 @@
           const cache = { v: marks.CACHE_VERSION, uid, currentSession: result.sessionId, sessions: result.sessions.filter((session) => session.id === result.sessionId), snapshots: { [result.sessionId]: snapshot } };
           await storage.set({ marksCache: cache });
           await status({ working: false, error: "", code: "" });
-          return { cache, sessionId: result.sessionId };
+          return { cache, sessionId: result.sessionId, requestCounts: newTabCounts(budget.entries) };
         } catch (error) {
           const code = error.code || "network";
           const message = error.code ? error.message : client.MESSAGES.network;
+          await dataPageFailure(code, state);
           await status({ working: false, error: message, code });
           return { cache: cached, error: message, code };
         } finally {
-          await storage.set({ attendanceRequests: budget.log });
+          await storage.set({ attendanceRequests: budget.log, newTabRequests: budget.entries, newTabRequestCounts: newTabCounts(budget.entries) });
         }
       }).finally(() => {
         if (marksReading === reading) marksReading = null;
@@ -571,12 +631,14 @@
         const timetable = root.CuimsTimetable;
         const cached = timetable.cacheFor(state.timetableCache, uid);
 
-        if (cached) return { cache: cached, cached: true };
+        if (cached) return { cache: cached, cached: true, requestCounts: newTabCounts(state.newTabRequests || []) };
         if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
-        const attemptedAt = state.timetableStatus?.uid === uid && state.timetableStatus.error ? Number(state.timetableStatus.at || 0) : 0;
+        const loginBlocked = await tabOnLoginPage();
+        if (loginBlocked) return { cache: cached, error: "A CUIMS tab is signing in. Try again after it finishes.", code: "tab-login" };
+        const attemptedAt = state.timetableStatus?.uid === uid && state.timetableStatus.error && state.timetableStatus.code !== "tab-login" ? Number(state.timetableStatus.at || 0) : 0;
         if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying the timetable again.", code: "busy" };
         if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try the timetable again later.", code: "backoff" };
-        const budget = meter(state);
+        const budget = newTabMeter(state, "timetable");
         const request = createRequest(budget);
         const sameLogin = async () => {
           const current = await storage.get({ uid: "", password: "" });
@@ -587,11 +649,13 @@
         };
         await status({ working: true, phase: "Reading timetable…" });
         try {
+          const signedIn = await prepareDataSession(state, request, "timetable", status);
           let result;
           try {
             result = await timetable.read(request);
           } catch (error) {
             if (error.code !== "signed-out") throw error;
+            if (signedIn) throw client.coded("login-shape", "CUIMS accepted sign-in but did not keep the session. Try again later.");
             await ensureSignedIn(state, request, "timetable", (phase) => status({ working: true, phase }));
             result = await timetable.read(request);
           }
@@ -601,14 +665,15 @@
           const cache = { v: timetable.CACHE_VERSION, uid, slots: result.slots, fetchedAt: new Date(now()).toISOString() };
           await storage.set({ timetableCache: cache });
           await status({ working: false, error: "", code: "" });
-          return { cache };
+          return { cache, requestCounts: newTabCounts(budget.entries) };
         } catch (error) {
           const code = error.code || "network";
           const message = error.code ? error.message : client.MESSAGES.network;
+          await dataPageFailure(code, state);
           await status({ working: false, error: message, code });
           return { cache: cached, error: message, code };
         } finally {
-          await storage.set({ attendanceRequests: budget.log });
+          await storage.set({ attendanceRequests: budget.log, newTabRequests: budget.entries, newTabRequestCounts: newTabCounts(budget.entries) });
         }
       }).finally(() => {
         if (timetableReading === reading) timetableReading = null;

@@ -27,9 +27,12 @@ const ATTENDANCE_KEYS = [
   "attendancePlan",
   "marksCache",
   "marksStatus",
+  "marksRefreshAt",
   "marksSession",
   "timetableCache",
   "timetableStatus",
+  "newTabRequests",
+  "newTabRequestCounts",
 ];
 const STALE_MS = 10 * 60 * 1000;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
@@ -417,7 +420,7 @@ function fetchTimetable() {
     if (chrome.runtime.lastError || !response) timetableState.status = { error: "Could not reach the extension background. Try again." };
     else {
       if (response.cache) timetableState.cache = response.cache;
-      timetableState.status = { error: response.error || "" };
+      timetableState.status = { error: response.error || "", code: response.code || "" };
     }
     if (!views.timetable.hidden) paintTimetable();
   });
@@ -441,13 +444,13 @@ function showView(name, { remember = true } = {}) {
   if (name === "theme") renderThemes();
   if (name === "timetable") {
     paintTimetable();
-    if (!CuimsTimetable.cacheFor(timetableState.cache, savedLogin.uid) && !timetableState.status && savedLogin.uid) fetchTimetable();
+    if (!CuimsTimetable.cacheFor(timetableState.cache, savedLogin.uid) && (!timetableState.status || (!timetableState.status.working && !timetableState.status.error) || timetableState.status.code === "tab-login") && savedLogin.uid) fetchTimetable();
   }
   if (name === "marks") {
     paintMarks();
     // A failure is retried only with the button; a successful read never
     // expires. Switching tabs or reopening the popup sends no repeat read.
-    if (!CuimsMarks.marksCacheFor(marksState.cache, savedLogin.uid) && !marksState.status && savedLogin.uid) fetchMarks();
+    if (!CuimsMarks.marksCacheFor(marksState.cache, savedLogin.uid) && (!marksState.status || (!marksState.status.working && !marksState.status.error) || marksState.status.code === "tab-login") && savedLogin.uid) fetchMarks();
   }
   if (name !== "attendance") return;
   const working = paintAttendance();

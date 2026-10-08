@@ -1,7 +1,7 @@
 // Full weekly timetable, using attendance's CUIMS request and parser.
 (function (root) {
   const api = root.CuimsAttendance;
-  const CACHE_VERSION = 1;
+  const CACHE_VERSION = 2;
   const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
   function sort(slots) {
     return [...slots].sort((a, b) => DAYS.indexOf(a.weekday) - DAYS.indexOf(b.weekday)
@@ -14,6 +14,7 @@
     let html = "";
     const slots = await api.readTimetable(async (target, options) => {
       const page = await request(target, options);
+      if (/\/error\.html$/i.test(new URL(page.url).pathname)) throw api.coded("portal-busy");
       if (!api.isLoginUrl(page.url) && !api.isLoginDocument(page.html)) {
         const location = new URL(page.url);
         if (location.origin !== "https://students.cuchd.in" || location.pathname.toLowerCase() !== "/frmmytimetable.aspx")
@@ -22,7 +23,7 @@
       html = page.html || "";
       return page;
     });
-    if (!/id=["']ContentPlaceHolder1_gvMyTimeTable["']/i.test(html))
+    if (!api.hasTimetableGrid(html))
       throw api.coded("timetable-shape", "CUIMS answered without its timetable. Try again later.");
     if (!slots.length && !/\bno\s+(?:data|records?|classes|timetable)\b/i.test(api.stripTags(html)) && !/<th\b[^>]*>[\s\S]*?(?:mon|tue|wed|thu|fri|sat|sun)/i.test(html))
       throw api.coded("timetable-shape", "Could not read the timetable. Try again later.");
