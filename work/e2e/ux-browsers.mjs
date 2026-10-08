@@ -192,6 +192,7 @@ try {
     await page.waitForFunction(() => getComputedStyle(document.querySelector("#feedback-toast")).display === "none");
     report.checks.push("changed text discovers feedback in its updated subtree and reopening stays suppressed");
   }
+  await settle();
   await command({ reset: true });
   for (let i = 0; i < 5; i++) { await command({ repaint: "#fixture-bulk" }); await settle(); }
   const metrics = await command({});
