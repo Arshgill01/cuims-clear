@@ -217,12 +217,22 @@
 
   function tidyTimetable() {
     const grid = document.getElementById("grdMain") || document.getElementById("ContentPlaceHolder1_gvMyTimeTable");
-    if (!grid || !/frmMyTimeTable/i.test(location.pathname)) return;
+    if (!/frmMyTimeTable/i.test(location.pathname)) return;
+    if (!grid) {
+      document.querySelector(".cc-tt")?.remove();
+      clearTimeout(clockTimer);
+      return;
+    }
     const previous = grid.previousElementSibling?.classList.contains("cc-tt") ? grid.previousElementSibling : null;
     const signature = JSON.stringify([grid.textContent, courseTitles().table?.textContent || ""]);
     if (previous && previous.dataset.source === signature) return;
     const built = buildTimetable(grid);
-    if (!built) return;
+    if (!built) {
+      previous?.remove();
+      grid.classList.remove("cc-tt-original");
+      clearTimeout(clockTimer);
+      return;
+    }
     built.dataset.source = signature;
     grid.classList.add("cc-tt-original");
     if (previous) {
@@ -366,7 +376,12 @@
 
   function tidyDatesheet() {
     const table = document.querySelector('table[id$="gvStudentDateSheet"]');
-    if (!table || table.rows.length < 2) return;
+    let strip = table?.closest('div[id$="upPnale"]')?.previousElementSibling;
+    if (!strip?.classList.contains("cc-ds")) strip = document.querySelector(".cc-ds");
+    if (!table || table.rows.length < 2) {
+      strip?.remove();
+      return;
+    }
     const headers = [...table.rows[0].cells].map((cell) => clean(cell.textContent));
     const col = (pattern) => headers.findIndex((name) => pattern.test(name));
     const at = { type: col(/^datesheettype$/i), code: col(/^course\s*code$/i), name: col(/^course\s*name$/i), date: col(/^exam\s*date$/i), time: col(/^exam\s*timing$/i), venue: col(/^exam\s*venue$/i), mode: col(/^mode/i) };
@@ -414,8 +429,6 @@
     const signature = JSON.stringify([now.key, exams.map((exam) => [
       exam.key, exam.start, exam.code, exam.name, exam.type, exam.venue, exam.mode, exam.link?.href || "",
     ])]);
-    let strip = table.closest('div[id$="upPnale"]')?.previousElementSibling;
-    if (!strip?.classList.contains("cc-ds")) strip = document.querySelector(".cc-ds");
     if (strip?.dataset.signature === signature) return;
     const fresh = el("section", "cc-ds");
     fresh.dataset.signature = signature;
@@ -582,7 +595,7 @@
     if (!records.some((record) => {
       const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
       if (ours(target)) return false;
-      return record.type !== "childList" || [...record.addedNodes].some((node) => !ours(node));
+      return record.type !== "childList" || [...record.addedNodes, ...record.removedNodes].some((node) => !ours(node));
     })) return;
     queued = true;
     queueMicrotask(run);

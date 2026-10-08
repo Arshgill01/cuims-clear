@@ -291,6 +291,15 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
     });
     await page.waitForFunction(() => document.querySelector(".cc-ds-link")?.href === "https://example.test/live-correction"
       && document.querySelector(".cc-class.is-now .cc-class-meta")?.textContent.includes("E1-101"));
+
+    await page.evaluate(() => {
+      const grid = document.getElementById("grdMain");
+      for (const row of [...grid.rows].slice(1)) row.remove();
+      const exams = document.querySelector('table[id$="gvStudentDateSheet"]');
+      for (const row of [...exams.rows].slice(1)) row.remove();
+    });
+    await page.waitForFunction(() => !document.querySelector(".cc-tt, .cc-ds"));
+    assert.equal(await page.$eval("#grdMain", (grid) => getComputedStyle(grid).display), "table");
   } finally {
     await browser.close();
   }
