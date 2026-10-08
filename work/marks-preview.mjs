@@ -1,6 +1,6 @@
 // Local-only review harness: real Firefox popup/background code, fixture CUIMS.
 // No credentials, cookies or requests reach the university from this preview.
-import { TIMETABLE_HTML } from "../tests/fake-cuims.mjs";
+
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,11 +8,12 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = path.join(root, "outputs/cuims-clear-firefox");
 const fixture = fs.readFileSync(path.join(root, "tests/fixtures/marks/regular.html"), "utf8");
+const TIMETABLE_HTML = fs.readFileSync(path.join(root, "tests/fixtures/timetable/current.html"), "utf8");
 const stub = `(() => {
 const listeners = [], data = JSON.parse(sessionStorage.getItem('marks-preview-data') || '{"uid":"24BCS00000","password":"fixture-only","popupView":"marks"}');
 window.marksPreview = {requests:Number(sessionStorage.getItem('marks-preview-requests')||0),data};
 function save(){sessionStorage.setItem('marks-preview-data',JSON.stringify(data));}
-function counter(){const node=document.getElementById('preview-check');if(node)node.textContent='Fixture preview · marks requests: '+marksPreview.requests;}
+function counter(){const node=document.getElementById('preview-check');if(node)node.textContent='Fixture preview · extension requests: '+marksPreview.requests;}
 document.addEventListener('DOMContentLoaded',counter);
 function pick(defaults) { return Object.fromEntries(Object.entries(defaults).map(([key,value])=>[key,key in data?data[key]:value])); }
 window.chrome = {
@@ -20,7 +21,7 @@ window.chrome = {
  runtime:{getManifest:()=>({version:'0.10.0'}),getURL:p=>p,lastError:null,sendMessage(message,callback){ if(message.type==='cuims-clear:marks-read') previewDaemon.fetchRegularMarks({force:message.refresh===true}).then(callback); else if(message.type==='cuims-clear:timetable-read') previewDaemon.fetchCachedTimetable().then(callback); else callback?.({error:'Preview only'}); }},
  permissions:{contains(_options,callback){callback?.(true);return Promise.resolve(true);}},tabs:{query:async()=>[]}
 };
-window.previewDaemon = CuimsAttendance.createDaemon({storage:chrome.storage.local,fetchImpl:async(target,options)=>{
+window.previewDaemon = CuimsAttendance.createDaemon({storage:chrome.storage.local,loginTabPresent:async()=>false,fetchImpl:async(target,options)=>{
  marksPreview.requests++;sessionStorage.setItem('marks-preview-requests',String(marksPreview.requests));counter(); const old=options.body && new URLSearchParams(options.body).get(CuimsMarks.SESSION_NAME)==='25262';
  const html=new URL(target).pathname === '/frmMyTimeTable.aspx' ? ${JSON.stringify('<h6>24BCS00000</h6>'+TIMETABLE_HTML)} : old?${JSON.stringify(fixture)}.replace('selected="selected" value="26271"','value="26271"').replace('value="25262"','selected="selected" value="25262"'):${JSON.stringify(fixture)};
  return {url:target,status:200,text:async()=>html};

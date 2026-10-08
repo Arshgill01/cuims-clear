@@ -1467,11 +1467,28 @@ input[role="switch"]:disabled {
   }
 }
 
-.timetable-day { margin-bottom: 16px; }
-.timetable-day h2 { margin: 0 0 8px; font-size: 14px; color: var(--ink); }
-.timetable-day ol { list-style: none; padding: 0; margin: 0; }
-.timetable-day li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
-.timetable-day time, .timetable-day strong, .timetable-day small { display: block; }
-.timetable-day time { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-.timetable-day strong { font-size: 13px; }
-.timetable-day small, .timetable-day p { font-size: 11px; color: var(--muted); margin: 5px 0 0; overflow-wrap: anywhere; }
+
+.timetable-days { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 0 0 12px; background: var(--canvas); }
+.timetable-day-button { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 10px 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; line-height: 1.2; cursor: pointer; }
+.timetable-day-button span { font-size: 11px; font-weight: 600; }
+.timetable-day-button small { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--surface-2); color: var(--muted); font-size: 10px; }
+.timetable-day-button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-line); }
+.timetable-day-button[aria-selected="true"] small { background: var(--accent-hover); color: var(--accent-ink); }
+.timetable-day-button:hover { border-color: var(--line-strong); }
+.timetable-day-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.timetable-timeline { list-style: none; padding: 0; margin: 0; }
+.timetable-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 10px; margin-bottom: 12px; }
+.timetable-time { border-right: 1px solid var(--line); padding: 12px 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.timetable-time time, .timetable-time span { display: block; white-space: nowrap; }
+.timetable-time time { color: var(--ink); font-weight: 600; }
+.timetable-class { display: flex; min-width: 0; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.timetable-class-title { flex: 1; min-width: 0; }
+.timetable-class-title .timetable-teacher { margin-top: 2px; }
+.timetable-class-head { display: flex; align-items: flex-start; gap: 8px; }
+.timetable-class h3 { flex: 1; min-width: 0; margin: 0; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.timetable-kind { flex: 0 0 auto; border-radius: 20px; padding: 4px 6px; background: var(--surface-2); color: var(--muted); font-size: 9px; font-weight: 600; }
+.timetable-teacher, .timetable-other { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.timetable-class-meta { display: flex; flex-wrap: nowrap; gap: 4px; margin-top: 4px; overflow-x: auto; scrollbar-width: thin; }
+.timetable-class-meta span { flex: 0 0 auto; white-space: nowrap; padding: 4px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.timetable-duration { font-variant-numeric: tabular-nums; }
+.timetable-empty { padding: 12px 0; }

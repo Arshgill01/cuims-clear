@@ -28,7 +28,9 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
   **Refresh** fetches the latest current marks from CUIMS on demand, with a
   30-second gap between refreshes;
 - shows a **Timetable** tab sorted Monday–Sunday and by class start time, with
-  course, teacher and room details. One successful read is cached for the saved UID;
+  course, teacher and room details. Weekday buttons show one day at a time,
+  defaulting to today in India time; class times stay in a column on the left.
+  One successful read is cached for the saved UID;
   reopening the popup does not fetch it again. Neither Marks nor Timetable needs
   an open CUIMS tab: an uncached read checks the session and signs in once with
   the saved login if needed;

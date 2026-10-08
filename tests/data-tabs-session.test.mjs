@@ -88,7 +88,7 @@ test("the actual timetable grid parses all days and sorts morning classes before
   assert.equal(slots.filter(slot => slot.weekday === "mon").length, 7);
   assert.equal(slots[0].title, "Soft Skills-III");
   assert.match(slots[0].rawLabel, /Block-C1-208-A/);
-  const html = s.c.CuimsTimetableView.render(result.cache);
+  const html = s.c.CuimsTimetableView.render(result.cache, {}, { day: "mon" });
   assert.ok(html.indexOf("9:30 AM") < html.indexOf("1:40 PM"));
   assert.match(html, /Sunday/);
 });

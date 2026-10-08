@@ -86,6 +86,7 @@ let marksState = { cache: null, status: null };
 let timetableState = { cache: null, status: null };
 let timetablePending = false;
 let timetableSequence = 0;
+let timetableDay = "";
 let marksPending = false;
 let marksReadSequence = 0;
 // The student's goal is a preference; the skip plan lasts one campus day.
@@ -406,7 +407,7 @@ function paintTimetable() {
   let state = timetableState.status?.uid && timetableState.status.uid !== savedLogin.uid ? null : timetableState.status;
   if (state?.working && !timetablePending && Date.now() - Number(state.at || 0) > 2 * 60 * 1000)
     state = { error: "The previous read stopped. Try again." };
-  views.timetable.innerHTML = CuimsTimetableView.render(cache, state || {});
+  views.timetable.innerHTML = CuimsTimetableView.render(cache, state || {}, { day: timetableDay });
 }
 function fetchTimetable() {
   if (timetablePending) return;
@@ -427,6 +428,27 @@ function fetchTimetable() {
 }
 views.timetable.addEventListener("click", event => {
   if (event.target.closest("#fetch-timetable")) fetchTimetable();
+  const day = event.target.closest("[data-timetable-day]")?.dataset.timetableDay;
+  if (day && CuimsTimetable.DAYS.includes(day)) {
+    timetableDay = day;
+    paintTimetable();
+    viewport.scrollTop = 0;
+    views.timetable.querySelector('[data-timetable-day="' + day + '"]')?.focus({ preventScroll: true });
+  }
+});
+
+views.timetable.addEventListener("keydown", event => {
+  const day = event.target.closest("[data-timetable-day]")?.dataset.timetableDay;
+  const index = CuimsTimetable.DAYS.indexOf(day);
+  if (index < 0) return;
+  let next;
+  if (event.key === "ArrowRight") next = (index + 1) % 7;
+  else if (event.key === "ArrowLeft") next = (index + 6) % 7;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = 6;
+  else return;
+  event.preventDefault();
+  views.timetable.querySelector('[data-timetable-day="' + CuimsTimetable.DAYS[next] + '"]')?.click();
 });
 
 function showView(name, { remember = true } = {}) {

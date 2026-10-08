@@ -74,7 +74,7 @@ test("timetable displays Monday first and sorts times numerically with 12-hour l
     { weekday: "mon", start: 780, end: 820, shortCode: "Late", title: "Later", kind: "P" },
     { weekday: "mon", start: 580, end: 620, shortCode: "Early", title: "<Morning>", kind: "L", rawLabel: "By Teacher at 1-2-C <script>" },
   ];
-  const html = c.CuimsTimetableView.render({ slots });
+  const html = c.CuimsTimetableView.render({ slots }, {}, { day: "mon" });
   assert.ok(html.indexOf("Monday") < html.indexOf("Tuesday"));
   assert.ok(html.indexOf("Early") < html.indexOf("Late"));
   assert.match(html, /9:40 AM/);
@@ -88,4 +88,32 @@ test("marks use 12-hour time and every subject starts collapsed", () => {
   const html = c.CuimsMarksView.render({ currentSession: "1", snapshots: { "1": { fetchedAt: "2026-10-08T10:00:00Z", subjects: [{ title: "Subject", exams: [] }] } } });
   assert.match(html, /3:30\s*pm/i);
   assert.doesNotMatch(html, /<details[^>]*\bopen\b/);
+});
+
+test("weekday selection defaults to the campus date, including the India midnight boundary", () => {
+  assert.equal(c.CuimsTimetableView.today(new Date("2026-10-08T18:29:00Z")), "thu");
+  assert.equal(c.CuimsTimetableView.today(new Date("2026-10-08T18:30:00Z")), "fri");
+  const html = c.CuimsTimetableView.render({ slots: [] }, {}, { now: new Date("2026-10-08T18:30:00Z") });
+  assert.match(html, /data-timetable-day="fri"[^>]*aria-selected="true"/);
+  assert.match(html, /No classes scheduled for Friday/);
+  assert.equal((html.match(/aria-selected="true"/g) || []).length, 1);
+});
+test("a selected weekday shows only its classes and separates teacher, room, group and class type", () => {
+  const html = c.CuimsTimetableView.render({ slots: [
+    { weekday: "thu", start: 570, end: 620, title: "Aptitude-III", shortCode: "24TDT-312", kind: "T", rawLabel: "24TDT-312:T::GP-A: By Saurabh(E20046) at Block-B1-302" },
+    { weekday: "mon", start: 570, end: 620, title: "Monday subject", shortCode: "M", kind: "L" },
+  ] }, {}, { day: "thu" });
+  assert.match(html, /Aptitude-III/);
+  assert.match(html, /timetable-teacher">Saurabh\(E20046\)/);
+  assert.match(html, /timetable-kind">Tutorial/);
+  assert.match(html, /<span>Block-B1-302<\/span>/);
+  assert.match(html, /<span>GP-A<\/span>/);
+  assert.doesNotMatch(html, /Monday subject|24TDT-312:T::/);
+  assert.match(html, /timetable-time/);
+});
+test("days without classes remain selectable instead of showing another day's schedule", () => {
+  const html = c.CuimsTimetableView.render({ slots: [{ weekday: "mon", start: 540, end: 600, title: "Class", shortCode: "C", kind: "L" }] }, {}, { day: "sat" });
+  assert.match(html, /No classes scheduled for Saturday/);
+  assert.equal((html.match(/data-timetable-day=/g) || []).length, 7);
+  assert.doesNotMatch(html, /<article/);
 });
