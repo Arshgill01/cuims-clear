@@ -101,7 +101,11 @@ design work made no requests to CUIMS. The final check ran on the live portal
 with CUIMS's own scripts: timetable, attendance, the View overlay and marks,
 no page errors.
 
+The Firefox build was also replayed in Firefox 157 (timetable, datesheet,
+profile); the live portal run was Chrome only.
+
 ```sh
-npm test                                       # unit tests; the browser test skips
-CHROME_BIN=/path/to/chrome npm test            # also the tidy layer in real Chrome
+npm test                                       # unit tests; the browser tests skip
+CHROME_BIN=/path/to/chrome FIREFOX_BIN=/path/to/firefox npm test
+                                               # also the tidy layer in both browsers
 ```
