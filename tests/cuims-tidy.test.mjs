@@ -46,8 +46,25 @@ test("both timetable markups count as a timetable, so no extra postback is sent"
   assert.equal(A.hasTimetable(NEW_TIMETABLE), true);
   assert.equal(A.hasTimetable('<table id="ContentPlaceHolder1_gvMyTimeTable"><tr><td>x</td></tr></table>'), true);
   assert.equal(A.hasTimetable("<p>Session expired</p>"), false);
-  assert.match(read("attendance-client.js"), /if \(!api\.hasTimetable\(page\.html\)\)/);
 });
+
+for (const build of ["chrome", "firefox"]) {
+  test(`${build}: the new timetable needs one GET and no postback`, async () => {
+    const sandbox = vm.createContext({ URL });
+    for (const name of ["attendance-parse.js", "attendance-model.js", "attendance-client.js"]) {
+      vm.runInContext(readFileSync(new URL(`../outputs/cuims-clear-${build}/${name}`, import.meta.url), "utf8"), sandbox);
+    }
+    const calls = [];
+    const slots = await sandbox.CuimsAttendance.readTimetable(async (url, options) => {
+      calls.push({ url, options });
+      return { url, html: NEW_TIMETABLE };
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].options.method, undefined);
+    assert.equal(calls[0].options.manual, true);
+    assert.equal(slots.length, 4);
+  });
+}
 
 test("both manifests load the tidy layer on CUIMS, after the model it uses", () => {
   for (const build of ["firefox", "chrome"]) {
@@ -217,6 +234,19 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
     }));
     assert.deepEqual(off, { tidy: false, original: "table", view: "none", chip: "none" });
 
+    // An UpdatePanel can correct exam details without changing its date,
+    // start time or course code. The cards must use the replacement data.
+    await page.evaluate(() => {
+      const table = document.querySelector('table[id$="gvStudentDateSheet"]');
+      const replacement = table.cloneNode(true);
+      replacement.rows[1].cells[3].textContent = "UPDATED COURSE NAME";
+      replacement.rows[1].cells[8].textContent = "C2-101";
+      replacement.rows[2].cells[1].textContent = "MST-3";
+      replacement.rows[2].cells[8].querySelector("a").href = "https://example.test/corrected-exam";
+      replacement.rows[2].cells[9].textContent = "Online";
+      table.replaceWith(replacement);
+    });
+
     // Back on: the view is rebuilt once, with Now current again.
     await page.evaluate(() => globalThis.__flip(true));
     const back = await page.evaluate(() => ({
@@ -225,6 +255,42 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
       now: document.querySelectorAll(".cc-class.is-now").length,
     }));
     assert.deepEqual(back, { tidy: true, views: 1, now: 1 });
+    const corrected = await page.evaluate(() => [...document.querySelectorAll(".cc-ds-exam")].map((item) => ({
+      name: item.querySelector(".cc-ds-name").textContent,
+      meta: item.querySelector(".cc-ds-meta").textContent,
+      href: item.querySelector(".cc-ds-link")?.href || "",
+    })));
+    assert.equal(corrected[1].href, "https://example.test/corrected-exam");
+    assert.equal(corrected[1].meta, "MST\u20113 · 3:00 PM · Online");
+    assert.equal(corrected[2].name, "Updated Course Name");
+    assert.match(corrected[2].meta, /C2\u2011101/);
+
+    // CUIMS can edit an existing grid instead of replacing the table.
+    await page.evaluate(() => {
+      const cell = document.getElementById("grdMain").rows[1].cells[3];
+      const text = document.createElement("span");
+      text.textContent = cell.textContent.replace("Block-C1-307", "Block-D2-204");
+      cell.replaceChildren(text);
+    });
+    await page.waitForFunction(() => document.querySelector(".cc-class.is-now .cc-class-meta")?.textContent.includes("D2-204"));
+    assert.match(await page.$eval(".cc-tt-now", (line) => line.textContent), /D2-204/);
+
+    await page.evaluate(() => {
+      const table = document.querySelector('table[id$="gvStudentDateSheet"]');
+      const replacement = table.cloneNode(true);
+      replacement.rows[2].cells[8].querySelector("a").href = "https://example.test/latest-exam";
+      table.replaceWith(replacement);
+    });
+    await page.waitForFunction(() => document.querySelector(".cc-ds-link")?.href === "https://example.test/latest-exam");
+
+    await page.evaluate(() => {
+      const table = document.querySelector('table[id$="gvStudentDateSheet"]');
+      table.rows[2].cells[8].querySelector("a").href = "https://example.test/live-correction";
+      document.getElementById("grdMain").rows[1].cells[3].querySelector("span").firstChild.nodeValue =
+        "24CSP-305:P::GP-A: By Asha Rao(E10001) at Block-E1-101";
+    });
+    await page.waitForFunction(() => document.querySelector(".cc-ds-link")?.href === "https://example.test/live-correction"
+      && document.querySelector(".cc-class.is-now .cc-class-meta")?.textContent.includes("E1-101"));
   } finally {
     await browser.close();
   }

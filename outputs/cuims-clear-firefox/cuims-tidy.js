@@ -219,11 +219,11 @@
     const grid = document.getElementById("grdMain") || document.getElementById("ContentPlaceHolder1_gvMyTimeTable");
     if (!grid || !/frmMyTimeTable/i.test(location.pathname)) return;
     const previous = grid.previousElementSibling?.classList.contains("cc-tt") ? grid.previousElementSibling : null;
-    if (previous && previous.dataset.source === grid.dataset.ccSource) return;
+    const signature = JSON.stringify([grid.textContent, courseTitles().table?.textContent || ""]);
+    if (previous && previous.dataset.source === signature) return;
     const built = buildTimetable(grid);
     if (!built) return;
-    grid.dataset.ccSource = grid.dataset.ccSource || String(Date.now());
-    built.dataset.source = grid.dataset.ccSource;
+    built.dataset.source = signature;
     grid.classList.add("cc-tt-original");
     if (previous) {
       // A rebuild (the minute clock) keeps wherever the student scrolled.
@@ -411,7 +411,9 @@
       });
     }
 
-    const signature = exams.map((exam) => `${exam.key}${exam.start}${exam.code}`).join("|") + now.key;
+    const signature = JSON.stringify([now.key, exams.map((exam) => [
+      exam.key, exam.start, exam.code, exam.name, exam.type, exam.venue, exam.mode, exam.link?.href || "",
+    ])]);
     let strip = table.closest('div[id$="upPnale"]')?.previousElementSibling;
     if (!strip?.classList.contains("cc-ds")) strip = document.querySelector(".cc-ds");
     if (strip?.dataset.signature === signature) return;
@@ -574,10 +576,14 @@
   // UpdatePanels and CUIMS's own scripts (the attendance table, the marks
   // accordion) build these after load, so look again whenever nodes arrive.
   // Our own insertions are ignored, so this never feeds itself.
-  const ours = (node) => node.nodeType === 1 && (node.classList.contains("cc-tt") || node.classList.contains("cc-score") || node.classList.contains("cc-code") || node.classList.contains("cc-tally") || node.classList.contains("cc-ds"));
+  const ours = (node) => node?.nodeType === 1 && node.closest(".cc-tt, .cc-score, .cc-code, .cc-tally, .cc-ds");
   const observer = new MutationObserver((records) => {
     if (queued) return;
-    if (!records.some((record) => [...record.addedNodes].some((node) => node.nodeType === 1 && !ours(node)))) return;
+    if (!records.some((record) => {
+      const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      if (ours(target)) return false;
+      return record.type !== "childList" || [...record.addedNodes].some((node) => !ours(node));
+    })) return;
     queued = true;
     queueMicrotask(run);
   });
@@ -596,7 +602,7 @@
   function start() {
     if (enabled) revealEarly();
     run();
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, characterData: true, attributes: true, attributeFilter: ["href"], subtree: true });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
