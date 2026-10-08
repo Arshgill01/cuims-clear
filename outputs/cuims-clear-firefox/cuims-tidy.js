@@ -216,9 +216,15 @@
     grid.dataset.ccSource = grid.dataset.ccSource || String(Date.now());
     built.dataset.source = grid.dataset.ccSource;
     grid.classList.add("cc-tt-original");
-    if (previous) previous.replaceWith(built);
-    else grid.before(built);
-    revealToday(built);
+    if (previous) {
+      // A rebuild (the minute clock) keeps wherever the student scrolled.
+      const scrolled = previous.querySelector(".cc-tt-scroll")?.scrollLeft || 0;
+      previous.replaceWith(built);
+      built.querySelector(".cc-tt-scroll").scrollLeft = scrolled;
+    } else {
+      grid.before(built);
+      revealToday(built);
+    }
     scheduleClock();
   }
 
@@ -368,8 +374,12 @@
   function setEnabled(value) {
     enabled = value !== false;
     root.classList.toggle("cc-tidy", enabled);
-    if (enabled) run();
-    else clearTimeout(clockTimer);
+    clearTimeout(clockTimer);
+    if (!enabled) return;
+    // Back on after a while: rebuild, so Now and Next are current again.
+    const view = document.querySelector(".cc-tt");
+    if (view) delete view.dataset.source;
+    run();
   }
 
   function start() {

@@ -173,6 +173,15 @@ browserTest("the tidy layer orders the week, marks today and now, totals marks, 
       chip: getComputedStyle(document.querySelector(".cc-score")).display,
     }));
     assert.deepEqual(off, { tidy: false, original: "table", view: "none", chip: "none" });
+
+    // Back on: the view is rebuilt once, with Now current again.
+    await page.evaluate(() => globalThis.__flip(true));
+    const back = await page.evaluate(() => ({
+      tidy: document.documentElement.classList.contains("cc-tidy"),
+      views: document.querySelectorAll(".cc-tt").length,
+      now: document.querySelectorAll(".cc-class.is-now").length,
+    }));
+    assert.deepEqual(back, { tidy: true, views: 1, now: 1 });
   } finally {
     await browser.close();
   }
