@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.9.0",
+  "version": "0.9.5",
   "description": "Faster CUIMS login, attendance and safe-skip counts without opening the portal, and a cleaner LMS.",
   "icons": {
     "48": "icons/icon.svg",
