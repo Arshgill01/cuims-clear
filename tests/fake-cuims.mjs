@@ -89,7 +89,9 @@ export function fakeCuims({
   // `landed`: CUIMS gives a session menu rights only once the browser's
   // LandingPage step has called ShowLandingPage. Before that, every inner page
   // redirects to error.html.
-  const state = { landed, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId };
+  // `summary` is GetReport's answer; tests move its counts the way CUIMS
+  // does when a mark is posted or a leave is decided.
+  const state = { landed, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -141,7 +143,7 @@ export function fakeCuims({
     if (path.endsWith("/getreport")) {
       if (options.credentials !== "omit") state.cookiedReports += 1;
       if (!body.includes(`UID:'${state.reportId}'`)) return response(url.href, 200, { d: null });
-      return response(url.href, 200, { d: JSON.stringify(SUMMARY) });
+      return response(url.href, 200, { d: JSON.stringify(state.summary) });
     }
     if (path.endsWith("/getfullreport")) {
       const course = body.match(/course:'([^']+)'/)?.[1];

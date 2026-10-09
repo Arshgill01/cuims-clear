@@ -181,6 +181,14 @@ function stampTabLogin() {
   shareLocalStorageWrite({ tabLoginTouchAt: Date.now() });
 }
 
+// This tab loaded an inner CUIMS page (attendance, marks, leave…), which
+// CUIMS's throttle counts like the background's own. The background keeps
+// its optional page reads five minutes clear of it (attendance-daemon.js).
+function stampTabPage() {
+  if (!isTopFrame() || !/\.aspx$/i.test(location.pathname) || /^\/(studenthome|login|generatecaptcha|landingpage)\.aspx$/i.test(location.pathname)) return;
+  shareLocalStorageWrite({ tabPageAt: Date.now() });
+}
+
 function backgroundTouchedSince(at) {
   return Number(sharedLogin.bgLoginTouchAt || 0) >= Number(at || 0) && Number(sharedLogin.bgLoginTouchAt || 0) > 0;
 }
@@ -1022,15 +1030,18 @@ function scanPage() {
 }
 
 // Opening a leave page on CUIMS hands its application list to the
-// Attendance tab, so pending leave updates without another request.
-let leavePageShared = false;
+// Attendance tab, so pending leave updates without another request. Sent
+// again when the list's text changes in place (an application submitted or
+// cancelled); the theme's repaints change only its markup.
+let leavePageShared = null;
 function shareLeavePage() {
-  if (leavePageShared || !isTopFrame()) return;
+  if (!isTopFrame()) return;
   const which = /frmStudentApplyDutyLeave\.aspx$/i.test(location.pathname) ? "dl" : /frmStudentMedicalLeaveApply\.aspx$/i.test(location.pathname) ? "ml" : "";
-  if (!which || !document.getElementById(which === "dl" ? "gvHistory" : "gvMlHistory")) return;
-  leavePageShared = true;
+  const grid = which && document.getElementById(which === "dl" ? "gvHistory" : "gvMlHistory");
+  if (!grid || grid.textContent === leavePageShared) return;
+  leavePageShared = grid.textContent;
   try {
-    chrome.runtime.sendMessage({ type: "cuims-clear:leave-page", which, html: document.getElementById(which === "dl" ? "gvHistory" : "gvMlHistory").outerHTML });
+    chrome.runtime.sendMessage({ type: "cuims-clear:leave-page", which, html: grid.outerHTML });
   } catch {}
 }
 
@@ -1188,10 +1199,12 @@ if (location.pathname.toLowerCase().endsWith("/landingpage.aspx")) {
   location.replace(HOME_URL);
 } else if (document.documentElement) {
   stampTabLogin();
+  stampTabPage();
   startExtension();
 } else {
   document.addEventListener("DOMContentLoaded", () => {
     stampTabLogin();
+    stampTabPage();
     startExtension();
   }, { once: true });
 }

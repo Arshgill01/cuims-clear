@@ -57,14 +57,22 @@ remain Chrome-specific.
 
 ## Conservative CUIMS reads
 
-Background attendance, session checks and LMS SSO share a rolling budget of
-25 explicit requests per 10 minutes. Manual attendance refreshes wait at least
-60 seconds. Each permitted attendance read also fetches duty-leave status,
-including the first read, so opening the CUIMS leave page is unnecessary.
-An expired duty-leave session uses the existing guarded background sign-in;
-medical-leave reads remain infrequent. These are extension safeguards, not
-CUIMS's published UID limits;
-portal tabs and browser-followed redirects can add their own traffic.
+CUIMS throttles an account for 10+ minutes after a few of its inner pages
+(attendance, timetable, duty and medical leave) load close together; the
+attendance report calls and StudentHome do not count. So a Refresh is
+normally the report calls alone, and loads at most one inner page: the
+attendance page only when its report ids are missing, otherwise the timetable
+once a day or a leave page every three hours, and only when neither the
+extension nor a CUIMS tab has loaded an inner page in the last five minutes.
+A leave read never signs in. A duty-leave approval still shows on the next
+Refresh, from the report calls (the subject's counts move and the absent mark
+becomes a leave mark); a refusal shows when the leave page is next read.
+Opening a leave page on CUIMS updates the list for free.
+
+Background attendance, session checks and LMS SSO also share a rolling budget
+of 25 requests per 10 minutes, and manual refreshes wait at least 60 seconds.
+These are extension safeguards, not CUIMS's published limits; portal tabs and
+browser-followed redirects add their own traffic.
 
 HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
 five minutes, increasing after repeated failures and honoring a longer

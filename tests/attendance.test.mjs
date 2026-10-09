@@ -323,7 +323,8 @@ test("day-by-day marks are only requested for subjects whose class today has sta
   // One for today's started class; the other two only for the Forecast
   // tab's history, once.
   assert.equal(marksCalls(), 3);
-  bg.advance(60_000);
+  // The timetable waits five minutes after the attendance page.
+  bg.advance(5 * 60_000);
   const result = await bg.refresh("manual");
   assert.equal(marksCalls(), 3, "nothing moved, nothing re-read");
   const view = A.buildAnalytics(result.snapshot, new Date(MONDAY_11));
@@ -353,20 +354,20 @@ test("the popup view escapes CUIMS text and keeps each prediction to one short l
   for (const row of view.subjects) assert.ok(row.line.length <= 30, row.line);
 });
 
-test("after the first read, a refresh reads GetReport and duty leave without reopening attendance", async () => {
+test("after the first read, a refresh is one GetReport: no inner page until one is due", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
   await bg.refresh("manual");
-  bg.advance(60_000);
-  await bg.refresh("manual"); // picks up the deferred timetable
-  bg.advance(60_000);
-  await bg.refresh("manual"); // deferred medical leave check
+  for (let run = 0; run < 3; run += 1) {
+    bg.advance(5 * 60_000);
+    await bg.refresh("manual"); // timetable, then duty leave, then medical leave
+  }
   const before = server.state.requests.length;
   bg.advance(60_000);
   const result = await bg.refresh("manual");
   assert.equal(result.error, undefined);
-  assert.deepEqual(server.state.requests.slice(before), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport", "GET /frmStudentApplyDutyLeave.aspx"]);
+  assert.deepEqual(server.state.requests.slice(before), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport"]);
   assert.equal(server.state.attendanceLoads, 1);
 });
 
@@ -432,13 +433,11 @@ test("a success clears the backoff", async () => {
 
 test("a successful duty-leave read establishes that the CUIMS session is alive", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved();
-  const bg = daemon(server, storage);
-  await bg.refresh("manual");
-  storage.data.sessionAlive = false;
-  bg.advance(60_000);
-  await bg.refresh("manual");
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  await daemon(server, storage).refresh("manual");
+  assert.equal(server.state.leavePageLoads, 1);
   assert.equal(storage.data.sessionAlive, true);
+  assert.equal(storage.data.sessionCheckedAt, MONDAY_11);
 });
 
 // ---- the CUIMS tab defers to the background ----
@@ -489,6 +488,29 @@ test("landing on StudentHome tells the background the session is alive, once", (
   const marks = page.writes.filter((values) => "sessionAlive" in values);
   assert.equal(marks.length, 1);
   assert.equal(marks[0].sessionAlive, true);
+});
+
+test("an open leave page shares its list once, and again only when the list itself changes", () => {
+  const grid = { textContent: "11 Pending", outerHTML: "<table id=\"gvHistory\"><tr><td>11</td><td>Pending</td></tr></table>" };
+  const sent = [];
+  const context = vm.createContext({
+    document: { documentElement: null, body: null, addEventListener() {}, getElementById: (id) => (id === "gvHistory" ? grid : null), querySelector() { return null; }, querySelectorAll() { return []; } },
+    location: { pathname: "/frmStudentApplyDutyLeave.aspx" },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    chrome: { storage: { onChanged: { addListener() {} }, local: { set() {} } }, runtime: { sendMessage: (message) => sent.push(message) } },
+    Event: class {},
+    console,
+  });
+  vm.runInContext(contentSource("firefox"), context);
+  vm.runInContext("shareLeavePage(); shareLeavePage();", context);
+  grid.outerHTML = grid.outerHTML.replace("<table", "<table style=\"color:red\""); // a theme repaint
+  vm.runInContext("shareLeavePage();", context);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].which, "dl");
+  grid.textContent = "11 Pending 12 Pending";
+  vm.runInContext("shareLeavePage();", context);
+  assert.equal(sent.length, 2);
 });
 
 // ---- the CUIMS tab owns the session while it shows a login form ----
@@ -673,14 +695,19 @@ test("CUIMS's throttle page is waited out: no sign-in, no retries, last read kep
   assert.doesNotMatch(again.error, /Next try in \d+ min\. Next try/);
 });
 
-test("the first read skips the timetable, and the next one fetches it", async () => {
+test("the first read skips the timetable, and it follows five minutes after the attendance page", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
+  const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
   await bg.refresh("manual");
-  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 0);
+  assert.equal(timetableLoads(), 0);
   bg.advance(60_000);
   await bg.refresh("manual");
+  assert.equal(timetableLoads(), 0, "a minute after an inner page is too soon");
+  bg.advance(4 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(timetableLoads(), 1);
   assert.ok(storage.data.attendanceTimetable.slots.length > 0);
 });
 
@@ -710,15 +737,30 @@ test("opening CUIMS after a background sign-in hands the tab a finished session"
   assert.equal(server.state.landed, true);
 });
 
-test("an expired session with cached report ids signs in once to read duty leave automatically", async () => {
+test("an expired session never signs in for leave: attendance reads, leave waits for a live session", async () => {
   const server = fakeCuims({ signedIn: false });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [] } });
-  const result = await daemon(server, storage).refresh("manual");
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const bg = daemon(server, storage);
+  const dutyLeaveLoads = () => server.state.requests.filter((line) => line === `GET ${A.LEAVE_PAGES.dl}`).length;
+  const result = await bg.refresh("manual");
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.snapshot.subjects.length, 3);
-  assert.ok(result.snapshot.leaves.checkedAt);
-  assert.equal(server.state.loginPosts, 1);
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads + server.state.captchaReads, 0);
   assert.equal(server.state.cookiedReports, 0, "report calls remain anonymous");
+  assert.equal(dutyLeaveLoads(), 1);
+  assert.equal(storage.data.sessionAlive, false);
+  // Known signed out: no more leave pages, however long it has been.
+  bg.advance(4 * 60 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(dutyLeaveLoads(), 1);
+  // A CUIMS tab lands on StudentHome: the next Refresh reads it.
+  server.state.signedIn = true;
+  Object.assign(storage.data, { sessionAlive: true, sessionCheckedAt: MONDAY_11 + 4 * 60 * 60_000 });
+  bg.advance(5 * 60_000);
+  const next = await bg.refresh("manual");
+  assert.equal(dutyLeaveLoads(), 2);
+  assert.ok(next.snapshot.leaves.checkedAt);
+  assert.equal(server.state.loginPosts, 0);
 });
 
 // ---- nothing runs on a timer ----
@@ -821,42 +863,90 @@ test("a pending duty leave is matched to the absent class it covers, and shows w
   assert.ok(view.overall.ifApproved > view.overall.percent);
 });
 
-test("duty leave is fetched on the first attendance read and every permitted refresh, while medical leave stays infrequent", async () => {
+test("a Refresh loads at most one inner page, five minutes apart, and each leave page every three hours", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
+  const inner = () => server.state.requests.filter((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`));
   const count = (path) => server.state.requests.filter((line) => line === `GET ${path}`).length;
-  for (let run = 1; run <= 4; run += 1) {
+  const pageTimes = [];
+  // A press every minute for four hours.
+  for (let minute = 0; minute < 4 * 60; minute += 1) {
+    const before = inner().length;
     assert.equal((await bg.refresh("manual")).error, undefined);
-    assert.equal(count(A.LEAVE_PAGES.dl), run);
-    assert.ok(storage.data.attendanceLeaves.dlAt);
+    const loaded = inner().length - before;
+    assert.ok(loaded <= 1, `minute ${minute}: ${inner().slice(before).join(", ")}`);
+    if (loaded) pageTimes.push(minute);
     bg.advance(60_000);
   }
-  assert.equal(count(A.LEAVE_PAGES.ml), 1);
-  bg.advance(3 * 60 * 60_000);
-  await bg.refresh("manual");
-  assert.equal(count(A.LEAVE_PAGES.dl), 5);
+  for (let index = 1; index < pageTimes.length; index += 1) assert.ok(pageTimes[index] - pageTimes[index - 1] >= 5, pageTimes.join(","));
+  // Attendance page, timetable, duty leave, medical leave; leave again after three hours.
+  assert.deepEqual(pageTimes.slice(0, 4), [0, 5, 10, 15]);
+  assert.equal(server.state.attendanceLoads, 1);
+  assert.equal(count(A.LEAVE_PAGES.dl), 2);
   assert.equal(count(A.LEAVE_PAGES.ml), 2);
+  assert.equal(inner().length, 6);
 });
 
-test("a duty-leave approval is reflected by the next attendance refresh without opening its page", async () => {
+test("a duty-leave approval shows on the next Refresh from the free calls, without the leave page", async () => {
   const dutyLeaves = [{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }];
-  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK], dutyLeaves });
-  const storage = saved();
+  const leaveMark = { ...LEAVE_DAY_MARK };
+  const server = fakeCuims({ signedIn: true, marksToday: [leaveMark], dutyLeaves });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
   const bg = daemon(server, storage);
+  const marksCalls = () => server.state.requests.filter((line) => /getfullreport/i.test(line)).length;
   const first = await bg.refresh("manual");
   assert.equal(first.snapshot.leaves.pending["24CSP305"].vdl, 1);
+  // Nothing moved: the recount uses the stored class record, no request.
+  const calls = marksCalls();
+  bg.advance(60_000);
+  assert.equal((await bg.refresh("manual")).snapshot.leaves.pending["24CSP305"].vdl, 1);
+  assert.equal(marksCalls(), calls);
+  // Approved: the absent mark becomes a leave mark and the counts move.
   dutyLeaves[0].status = "Recommend and Approved";
-  const requests = server.state.requests.length;
-  bg.advance(59_000);
-  assert.equal((await bg.refresh("manual")).recent, true);
-  assert.equal(server.state.requests.length, requests);
-  bg.advance(1000);
+  leaveMark.AttendanceCode = "Absent (VDL -Departmental Society Activities)";
+  Object.assign(server.state.summary[0], { Total_Delv: "31", EligibilityDelivered: "31" });
+  bg.advance(60_000);
   const next = await bg.refresh("manual");
   assert.deepEqual({ ...next.snapshot.leaves.pending }, {});
-  const view = A.buildAnalytics(next.snapshot, new Date(MONDAY_11 + 60_000));
+  assert.equal(server.state.leavePageLoads, 1, "the duty leave page is not reloaded");
+  const view = A.buildAnalytics(next.snapshot, new Date(MONDAY_11 + 2 * 60_000));
   assert.equal(view.overall.leave.pending.dl, 0);
   assert.doesNotMatch(A.renderAttendance(view), /open Duty Leave/);
+});
+
+test("an approval on a subject with no class today is found by re-reading only that subject", async () => {
+  const dutyLeaves = [{ id: 12, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }];
+  const leaveMark = { ...LEAVE_DAY_MARK, course: "enc312" };
+  const server = fakeCuims({ signedIn: true, marksToday: [leaveMark], dutyLeaves });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const bg = daemon(server, storage);
+  const first = await bg.refresh("manual");
+  assert.equal(first.snapshot.leaves.pending["24TDT312"].vdl, 1);
+  leaveMark.AttendanceCode = "Absent (VDL -Departmental Society Activities)";
+  Object.assign(server.state.summary[2], { Total_Delv: "15", EligibilityDelivered: "15" });
+  // Our own budget leaves the Forecast tab no history reads this time.
+  storage.data.attendanceRequests = Array(12).fill(MONDAY_11 + 30_000);
+  const before = server.state.requests.length;
+  bg.advance(60_000);
+  const next = await bg.refresh("manual");
+  assert.deepEqual({ ...next.snapshot.leaves.pending }, {});
+  assert.deepEqual(server.state.requests.slice(before), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport", "POST /frmStudentCourseWiseAttendanceSummary.aspx/GetFullReport"]);
+});
+
+test("a refused duty leave stays pending until the leave page is read again, three hours on", async () => {
+  const dutyLeaves = [{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }];
+  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK], dutyLeaves });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  dutyLeaves[0].status = "Not Recommend";
+  bg.advance(60 * 60_000);
+  assert.equal((await bg.refresh("manual")).snapshot.leaves.pending["24CSP305"].vdl, 1);
+  bg.advance(2 * 60 * 60_000);
+  const later = await bg.refresh("manual");
+  assert.deepEqual({ ...later.snapshot.leaves.pending }, {});
+  assert.equal(server.state.requests.filter((line) => line === `GET ${A.LEAVE_PAGES.dl}`).length, 2);
 });
 
 test("opening a leave page on CUIMS keeps it with no request of ours; the next Refresh counts it", async () => {
@@ -1133,11 +1223,14 @@ test("automatic duty-leave reads use the remaining shared budget and never excee
   assert.equal(storage.data.attendanceRequests.length, 25);
 });
 
-test("an expired duty-leave session never signs in while CAPTCHA solving is off", async () => {
-  const server = fakeCuims({ signedIn: false });
-  const storage = saved({ autoSolveCaptcha: false, attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
-  assert.equal((await daemon(server, storage).refresh()).code, "needs-login");
-  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads, 0);
+test("an expired session never signs in for an optional page, whatever the captcha setting", async () => {
+  for (const autoSolveCaptcha of [true, false]) {
+    const server = fakeCuims({ signedIn: false });
+    const storage = saved({ autoSolveCaptcha, attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+    const result = await daemon(server, storage).refresh();
+    assert.equal(result.error, undefined, result.error);
+    assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads, 0);
+  }
 });
 
 test("an unchecked leave card asks for an attendance refresh instead of opening CUIMS", () => {
@@ -1158,14 +1251,86 @@ test("a failed medical-leave read waits three hours, and a successful retry rese
   };
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
   const bg = daemon(server, storage);
-  assert.equal((await bg.refresh()).error, undefined);
-  bg.advance(60_000);
+  assert.equal((await bg.refresh()).error, undefined); // duty leave
+  bg.advance(5 * 60_000);
+  await bg.refresh(); // medical leave fails
+  assert.equal(medicalReads, 1);
+  bg.advance(5 * 60_000);
   await bg.refresh();
   assert.equal(medicalReads, 1);
   bg.advance(3 * 60 * 60_000);
+  await bg.refresh(); // duty leave is due again first
+  assert.equal(medicalReads, 1);
+  bg.advance(5 * 60_000);
   await bg.refresh();
   assert.equal(medicalReads, 2);
+  bg.advance(5 * 60_000);
+  await bg.refresh();
+  assert.equal(medicalReads, 2);
+});
+
+// ---- inner pages: what CUIMS's throttle counts ----
+
+test("inner pages are the .aspx pages and the landing step, not StudentHome, login or report calls", () => {
+  const page = (path) => A.isInnerPage(`https://students.cuchd.in${path}`);
+  for (const path of ["/frmStudentCourseWiseAttendanceSummary.aspx?type=x", "/frmMyTimeTable.aspx", A.LEAVE_PAGES.dl, A.LEAVE_PAGES.ml, "/LandingPage.aspx/ShowLandingPage"]) assert.equal(page(path), true, path);
+  for (const path of ["/StudentHome.aspx", "/", "/Login.aspx", "/GenerateCaptcha.aspx?1", "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport", "/frmStudentCourseWiseAttendanceSummary.aspx/GetFullReport"]) assert.equal(page(path), false, path);
+});
+
+test("Refresh then Open CUIMS: the open skips its StudentHome check while a read just saw the session", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const bg = daemon(server, storage);
+  await bg.refresh("manual"); // reads duty leave, which proves the session
+  const sent = server.state.requests.length;
+  bg.advance(30_000);
+  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: true });
+  assert.equal(server.state.requests.length, sent);
+  bg.advance(2 * 60_000);
+  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: true });
+  assert.deepEqual(server.state.requests.slice(sent), ["GET /StudentHome.aspx"]);
+});
+
+test("a background sign-in for Open CUIMS holds optional pages back for five minutes", async () => {
+  const server = fakeCuims();
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  const bg = daemon(server, storage);
+  assert.equal((await bg.ensureSession()).signedIn, true);
+  const sent = server.state.requests.length;
   bg.advance(60_000);
-  await bg.refresh();
-  assert.equal(medicalReads, 2);
+  assert.equal((await bg.refresh("manual")).error, undefined);
+  assert.deepEqual(server.state.requests.slice(sent).filter((line) => !/getfullreport/i.test(line)), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport"]);
+  bg.advance(5 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
+});
+
+test("the inner-page clock survives a background restart", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  await daemon(server, storage).refresh("manual"); // timetable
+  assert.equal(storage.data.attendancePageAt, MONDAY_11);
+  const restarted = daemon(server, storage, { clock: MONDAY_11 + 2 * 60_000 });
+  const sent = server.state.requests.length;
+  await restarted.refresh("manual");
+  assert.equal(server.state.requests.slice(sent).some((line) => /DutyLeave|Medical/i.test(line)), false);
+});
+
+test("a CUIMS tab's own inner page holds the background's optional pages back for five minutes", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, tabPageAt: MONDAY_11 - 60_000 });
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  assert.equal(server.state.requests.some((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`)), false, server.state.requests.join(", "));
+  bg.advance(4 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
+});
+
+test("a CUIMS tab stamps its inner page loads, but not StudentHome, login or landing", () => {
+  for (const [pathname, stamped] of [["/frmStudentCourseWiseAttendanceSummary.aspx", true], ["/frmStudentApplyDutyLeave.aspx", true], ["/StudentHome.aspx", false], ["/Login.aspx", false], ["/", false], ["/error.html", false]]) {
+    const page = contentRuntime(pathname);
+    page.call("stampTabPage()");
+    assert.equal(page.writes.some((values) => "tabPageAt" in values), stamped, pathname);
+  }
 });

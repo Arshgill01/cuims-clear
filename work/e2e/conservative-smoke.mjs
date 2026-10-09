@@ -50,15 +50,22 @@ try {
   await worker.evaluate(() => chrome.storage.local.set({ attendanceLastAttemptAt: Date.now() - 60_000, attendanceBackoffUntil: Date.now() - 1 }));
   await page.waitForFunction(() => !document.querySelector("#fetch-attendance")?.disabled && document.querySelector(".attendance-info")?.textContent.includes("You can refresh now"));
   assert.equal(await worker.evaluate(() => globalThis.__conservativeFetches), 1, "cooldown expiry never fetches automatically");
-  // Fetch pending duty leave through the packaged popup, then approve it.
+  // Fetch pending duty leave through the packaged popup, then approve it:
+  // the approval shows from the free calls (counts move, the mark turns
+  // into a VDL mark) without reading the duty leave page again.
   await worker.evaluate(async ({ summary, pending, approved }) => {
     globalThis.__dutyApproved = false;
     globalThis.__dutyReads = 0;
     globalThis.fetch = async (target, options = {}) => {
       const url = new URL(target);
-      if (url.pathname.endsWith("/GetReport")) return new Response(JSON.stringify({ d: JSON.stringify(summary) }));
+      const approvedNow = globalThis.__dutyApproved;
+      if (url.pathname.endsWith("/GetReport")) {
+        const rows = summary.map((row) => (approvedNow && row.EncryptCode === "enc305" ? { ...row, Total_Delv: "31", EligibilityDelivered: "31" } : row));
+        return new Response(JSON.stringify({ d: JSON.stringify(rows) }));
+      }
       if (url.pathname.endsWith("/GetFullReport")) {
-        const rows = String(options.body).includes("enc305") ? [{ AttDate: "Friday, 25 Sep 2026", Timing: "2:30 - 3:20 PM", AttendanceCode: "A" }] : [];
+        const code = approvedNow ? "Absent (VDL -Departmental Society Activities)" : "A";
+        const rows = String(options.body).includes("enc305") ? [{ AttDate: "Friday, 25 Sep 2026", Timing: "2:30 - 3:20 PM", AttendanceCode: code }] : [];
         return new Response(JSON.stringify({ d: { Result: rows.length ? JSON.stringify(rows) : "No Data Found" } }));
       }
       if (url.pathname === "/frmStudentApplyDutyLeave.aspx") {
@@ -69,6 +76,7 @@ try {
     };
     await chrome.storage.local.set({
       attendanceLastAttemptAt: Date.now() - 60_000, attendanceBackoffUntil: 0, attendanceFailStreak: 0, attendanceRequests: [],
+      attendancePageAt: 0, tabPageAt: 0,
       attendanceMeta: { reportId: "fixture", sessionId: "fixture" },
       attendanceTimetable: { day: CuimsAttendance.campusParts(new Date()).key, slots: [], triedAt: Date.now() },
       attendanceLeaves: { v: CuimsAttendance.LEAVES_VERSION, mlAt: Date.now() },
@@ -92,9 +100,9 @@ try {
   await page.waitForFunction(() => !document.querySelector("#fetch-attendance")?.disabled);
   await page.click("#fetch-attendance");
   await page.waitForFunction(() => document.querySelector(".leave-pending")?.textContent.includes("No pending leave"));
-  assert.equal(await worker.evaluate(() => globalThis.__dutyReads), 2);
+  assert.equal(await worker.evaluate(() => globalThis.__dutyReads), 1, "the approval needs no second leave page read");
   assert.deepEqual(errors, []);
-  const report = { refreshReenabledWithoutNetwork: true, cachedAttendanceKept: true, retryAfterMinutes: 10, lmsRequestsDuringPause: 0, dutyLeaveFetchedWithoutPortalTab: true, dutyApprovalUpdatedOnRefresh: true, errors };
+  const report = { refreshReenabledWithoutNetwork: true, cachedAttendanceKept: true, retryAfterMinutes: 10, lmsRequestsDuringPause: 0, dutyLeaveFetchedWithoutPortalTab: true, dutyApprovalUpdatedOnRefresh: true, dutyLeavePageReads: 1, errors };
   writeFileSync(new URL("smoke.json", results), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report));
 } finally {

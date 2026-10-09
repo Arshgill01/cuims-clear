@@ -88,11 +88,25 @@
     }
   }
 
+  // The pages CUIMS's per-account throttle counts: inner .aspx pages
+  // (attendance, timetable, leave) and the landing step of a sign-in. Not
+  // StudentHome, the login flow, or the report calls (".aspx/GetReport").
+  function isInnerPage(value) {
+    try {
+      const path = new URL(value).pathname.toLowerCase();
+      if (path === LANDING_INIT.toLowerCase()) return true;
+      return /\.aspx$/.test(path) && path !== HOME.toLowerCase() && !isLoginFlow(value);
+    } catch {
+      return false;
+    }
+  }
+
   function isRedirect(response) {
     return response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400);
   }
 
-  // One request with cookies from the shared jar. `budget` meters requests.
+  // One request with cookies from the shared jar. `budget` meters requests,
+  // and is told each target so it can tell inner pages apart.
   // CUIMS keeps one captcha per session and a CUIMS tab shares this session,
   // so while `yieldToTab` says a tab is on the login page, nothing here may
   // reach the login flow: login URLs are refused and redirects are not
@@ -102,7 +116,7 @@
     return async function request(target, options = {}) {
       const yielding = Boolean(await yieldToTab?.());
       if (yielding && isLoginFlow(target)) throw coded("tab-login");
-      budget?.();
+      budget?.(target);
       const manual = yielding || options.manual || options.redirect === "manual";
       const headers = new Headers(options.headers || {});
       let response;
@@ -335,6 +349,7 @@
   api.coded = coded;
   api.isLoginUrl = isLoginUrl;
   api.isLoginFlow = isLoginFlow;
+  api.isInnerPage = isInnerPage;
   api.createRequest = createRequest;
   api.openAttendance = openAttendance;
   api.completeLanding = completeLanding;

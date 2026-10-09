@@ -37,6 +37,16 @@
   const BACKOFF_CODES = new Set(["report-shape", "portal-redirect", "portal-busy", "busy", "server", "network", "login-shape"]);
   const TIMETABLE_RETRY_MS = 60 * MINUTE;
   const LEAVE_CHECK_MS = 3 * 60 * MINUTE;
+  // CUIMS throttles the account for 10+ minutes after a few inner pages
+  // (attendance, timetable, leave) close together; StudentHome and the
+  // report calls do not count. So a Refresh loads at most one inner page,
+  // and an optional one (timetable, leave) only when neither the background
+  // nor a CUIMS tab has loaded one for five minutes. Only the attendance
+  // page, when the report ids are missing, goes ahead regardless.
+  const PAGE_GAP_MS = 5 * MINUTE;
+  // Open CUIMS skips its StudentHome check this soon after a read or a CUIMS
+  // tab showed the session alive.
+  const SESSION_FRESH_MS = 2 * MINUTE;
 
   const DEFAULTS = {
     uid: "",
@@ -48,6 +58,8 @@
     attendanceCourses: null,
     attendanceHistory: null,
     attendanceRequests: [],
+    attendancePageAt: 0,
+    tabPageAt: 0,
     attendanceRunUntil: 0,
     attendanceStatus: null,
     attendanceMeta: null,
@@ -99,15 +111,23 @@
       await storage.set({ attendanceStatus: { ...status, at: now() } });
     }
 
+    // Every request counts against the rolling budget; inner pages also move
+    // the clock that spaces them out (PAGE_GAP_MS), as do the ones a CUIMS
+    // tab loads (tabPageAt, from content.js).
     function meter(state) {
       const log = (state.attendanceRequests || []).filter((at) => now() - at < BUDGET_WINDOW_MS);
+      let pageAt = Number(state.attendancePageAt || 0);
+      const tabPageAt = Number(state.tabPageAt || 0);
       return {
         log,
-        take() {
+        take(target) {
           if (log.length >= BUDGET_MAX) throw client.coded("busy");
           log.push(now());
+          if (client.isInnerPage(target)) pageAt = now();
         },
         room: () => BUDGET_MAX - log.length,
+        pageFree: () => now() - Math.max(pageAt, tabPageAt) >= PAGE_GAP_MS,
+        saved: () => ({ attendanceRequests: log, attendancePageAt: pageAt }),
       };
     }
 
@@ -227,17 +247,15 @@
       }
     }
 
-    // The timetable only shapes today's class chips, so
-    // it never fails a refresh. A good read lasts the day; a failed one is
-    // retried at most hourly. It is also never read in the same run as the
-    // heavy attendance page: CUIMS throttles a session that opens several
-    // inner pages at once.
-    async function readTimetable(state, request, today, heavy) {
+    // The timetable only shapes today's class chips, so it never fails a
+    // refresh. A good read lasts the day; a failed one is retried at most
+    // hourly. It is an optional inner page: it waits for PAGE_GAP_MS after
+    // any other, including the attendance page in the same run.
+    async function readTimetable(state, request, today, budget) {
       const cached = state.attendanceTimetable;
       const slots = cached?.slots || [];
       if (cached?.day === today && slots.length) return slots;
-      if (heavy.used || now() - Number(cached?.triedAt || 0) < TIMETABLE_RETRY_MS) return slots;
-      heavy.used += 1;
+      if (!budget.pageFree() || now() - Number(cached?.triedAt || 0) < TIMETABLE_RETRY_MS) return slots;
       try {
         const fresh = await client.readTimetable(request);
         if (fresh.length) {
@@ -255,35 +273,53 @@
       return slots;
     }
 
-    // Which subjects' classes a pending leave covers: the absent marks on its
-    // days (and, for lecture-based duty leave, at its class times). Read with
-    // the cookie-less marks call, one per subject that could be affected.
-    async function countPendingLeave(request, meta, courses, applications) {
-      const waiting = applications.filter((leave) => leave.state === "pending");
+    // Pending leave per subject: the absent marks on a pending application's
+    // days (and, for lecture-based duty leave, at its class times). Approval
+    // turns that mark into a leave mark and moves the subject's counts, so
+    // this recount, run on every Refresh, shows an approval without loading
+    // the leave page; only a refusal waits for the page. Marks come from the
+    // class record the Forecast tab keeps. A subject is read again, with the
+    // cookie-less marks call, only when it has no record, or its counts moved
+    // and its record holds a mark a pending leave covers.
+    async function countPending(request, meta, subjects, history, leaves) {
+      if (!leaves?.apps) return leaves;
+      const waiting = [...(leaves.apps.dl || []), ...(leaves.apps.ml || [])].filter((leave) => leave.state === "pending");
+      if (!waiting.length && !Object.keys(leaves.pending || {}).length) return leaves;
+      const covers = ([day, start, char]) =>
+        char === "a" ? waiting.find((leave) => leave.days.includes(day) && (!leave.timings.length || leave.timings.some((timing) => client.parseRange(timing)?.start === start))) : null;
       const counts = {};
-      if (!waiting.length) return counts;
-      for (const [code, encryptCode] of Object.entries(courses || {})) {
-        let marks;
-        try {
-          marks = await client.readMarks(request, meta, encryptCode);
-        } catch (error) {
-          if (error.code === "portal-busy" || error.code === "busy") throw error;
-          continue;
-        }
-        for (const mark of marks || []) {
-          if (mark.kind !== "absent") continue;
-          const day = client.parseDateKey(mark.date);
-          const start = client.parseRange(mark.time)?.start;
-          for (const leave of waiting) {
-            if (!leave.days.includes(day)) continue;
-            if (leave.timings.length && !leave.timings.some((timing) => client.parseRange(timing)?.start === start)) continue;
+      let read = false;
+      const saveHistory = () => (read ? storage.set({ attendanceHistory: { v: HISTORY_VERSION, subjects: history } }) : null);
+      try {
+        for (const subject of waiting.length ? subjects : []) {
+          const code = client.normCode(subject.code);
+          let kept = history[code];
+          if (subject.encryptCode && (!kept || (historyStale(kept, subject) && kept.marks.some(covers)))) {
+            try {
+              const marks = await client.readMarks(request, meta, subject.encryptCode);
+              kept = history[code] = { attended: subject.attended, delivered: subject.delivered, at: now(), marks: client.compactMarks(marks) };
+              read = true;
+            } catch (error) {
+              if (error.code === "portal-busy" || error.code === "busy") throw error;
+            }
+          }
+          for (const mark of kept?.marks || []) {
+            const leave = covers(mark);
+            if (!leave) continue;
             const entry = (counts[code] ||= { vdl: 0, idl: 0, adl: 0, ml: 0 });
             entry[leave.kind === "ml" ? "ml" : leave.dlType || "vdl"] += 1;
-            break;
           }
         }
+      } catch (error) {
+        await saveHistory();
+        // Our own budget ran out: the last counts stand until the next Refresh.
+        if (error.code === "busy") return leaves;
+        throw error;
       }
-      return counts;
+      await saveHistory();
+      const next = { ...leaves, pending: counts };
+      await storage.set({ attendanceLeaves: next });
+      return next;
     }
 
     // Leave read before LEAVES_VERSION counted refusals as pending; drop it.
@@ -296,66 +332,53 @@
       return leaves?.checkedAt ? { v: client.LEAVES_VERSION, checkedAt: leaves.checkedAt, pending: leaves.pending || {} } : null;
     }
 
-    // Folds one leave page's applications in and recounts pending leave when
-    // the set of pending applications changed.
-    // `count: false` keeps the last pending counts and leaves the recount,
-    // which reads marks, to the next Refresh.
-    async function mergeLeaves(state, request, meta, which, applications, { count = true } = {}) {
-      const cached = currentLeaves(state) || {};
-      const apps = { dl: cached.apps?.dl || [], ml: cached.apps?.ml || [], [which]: applications };
-      const all = [...apps.dl, ...apps.ml];
-      const wantedKey = all.filter((leave) => leave.state === "pending").map((leave) => leave.id).sort().join(",");
-      const current = wantedKey === cached.pendingKey && cached.pending;
-      const pending = current ? cached.pending : count ? await countPendingLeave(request, meta, state.attendanceCourses, all) : cached.pending || {};
-      const pendingKey = current || count ? wantedKey : cached.pendingKey || "";
-      const leaves = { ...cached, v: client.LEAVES_VERSION, apps, pending, pendingKey, [`${which}At`]: now(), checkedAt: now(), triedAt: now() };
+    // Folds one leave page's applications in. Pending counts are redone by
+    // the next Refresh (countPending).
+    async function mergeLeaves(cached, which, applications) {
+      const apps = { dl: cached?.apps?.dl || [], ml: cached?.apps?.ml || [], [which]: applications };
+      const leaves = { ...(cached || {}), v: client.LEAVES_VERSION, apps, pending: cached?.pending || {}, [`${which}At`]: now(), checkedAt: now(), triedAt: now() };
       await storage.set({ attendanceLeaves: leaves });
       return leaves;
     }
 
-    // Duty leave follows every attendance refresh; medical leave stays
-    // infrequent and yields to attendance/timetable page loads.
-    async function readLeaves(state, request, meta, heavy) {
+    // Leave pages are optional inner pages: each at most every three hours,
+    // only while no other inner page was loaded in PAGE_GAP_MS (so duty and
+    // medical leave never share a Refresh), and never a reason to sign in.
+    // Once one finds the session signed out, they wait until a CUIMS tab, Open
+    // CUIMS or the attendance page shows it alive again.
+    async function readLeaves(state, request, budget, onStep) {
       let leaves = currentLeaves(state);
-      for (const which of ["dl", "ml"]) {
-        if (which === "ml" && (heavy.used || now() - Math.max(Number(leaves?.mlTriedAt || 0), Number(leaves?.mlAt || 0)) < LEAVE_CHECK_MS)) continue;
+      const signedOut = state.sessionAlive === false && Number(state.sessionCheckedAt || 0) > 0;
+      for (const which of signedOut ? [] : ["dl", "ml"]) {
+        const last = Math.max(Number(leaves?.[`${which}At`] || 0), Number(leaves?.[`${which}TriedAt`] || 0));
+        if (now() - last < LEAVE_CHECK_MS || !budget.pageFree()) continue;
+        await onStep(which === "dl" ? "Reading duty leave…" : "Reading medical leave…");
         try {
           const applications = await client.readLeavePage(request, which);
-          if (which === "dl") await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
-          leaves = await mergeLeaves({ ...state, attendanceLeaves: leaves }, request, meta, which, applications);
+          await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
+          leaves = await mergeLeaves(leaves, which, applications);
         } catch (error) {
-          if (error.code === "portal-busy" || error.code === "busy" || (which === "dl" && ["signed-out", "tab-login"].includes(error.code))) throw error;
-          leaves = { ...(leaves || {}), v: client.LEAVES_VERSION, triedAt: now(), ...(which === "ml" ? { mlTriedAt: now() } : {}) };
+          if (error.code === "portal-busy" || error.code === "busy") throw error;
+          if (error.code === "signed-out") await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
+          if (error.code === "signed-out" || error.code === "tab-login") break;
+          leaves = { ...(leaves || {}), v: client.LEAVES_VERSION, triedAt: now(), [`${which}TriedAt`]: now() };
           await storage.set({ attendanceLeaves: leaves });
         }
       }
       return leaves;
     }
 
-    // The student opened a leave page on CUIMS: read it there, for free.
     // The student opened a leave page on CUIMS: keep what it shows, with no
-    // request of our own. Reads happen only on Refresh.
+    // request of our own. The next Refresh counts what is pending.
     async function readLeaveUpdate(which, html) {
       if (!client.LEAVE_PAGES[which]) return null;
       const state = await storage.get(DEFAULTS);
-      const wait = paused(state);
-      if (wait) throw wait;
-      const meta = state.attendanceMeta;
       const applications = which === "dl" ? client.parseDutyLeaves(html) : client.parseMedicalLeaves(html);
-      const budget = meter(state);
-      try {
-        const leaves = await mergeLeaves(state, createRequest(budget), meta, which, applications, { count: false });
-        if (state.attendanceSnapshot) {
-          await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: snapshotLeaves(leaves) } });
-        }
-        return leaves;
-      } catch (error) {
-        const message = await recordBackoff(state, error);
-        await setStatus({ working: false, error: message, code: error.code || "network" });
-        throw error;
-      } finally {
-        await storage.set({ attendanceRequests: budget.log });
+      const leaves = await mergeLeaves(currentLeaves(state), which, applications);
+      if (state.attendanceSnapshot) {
+        await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: snapshotLeaves(leaves) } });
       }
+      return leaves;
     }
 
     // A subject's stored history is current while its counts stand still:
@@ -434,6 +457,7 @@
         }
       }
       if (changed) await storage.set({ attendanceHistory: { v: HISTORY_VERSION, subjects: history } });
+      return history;
     }
 
     async function run(reason) {
@@ -458,10 +482,11 @@
       await onStep("Checking your CUIMS session…");
       try {
         // The report ids from the attendance page stay valid, so a normal
-        // refresh uses GetReport plus the duty-leave page. The attendance
-        // page is reopened only when
-        // the ids are missing or stop working. GetReport answers without a
-        // signed-in session, so only the page read says the session is alive.
+        // refresh is GetReport and the marks calls, none of them an inner
+        // page. The attendance page is reopened only when the ids are missing
+        // or stop working, and that is the only read that signs in. GetReport
+        // answers without a signed-in session, so only a page read says the
+        // session is alive.
         let meta = state.attendanceMeta?.reportId ? state.attendanceMeta : null;
         let subjects = null;
         if (meta) {
@@ -472,7 +497,6 @@
             meta = null;
           }
         }
-        const pageLoaded = !subjects;
         if (!subjects) {
           try {
             meta = await client.openAttendance(request);
@@ -488,6 +512,7 @@
             }
           }
           await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
+          state.sessionAlive = true;
           await onStep("Reading attendance…");
           subjects = await client.readSummary(request, meta);
         }
@@ -496,27 +521,12 @@
         const courses = Object.fromEntries(subjects.filter((subject) => subject.encryptCode).map((subject) => [client.normCode(subject.code), subject.encryptCode]));
         await storage.set({ attendanceCourses: courses });
         state.attendanceCourses = courses;
-        // Attendance and timetable still take turns; duty leave is required
-        // on every refresh, with medical leave deferred during those loads.
-        const heavy = { used: pageLoaded ? 1 : 0 };
-        const slots = await readTimetable(state, request, campus.key, heavy);
-        await readTodaysMarks(state, request, meta, subjects, slots, campus, budget);
-        await onStep("Reading duty leave…");
-        let leaves;
-        try {
-          leaves = await readLeaves(state, request, meta, heavy);
-        } catch (error) {
-          if (error.code !== "signed-out") throw error;
-          await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
-          await ensureSignedIn(state, request, reason, onStep);
-          heavy.used = 1;
-          try {
-            leaves = await readLeaves(state, request, meta, heavy);
-          } catch (again) {
-            if (again.code === "signed-out") throw client.coded("login-shape", "CUIMS accepted the login but did not keep the session. Try again.");
-            throw again;
-          }
-        }
+        // At most one optional inner page follows, and only after
+        // PAGE_GAP_MS without one: the timetable when due, else a leave page.
+        const slots = await readTimetable(state, request, campus.key, budget);
+        const history = await readTodaysMarks(state, request, meta, subjects, slots, campus, budget);
+        let leaves = await readLeaves(state, request, budget, onStep);
+        leaves = await countPending(request, meta, subjects, history, leaves);
         const snapshot = {
           fetchedAt: new Date(now()).toISOString(),
           marksDay: campus.key,
@@ -540,7 +550,7 @@
         await setStatus({ working: false, phase: "", error: message, code });
         return { snapshot: state.attendanceSnapshot, error: message, code, nextRefreshAt: (await storage.get({ attendanceBackoffUntil: 0 })).attendanceBackoffUntil || started + MANUAL_GAP_MS };
       } finally {
-        await storage.set({ attendanceRequests: budget.log, attendanceRunUntil: 0 });
+        await storage.set({ ...budget.saved(), attendanceRunUntil: 0 });
       }
     }
 
@@ -566,6 +576,7 @@
       const wait = paused(state);
       if (wait) return { alive: false, reason: wait.code, error: wait.message };
       if (await tabOnLoginPage()) return { alive: false, reason: "tab-login" };
+      if (state.sessionAlive === true && now() - Number(state.sessionCheckedAt || 0) < SESSION_FRESH_MS) return { alive: true };
       const budget = meter(state);
       const request = createRequest(budget);
       let signing = false;
@@ -585,7 +596,7 @@
         if (BACKOFF_CODES.has(error.code || "network")) await setStatus({ working: false, error: message, code: error.code || "network" });
         return { alive: false, reason: error.code || "network", error: message };
       } finally {
-        await storage.set({ attendanceRequests: budget.log });
+        await storage.set(budget.saved());
         // Put back whatever the attendance tab was showing.
         if (signing && Number((await storage.get({ attendanceBackoffUntil: 0 })).attendanceBackoffUntil) <= now()) await storage.set({ attendanceStatus: state.attendanceStatus ? { ...state.attendanceStatus, working: false } : null });
       }
@@ -629,7 +640,7 @@
           await setStatus({ working: false, error: error.message, code: error.code || "network" });
           throw error;
         } finally {
-          await storage.set({ attendanceRequests: budget.log });
+          await storage.set(budget.saved());
         }
       });
     }
