@@ -1,4 +1,5 @@
 importScripts(
+  "keep-awake.js",
   "lms-open.js",
   "themes.js",
   "theme-bg.js",

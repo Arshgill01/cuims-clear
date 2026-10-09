@@ -130,14 +130,14 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
     assert.equal(wrap.world, "MAIN");
     assert.equal(launch.run_at, "document_start");
     if (browser === "firefox") {
-      assert.equal(manifest.background.scripts[0], "lms-open.js");
+      assert.deepEqual(manifest.background.scripts.slice(0, 2), ["keep-awake.js", "lms-open.js"]);
     } else {
       assert.match(
         readFileSync(new URL("service-worker.js", root), "utf8"),
-        /importScripts\(\s*"lms-open\.js"/,
+        /importScripts\(\s*"keep-awake\.js",\s*"lms-open\.js"/,
       );
     }
-    for (const name of ["lms.js", "lms-model.js", "lms-launch.js", "lms-boot.js", "lms-open.js", "lms-open-wrap.js", "lms.css", "themes.js", "theme-boot.js", "theme-bg.js"]) {
+    for (const name of ["lms.js", "lms-model.js", "lms-launch.js", "lms-boot.js", "lms-open.js", "keep-awake.js", "lms-open-wrap.js", "lms.css", "themes.js", "theme-boot.js", "theme-bg.js"]) {
       assert.equal(readFileSync(new URL(name, root), "utf8"), readFileSync(new URL(`../outputs/cuims-clear-firefox/${name}`, import.meta.url), "utf8"));
     }
   }

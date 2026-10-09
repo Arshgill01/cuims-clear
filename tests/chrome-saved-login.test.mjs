@@ -180,3 +180,48 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   assert.equal(removed.includes("autoSubmitLogin"), false, "preferences stay");
   assert.equal(element("#password").value, "");
 });
+
+test("Open CUIMS and Open LMS still open their tab when the background cannot be reached", async () => {
+  for (const [selector, url] of [
+    [".cuims-open-link", "https://students.cuchd.in/StudentHome.aspx"],
+    [".lms-open-link", "https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms"],
+  ]) {
+    const elements = new Map();
+    const element = (id) => {
+      if (!elements.has(id)) elements.set(id, { value: "", checked: true, hidden: true, innerHTML: "", textContent: "", addEventListener(event, fn) { this[event] = fn; }, focus() {}, setAttribute(name, value) { this[`@${name}`] = value; }, getAttribute(name) { return this[`@${name}`] ?? null; }, removeAttribute(name) { delete this[`@${name}`]; }, querySelector: () => element(`${id} *`), querySelectorAll: () => [], replaceChildren() {}, append() {}, classList: { add() {}, remove() {}, contains: () => false, toggle() {} } });
+      return elements.get(id);
+    };
+    const sent = [];
+    const created = [];
+    let closed = false;
+    const runtime = {
+      getManifest: () => ({ version: "0.10.1" }),
+      lastError: undefined,
+      // A background the browser stopped and never brought back.
+      sendMessage(message, callback) {
+        sent.push(message.type);
+        runtime.lastError = { message: "Could not establish connection. Receiving end does not exist." };
+        callback?.();
+        runtime.lastError = undefined;
+      },
+    };
+    vm.runInNewContext(source("popup.js"), {
+      document: { querySelector: element, querySelectorAll: () => [], addEventListener() {}, createElement: () => ({ setAttribute() {}, append() {} }) },
+      window: { clearTimeout() {}, setTimeout() {}, setInterval() {}, clearInterval() {}, close: () => (closed = true) },
+      setTimeout: (fn) => fn(),
+      CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; }, buildForecast() { return null; }, renderForecast() { return ""; }, bindForecastCharts: () => ({ busy: () => false }), escapeHtml: (value) => String(value) },
+      CuimsThemes: { list: [], mirrored: () => "clear", valid: (id) => id, tokens: () => ({}), load: () => Promise.resolve("clear"), save() {}, onChange() {}, applyToPopup() {} },
+      chrome: {
+        storage: { local: { get(defaults, callback) { callback(defaults); }, set(values, callback) { callback?.(); }, remove() {} }, onChanged: { addListener() {} } },
+        runtime,
+        tabs: { query: async () => [{ id: 7, index: 2 }], create: async (options) => created.push(options) },
+        permissions: { contains() {}, request() {} },
+      },
+    });
+    await element(selector).click({ preventDefault() {} });
+    for (let i = 0; i < 10 && !closed; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(sent.length, 2, `${selector}: one retry before giving up on the background`);
+    assert.deepEqual(JSON.parse(JSON.stringify(created)), [{ url, active: true, index: 3 }], selector);
+    assert.equal(closed, true, selector);
+  }
+});

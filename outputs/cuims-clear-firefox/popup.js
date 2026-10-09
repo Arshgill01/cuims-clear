@@ -268,6 +268,35 @@ async function activeTabId() {
   }
 }
 
+// The browser may have stopped the background, or be starting it again; a
+// second try reaches the fresh one. `done` gets null when both failed.
+function askBackground(message, done, tries = 2) {
+  chrome.runtime.sendMessage(message, (response) => {
+    if (chrome.runtime.lastError && tries > 1) {
+      setTimeout(() => askBackground(message, done, tries - 1), 400);
+      return;
+    }
+    done(chrome.runtime.lastError ? null : response);
+  });
+}
+
+// Without the background the tab still opens: CUIMS's own page signs in (the
+// content script fills it), and its LMS link is clicked by lms-launch.js.
+const OPEN_DIRECT = {
+  "cuims-clear:open-cuims": "https://students.cuchd.in/StudentHome.aspx",
+  "cuims-clear:launch-lms": "https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms",
+};
+
+async function openDirect(type) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.tabs.create({ url: OPEN_DIRECT[type], active: true, ...(tab?.index >= 0 ? { index: tab.index + 1 } : {}) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // The background signs in first when the session has ended, and opens LMS
 // without showing CUIMS.
 function bindOpenLink(link, type, busyLabel) {
@@ -278,8 +307,12 @@ function bindOpenLink(link, type, busyLabel) {
     const label = link.querySelector("span");
     const idle = label?.textContent;
     if (label) label.textContent = busyLabel;
-    chrome.runtime.sendMessage({ type, tabId: await activeTabId() }, (response) => {
-      if (chrome.runtime.lastError || !response || response.error) {
+    askBackground({ type, tabId: await activeTabId() }, async (response) => {
+      if (!response && (await openDirect(type))) {
+        window.close();
+        return;
+      }
+      if (!response || response.error) {
         link.removeAttribute("aria-busy");
         if (label) label.textContent = idle;
         showStatus(response?.error || (type === "cuims-clear:launch-lms" ? "Could not open LMS. Try again." : "Could not open CUIMS. Try again."));
@@ -434,8 +467,8 @@ function fetchAttendance() {
   attendance.code = "";
   attendance.status = { working: true, phase: "Checking your CUIMS session…", at: Date.now() };
   paintData();
-  chrome.runtime.sendMessage({ type: "cuims-clear:attendance-refresh" }, (response) => {
-    if (chrome.runtime.lastError || !response) {
+  askBackground({ type: "cuims-clear:attendance-refresh" }, (response) => {
+    if (!response) {
       attendance.status = null;
       attendance.error = "Could not reach the extension background. Try again.";
       attendance.code = "";

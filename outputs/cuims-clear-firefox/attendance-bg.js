@@ -15,7 +15,10 @@ function startAttendanceBackground(solveCaptcha) {
     solveCaptcha,
   });
 
-  const hasAccess = () => chrome.permissions.contains(CUIMS_ORIGINS);
+  // Nothing talks to CUIMS before the stale locks are gone: the task that
+  // woke this background must not have its own fresh locks cleared.
+  const settled = clearStaleLocks();
+  const hasAccess = () => settled.then(() => chrome.permissions.contains(CUIMS_ORIGINS));
 
   // Only this extension's own pages. A content script's sender URL is the
   // web page it runs in.
@@ -25,11 +28,12 @@ function startAttendanceBackground(solveCaptcha) {
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type !== "cuims-clear:attendance-refresh" || !fromExtensionPage(sender)) return;
-    hasAccess()
-      .then((granted) => {
+    cuimsKeepAwake(() =>
+      hasAccess().then((granted) => {
         if (!granted) return { error: "The browser has switched off access to CUIMS. Use Allow access at the top.", code: "no-access" };
         return attendance.refresh("manual");
-      })
+      }),
+    )
       .then(sendResponse)
       .catch((error) => sendResponse({ error: String(error?.message || error), code: "network" }));
     return true;
@@ -39,7 +43,7 @@ function startAttendanceBackground(solveCaptcha) {
   chrome.runtime.onMessage.addListener((message, sender) => {
     if (message?.type !== "cuims-clear:leave-page" || !/^https:\/\/students\.cuchd\.in\//i.test(String(sender?.url || sender?.tab?.url || ""))) return;
     if (sender?.id && sender.id !== chrome.runtime.id) return;
-    attendance.ingestLeavePage(message.which, String(message.html || "")).catch(() => {});
+    cuimsKeepAwake(() => settled.then(() => attendance.ingestLeavePage(message.which, String(message.html || "")))).catch(() => {});
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -52,9 +56,7 @@ function startAttendanceBackground(solveCaptcha) {
     }
     // A CUIMS tab finished signing in after a refresh gave way to it.
     if (changes.sessionAlive?.newValue === true) {
-      hasAccess()
-        .then((granted) => (granted ? attendance.afterTabSignIn() : null))
-        .catch(() => {});
+      cuimsKeepAwake(() => hasAccess().then((granted) => (granted ? attendance.afterTabSignIn() : null))).catch(() => {});
     }
   });
 
@@ -68,6 +70,24 @@ function startAttendanceBackground(solveCaptcha) {
   };
 
   return attendance;
+}
+
+// A background that was stopped mid-task (by a browser update, a crash, or a
+// build without keep-awake.js) left its locks behind: the CUIMS tab held back
+// its own login for 90 s, Refresh answered "busy" for 2 min, and the popup
+// showed a read in progress. A background that has just started has nothing
+// running, so they are stale.
+function clearStaleLocks() {
+  return chrome.storage.local
+    .get({ attendanceRunUntil: 0, bgSignInUntil: 0, attendanceStatus: null })
+    .then(({ attendanceRunUntil, bgSignInUntil, attendanceStatus }) => {
+      const stale = {};
+      if (Number(attendanceRunUntil) > 0) stale.attendanceRunUntil = 0;
+      if (Number(bgSignInUntil) > 0) stale.bgSignInUntil = 0;
+      if (attendanceStatus?.working) stale.attendanceStatus = { ...attendanceStatus, working: false, phase: "" };
+      if (Object.keys(stale).length) return chrome.storage.local.set(stale);
+    })
+    .catch(() => {});
 }
 
 // The captcha solver is plain JavaScript (captcha-solver.js), so it runs

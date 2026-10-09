@@ -230,7 +230,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const fromPopup = sender?.id === chrome.runtime.id && String(sender.url || "").startsWith(chrome.runtime.getURL(""));
   if ((message?.type === "cuims-clear:launch-lms" || message?.type === "cuims-clear:open-cuims") && fromPopup) {
     const open = message.type === "cuims-clear:launch-lms" ? openLms : openCuims;
-    open({ tabId: Number(message.tabId) || 0 })
+    const keepAwake = globalThis.cuimsKeepAwake || ((work) => work());
+    keepAwake(() => open({ tabId: Number(message.tabId) || 0 }))
       .then((result) => sendResponse({ ok: true, ...result }))
       .catch((error) => sendResponse({ error: String(error?.message || error) }));
     return true;
