@@ -196,14 +196,40 @@
             </fieldset>
 
             <p class="settings-note">Each switch saves as you flip it. Open CUIMS and LMS tabs follow along.</p>
+
+            <p class="rate-line">
+              Finding CUIMS Clear useful?
+              <a class="rate-link" href="https://chromewebstore.google.com/detail/amlobigbjldbogimakmfndkdaekcdbkf/reviews" target="_blank" rel="noreferrer">Rate it on the <span class="rate-store">Chrome Web Store</span><span aria-hidden="true"> ↗</span></a>
+            </p>
           </section>
         </div>
+
+        <aside id="rate-nudge" class="rate-nudge" aria-label="Rate CUIMS Clear" hidden>
+          <div class="rate-ask">
+            <p class="rate-long">Saving you some clicks? A rating helps other students find CUIMS Clear.</p>
+            <div class="rate-actions">
+              <span class="rate-short">Enjoying it?</span>
+              <a class="rate-link rate-cta" href="https://chromewebstore.google.com/detail/amlobigbjldbogimakmfndkdaekcdbkf/reviews" target="_blank" rel="noreferrer">Rate it<span aria-hidden="true">↗</span></a>
+              <button type="button" class="text-button" data-rate="rated">Already rated</button>
+              <button type="button" class="rate-dismiss" data-rate="snooze" aria-label="Not now">×</button>
+            </div>
+          </div>
+          <div class="rate-confirm" hidden>
+            <div class="rate-actions">
+              <span class="rate-short">Did you leave a rating?</span>
+              <button type="button" class="rate-cta" data-rate="rated">Yes, I rated it</button>
+              <button type="button" class="text-button" data-rate="not-yet">Not yet</button>
+            </div>
+          </div>
+          <span class="rate-timer" aria-hidden="true"></span>
+        </aside>
 
         <p id="status" class="toast" role="status" aria-live="polite"></p>
       </main>
     </div>
     <script src="attendance-model.js"></script>
     <script src="attendance-view.js"></script>
+    <script src="rate-nudge.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

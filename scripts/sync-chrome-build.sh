@@ -24,7 +24,7 @@ fi
 for f in captcha-glyphs.js captcha-solver.js content.js popup.html popup.js popup.css \
   attendance-parse.js attendance-model.js attendance-client.js attendance-daemon.js attendance-view.js attendance-bg.js \
   lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js themes.js theme-boot.js theme-bg.js cuims-theme.js \
-  cuims-tidy.js cuims-tidy.css; do
+  cuims-tidy.js cuims-tidy.css rate-nudge.js; do
   cp "$FF/$f" "$CH/$f"
 done
 

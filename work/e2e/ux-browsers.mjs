@@ -89,12 +89,19 @@ try {
   await page.setRequestInterception(true);
   let delayPage2 = false;
   let cancellationCheck = false;
+  let holdPage2 = false;
+  let page2Started;
+  let releasePage2;
   page.on("request", async (req) => {
     const url = new URL(req.url());
     try {
       if (url.origin === LMS && url.pathname === "/my/courses.php") {
         requestCount += 1;
-        if (delayPage2 && url.searchParams.has("paged")) await new Promise((resolve) => setTimeout(resolve, 400));
+        if (holdPage2 && url.searchParams.get("paged") === "2") {
+          holdPage2 = false;
+          page2Started();
+          await new Promise((resolve) => { releasePage2 = resolve; });
+        } else if (delayPage2 && url.searchParams.has("paged")) await new Promise((resolve) => setTimeout(resolve, 400));
         const body = url.searchParams.has("paged") ? coursePage(50, 100) : coursePage(0, 50, true);
         await req.respond({ status: 200, contentType: "text/html", body: cancellationCheck && url.searchParams.get("paged") === "2" ? body.replace("</body>", '<a href="/my/courses.php?paged=3">More</a></body>') : body });
       } else if (url.origin === ORIGIN) {
@@ -163,10 +170,14 @@ try {
   report.checks.push("Original/Clear toggle retains native markup");
   if (!baseline) {
     cancellationCheck = true;
+    holdPage2 = true;
+    const pendingPage2 = new Promise((resolve) => { page2Started = resolve; });
     const before = requestCount;
     await page.goto(`${LMS}/my/courses.php`);
     await page.waitForSelector("#cc-course-search");
+    await pendingPage2;
     await page.click("#cc-view-toggle");
+    releasePage2();
     await new Promise((resolve) => setTimeout(resolve, 600));
     assert.ok(requestCount - before <= 2, "Original view must stop further pagination requests");
     await page.click("#cc-view-toggle");

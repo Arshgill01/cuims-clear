@@ -1,7 +1,7 @@
 # 0.9.5 preview integration
 
 PR #4 and PR #5 were reviewed against main at `1c9a0d6` and tested together.
-These packages are for manual testing; neither extension store was published.
+The final packages also integrate `feat/0.9.1-rate-nudge`. Neither extension store was published by the agent.
 
 ## Standards review
 
@@ -33,13 +33,16 @@ CHROME_BIN='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' FIREFO
 CHROME_BIN='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' FIREFOX_BIN='/Applications/Firefox.app/Contents/MacOS/firefox' node --test tests/cuims-tidy.test.mjs
 node work/e2e/ux-browsers.mjs chrome outputs/cuims-clear-chrome
 node work/e2e/ux-browsers.mjs firefox outputs/cuims-clear-firefox
+node --test tests/rate-nudge.test.mjs
+node work/e2e/rating-browsers.mjs chrome outputs/cuims-clear-chrome
+node work/e2e/rating-firefox.mjs outputs/cuims-clear-firefox
 CHROME_BIN='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' FIREFOX_BIN='/Applications/Firefox.app/Contents/MacOS/firefox' sh scripts/package.sh
 unzip -t outputs/dist/cuims-clear-chrome-0.9.5.zip
 unzip -t outputs/dist/cuims-clear-firefox-0.9.5.zip
 git diff --check
 ```
 
-Full suite: 244 passed, no skipped tests. Targeted tidy checks: 9 passed,
+Initial PR integration: 244 passed. Final rating integration: 257 passed, no skipped tests. Targeted tidy checks: 9 passed,
 including real Chrome 154 and Firefox 157. Installed-extension UX checks pass
 in both browsers with mocked portal traffic and no page errors. They cover
 search, focus, pagination cancellation, essential dialogs, feedback updates,
@@ -70,3 +73,39 @@ time without provoking repeated failures.
 Authenticated CUIMS traffic and minimum supported browser versions were not
 tested in this integration. Live request-limit effectiveness and actual account
 page layouts remain for user testing before store release.
+
+## Rating nudge integration
+
+The rating branch was merged while retaining version 0.9.5, the tidy setting,
+all previous fixes and both tidy files in the Chrome sync script. Three policy
+integration bugs were corrected: first successful reads now show the ask without
+reopening, Settings does not consume the daily top banner, and removing
+attendance hides the ask. Reduced motion also disables the countdown animation.
+
+The nudge asks on healthy Attendance only. The first appearance each campus day
+is a small top card for eight seconds (paused on hover or keyboard focus), then
+a compact bottom strip; later popup opens that day use the bottom strip. Rate
+it opens the browser's own store; Already rated stops asking permanently. After
+Rate it, a confirmation offers Yes, I rated it or Not yet. Closing the ask
+snoozes for three days, and a third dismissal stops asking permanently. Settings
+keeps a store link available. Decisions stay in local extension storage, with
+no telemetry or automatic detection of whether someone rated.
+
+Rating policy/regression tests: 13 passed. Real installed Chrome popup checks
+and an instrumented copy of the actual Firefox popup passed with no page errors.
+Firefox excludes extension pages from BiDi automation, so its disposable helper
+runs assertions inside the popup and reports to a local server. That helper,
+its added permissions and fixture data never enter the production archive.
+Actual top, bottom and confirmation screenshots are saved in ignored
+work/e2e/results. Chrome's timer was tested with real pointer hover; Firefox's
+with keyboard focus. One concurrent Firefox UX cancellation run failed its request-count assertion;
+a standalone repeat passed. The harness now holds the mocked next-page response
+until the Original-view click, so it tests cancellation without depending on
+browser speed. Both browser harnesses passed with this controlled response.
+The rating code does not change LMS pagination.
+
+Use the rebuilt ZIPs, which replace the earlier packages of the same version.
+If the earlier 0.9.5 was already submitted to a store, choose a higher version
+before another submission. Live account testing performed by the user on the
+previous build is retained; rating integration was verified offline in both
+browsers. Store acceptance itself is not established by these tests.
