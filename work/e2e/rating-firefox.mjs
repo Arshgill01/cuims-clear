@@ -62,7 +62,7 @@ const driver = async (endpoint) => {
   const snapshot = {fetchedAt:new Date().toISOString(),subjects:[{code:"24CST-302",title:"Computer Networks",attended:36,delivered:40,marks:[]}],slots:[]};
   try {
     await wait(() => rateReady);
-    check(document.querySelector("#version").textContent === "v0.9.5", "popup version 0.9.5");
+    check(document.querySelector("#version").textContent === `v${chrome.runtime.getManifest().version}`, "popup version from the manifest");
     check(document.querySelector(".rate-line a").href === "https://addons.mozilla.org/firefox/addon/cuims-clear/", "Firefox store link");
     await browser.storage.local.set({attendanceSnapshot:snapshot,attendanceStatus:null});
     await wait(() => attendance.snapshot?.subjects?.length && !attendance.status);

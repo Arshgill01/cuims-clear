@@ -152,7 +152,7 @@ test("Chrome popup saves credentials and Clear login removes them without erasin
   vm.runInNewContext(source("popup.js"), {
     document: { querySelector: element, querySelectorAll: () => [], addEventListener() {}, createElement: () => ({ setAttribute() {}, append() {} }) },
     window: { clearTimeout() {}, setTimeout() {}, setInterval() {}, clearInterval() {} },
-    CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; }, escapeHtml: (value) => String(value) },
+    CuimsAttendance: { buildAnalytics() { return null; }, renderAttendance() { return ""; }, buildForecast() { return null; }, renderForecast() { return ""; }, bindForecastCharts: () => ({ busy: () => false }), escapeHtml: (value) => String(value) },
     CuimsThemes: { list: [], mirrored: () => "clear", valid: (id) => id, tokens: () => ({}), load: () => Promise.resolve("clear"), save() {}, onChange() {}, applyToPopup() {} },
     chrome: {
       storage: {

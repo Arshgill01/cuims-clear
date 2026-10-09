@@ -51,3 +51,17 @@ Target WCAG AA contrast, visible `:focus-visible` rings, 44px primary targets, a
 tab order. Labels remain visible above fields. Password visibility has an accessible name
 that updates with state. Status messages use a polite live region. Copy is short, direct,
 and peer-built: no hype, no university voice, and no claim that CAPTCHA is bypassed.
+
+## 7. Forecast
+
+The Forecast tab is the one place the popup gets expressive. Its hero card is
+drawn like the identity mark: the theme's brand graphite with its brand ink
+(`--hero-*` tokens, contrast-checked per theme in `themes.js`), the two slashes
+faint behind the figure. Everything below it is an ordinary card. Charts are
+inline SVG with thin marks: a solid line for what happened, a dashed line for
+the forecast inside a pale likely-range band, a dotted attend-everything line,
+and a dashed goal line. Numbers that answer the question ("≈89.0%", "93%",
+"8") are large; the words around them are small and plain. A chance is never
+shown as certain: it is rounded to 5 and capped at "over 95%" and "under 5%".
+Every skip verdict carries a word, not only a colour: Can skip, Can make up,
+Attend, Too many.

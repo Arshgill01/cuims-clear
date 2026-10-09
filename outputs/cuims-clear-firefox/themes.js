@@ -263,6 +263,16 @@
     merged.focusOutline = alpha(merged.focus, 0.3);
     merged.shadow = dark ? "rgb(0 0 0 / 45%)" : "rgb(24 26 23 / 18%)";
     merged.brandInk = contrast(palette.brandInk, palette.brandBg) >= 3 ? palette.brandInk : onColor(palette.brandBg, "#ffffff", ink);
+    // The Forecast hero is drawn on the brand colour, like the mark: its
+    // text steps toward white (or black, on a light brand colour).
+    const paper = luminance(merged.brandBg) < 0.4 ? "#ffffff" : "#000000";
+    merged.heroInk = readable(mix(paper, merged.brandBg, 0.92), merged.brandBg, 7, paper);
+    merged.heroMuted = readable(mix(paper, merged.brandBg, 0.66), merged.brandBg, 4.5, paper);
+    merged.heroFaint = mix(paper, merged.brandBg, 0.34);
+    merged.heroLine = mix(paper, merged.brandBg, 0.13);
+    merged.heroGood = readable(merged.brandInk, merged.brandBg, 4.5, paper);
+    merged.heroWarn = readable(palette.warn, merged.brandBg, 4.5, paper);
+    merged.heroBad = readable(palette.bad, merged.brandBg, 4.5, paper);
     cache.set(palette.id, merged);
     return merged;
   }
@@ -276,7 +286,8 @@
     "--good-line": "goodLine", "--on-good": "onGood", "--warn": "warn", "--warn-ink": "warnInk", "--warn-bg": "warnBg",
     "--warn-line": "warnLine", "--bad": "bad", "--bad-ink": "badInk", "--bad-bg": "badBg", "--bad-line": "badLine",
     "--on-bad": "onBad", "--neutral": "neutral", "--track": "track", "--meter-mark": "meterMark", "--brand-bg": "brandBg",
-    "--brand-ink": "brandInk", "--shadow": "shadow",
+    "--brand-ink": "brandInk", "--shadow": "shadow", "--hero-ink": "heroInk", "--hero-muted": "heroMuted",
+    "--hero-faint": "heroFaint", "--hero-line": "heroLine", "--hero-good": "heroGood", "--hero-warn": "heroWarn", "--hero-bad": "heroBad",
   };
 
   function applyToPopup(documentElement, id) {

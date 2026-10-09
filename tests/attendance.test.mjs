@@ -316,11 +316,16 @@ test("CUIMS sending attendance to the home page is reported, not treated as sign
 
 test("day-by-day marks are only requested for subjects whose class today has started", async () => {
   const server = fakeCuims({ signedIn: true, marksToday: [{ course: "enc305", AttDate: "28/09/2026", Timing: "09:40 - 10:20 AM", AttendanceCode: "P" }] });
-  const bg = daemon(server, saved());
+  const storage = saved();
+  const bg = daemon(server, storage);
   await bg.refresh("manual");
+  const marksCalls = () => server.state.requests.filter((line) => /getfullreport/i.test(line)).length;
+  // One for today's started class; the other two only for the Forecast
+  // tab's history, once.
+  assert.equal(marksCalls(), 3);
   bg.advance(60_000);
   const result = await bg.refresh("manual");
-  assert.equal(server.state.requests.filter((line) => /getfullreport/i.test(line)).length, 1);
+  assert.equal(marksCalls(), 3, "nothing moved, nothing re-read");
   const view = A.buildAnalytics(result.snapshot, new Date(MONDAY_11));
   const cc = view.subjects.find((row) => row.code === "24CSP-305");
   assert.equal(cc.today[0].state, "present");
@@ -842,43 +847,22 @@ test("opening a leave page on CUIMS updates pending leave with no page request",
   assert.deepEqual({ ...storage.data.attendanceSnapshot.leaves.pending["24CSP305"] }, { vdl: 1, idl: 0, adl: 0, ml: 0 });
 });
 
-// ---- today's planner ----
+// ---- the attendance tab ----
 
-function plannerView(options = {}) {
+test("the attendance tab shows the goal switch and subjects, and leaves skip planning to Forecast", () => {
   const slots = A.parseTimetable(TIMETABLE_HTML);
   const snapshot = { fetchedAt: new Date(at(12, 30)).toISOString(), marksDay: "2026-09-28", slots, subjects: [
     { code: "24CSP-305", title: "Competitive Coding-II", attended: 26, delivered: 32 },
     { code: "24CST-302", title: "Computer Networks", attended: 11, delivered: 12 },
-    { code: "24TDT-312", title: "Aptitude-III", attended: 100, delivered: 100 },
   ] };
-  return A.buildAnalytics(snapshot, new Date(at(12, 30)), options);
-}
-
-test("the planner lists today's remaining classes with a verdict each", () => {
-  const view = plannerView();
-  assert.deepEqual(JSON.parse(JSON.stringify(view.today.classes.map((item) => [item.time, item.title]))), [["1:00", "Computer Networks"]]);
-  assert.equal(view.today.classes[0].verdict, "can-skip");
-  assert.equal(view.today.maxSkips, 1);
-});
-
-test("planning a skip shows the end-of-day figures, and too many skips are flagged", () => {
-  const key = plannerView().today.classes[0].key;
-  const planned = plannerView({ plan: [key] });
-  assert.equal(planned.today.classes[0].verdict, "planned");
-  assert.equal(Math.round(planned.today.projection.subjects[0].percent * 10), Math.round((11 / 13) * 1000));
-  const strict = plannerView({ goal: "strict", plan: [key] });
-  assert.equal(strict.today.classes[0].verdict, "too-many");
-  assert.equal(strict.today.projection.safe, false);
-});
-
-test("the popup shows the goal switch, today's plan and the leave card, and never 'overall cap'", () => {
-  const view = plannerView();
+  const view = A.buildAnalytics(snapshot, new Date(at(12, 30)));
   const html = A.renderAttendance(view, { now: new Date(at(12, 30)) });
   assert.match(html, /role="radiogroup"/);
   assert.match(html, /data-goal="strict"/);
-  assert.match(html, /data-plan-key=/);
-  assert.match(html, /Today · Mon/);
+  assert.doesNotMatch(html, /data-plan-key=/);
+  assert.doesNotMatch(html, /Today · Mon/);
   assert.doesNotMatch(html, /overall cap/);
+  assert.equal(view.today, undefined);
 });
 
 // ---- VDL allowance per subject ----

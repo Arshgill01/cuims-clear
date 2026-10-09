@@ -23,6 +23,11 @@
   const SIGNIN_LOCK_MS = 90_000;
   const RUN_LOCK_MS = 2 * MINUTE;
   const MAX_MARK_READS = 4;
+  // Whole-semester mark lists for the Forecast tab, beyond today's reads.
+  // The marks call is cookie-less and outside CUIMS's page throttle; a
+  // subject is read again only after its counts move.
+  const MAX_HISTORY_READS = 4;
+  const HISTORY_VERSION = 1;
   const BACKOFF_MINUTES = [1, 2, 5, 10, 20];
   // CUIMS's own throttle lasts minutes, so its backoff starts at five.
   const THROTTLE_MINUTES = [5, 10, 20, 30];
@@ -38,6 +43,7 @@
     attendanceTimetable: null,
     attendanceLeaves: null,
     attendanceCourses: null,
+    attendanceHistory: null,
     attendanceRequests: [],
     attendanceRunUntil: 0,
     attendanceStatus: null,
@@ -298,18 +304,46 @@
       }
     }
 
+    // A subject's stored history is current while its counts stand still:
+    // every new mark, and every leave decision, moves attended or delivered.
+    function historyStale(entry, subject) {
+      return !entry || Number(entry.attended) !== Number(subject.attended) || Number(entry.delivered) !== Number(subject.delivered);
+    }
+
     // Day-by-day marks are only worth a request for subjects whose class
-    // today has started and is not already known to be marked.
+    // today has started and is not already known to be marked. The same call
+    // answers with the whole semester, which the Forecast tab keeps; subjects
+    // whose counts moved are read for it too, a few per refresh.
     async function readTodaysMarks(state, request, meta, subjects, slots, campus) {
       const previous = state.attendanceSnapshot;
       const sameDay = previous?.marksDay === campus.key;
       const started = client.todaysSlots(slots, campus).filter((slot) => slot.start <= campus.minutes);
+      const stored = state.attendanceHistory?.v === HISTORY_VERSION ? state.attendanceHistory.subjects || {} : {};
+      const history = {};
+      for (const subject of subjects) {
+        const code = client.normCode(subject.code);
+        if (stored[code]) history[code] = stored[code];
+      }
+      let changed = Object.keys(history).length !== Object.keys(stored).length;
+      const keep = (subject, marks) => {
+        history[client.normCode(subject.code)] = { attended: subject.attended, delivered: subject.delivered, at: now(), marks: client.compactMarks(marks) };
+        changed = true;
+      };
       let reads = 0;
+      let failed = false;
+      const read = new Set();
       for (const subject of subjects) {
         const mine = started.filter((slot) => client.slotBelongsTo(slot, subject));
         const earlier = sameDay ? previous.subjects?.find((item) => item.code === subject.code) : null;
         subject.marks = earlier?.marks || null;
-        if (!mine.length || !subject.encryptCode || reads >= MAX_MARK_READS) continue;
+        if (!mine.length) continue;
+        // History read since the counts last moved already holds today's marks.
+        const kept = history[client.normCode(subject.code)];
+        if (kept && !historyStale(kept, subject)) {
+          subject.marks = client.expandMarks(kept.marks.filter(([day]) => day === campus.key));
+          continue;
+        }
+        if (failed || !subject.encryptCode || reads >= MAX_MARK_READS) continue;
         const known = (subject.marks || []).filter((mark) => client.parseDateKey(mark.date) === campus.key).length;
         if (subject.marks && known >= mine.length) continue;
         // A new mark always raises the delivered count, so an unchanged count
@@ -319,11 +353,25 @@
         try {
           const marks = await client.readMarks(request, meta, subject.encryptCode);
           subject.marks = (marks || []).filter((mark) => client.parseDateKey(mark.date) === campus.key);
+          keep(subject, marks);
+          read.add(subject);
         } catch {
           // Today's marks are extra detail; the totals already arrived.
-          return;
+          failed = true;
         }
       }
+      // History the Forecast tab is missing first, then the oldest.
+      const stale = subjects
+        .filter((subject) => subject.encryptCode && !read.has(subject) && historyStale(history[client.normCode(subject.code)], subject))
+        .sort((left, right) => Number(history[client.normCode(left.code)]?.at || 0) - Number(history[client.normCode(right.code)]?.at || 0));
+      for (const subject of failed ? [] : stale.slice(0, MAX_HISTORY_READS)) {
+        try {
+          keep(subject, await client.readMarks(request, meta, subject.encryptCode));
+        } catch {
+          break;
+        }
+      }
+      if (changed) await storage.set({ attendanceHistory: { v: HISTORY_VERSION, subjects: history } });
     }
 
     async function run(reason) {

@@ -13,8 +13,6 @@
   };
   const STATE_GLYPH = { present: "✓", absent: "✕", leave: "L", pending: "…", now: "●", next: "" };
   const KIND = { P: "lab", T: "tutorial" };
-  const VERDICT = { "can-skip": "Can skip", attend: "Attend", planned: "Skipping", "too-many": "Too many" };
-  const WEEKDAY = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -99,43 +97,6 @@
     return `<div class="goal" role="radiogroup" aria-label="Attendance goal">${Object.values(api.GOALS).map(option).join("")}</div>`;
   }
 
-  function planRow(item) {
-    const kind = KIND[item.kind] ? ` · ${KIND[item.kind]}` : "";
-    const now = item.state === "now" ? `<span class="plan-now" aria-label="in progress">●</span>` : "";
-    return `<li><button type="button" class="plan-row is-${item.verdict}" data-plan-key="${escapeHtml(item.key)}" aria-pressed="${item.skipping}">
-      <span class="plan-time">${escapeHtml(item.time)}</span>
-      <span class="plan-title">${now}${escapeHtml(item.title)}<span class="plan-kind">${escapeHtml(kind)}</span></span>
-      <span class="plan-verdict">${escapeHtml(VERDICT[item.verdict] || "")}</span>
-    </button></li>`;
-  }
-
-  function planNote(today, goal) {
-    const projection = today.projection;
-    if (!projection) return today.maxSkips ? "Tap a class you plan to skip." : "";
-    const parts = projection.subjects.map((subject) => `${subject.title} ${api.formatPercent(subject.percent)}`);
-    if (goal.overall && projection.overall != null) parts.unshift(`overall ${api.formatPercent(projection.overall)}`);
-    const text = `After today: ${parts.join(" · ")}`;
-    return projection.safe ? text : `Too many skips. ${text}`;
-  }
-
-  function todayCard(analytics, now) {
-    const today = analytics.today;
-    if (!today) return "";
-    const weekday = WEEKDAY[api.campusParts(now).weekday] || "Today";
-    if (!today.classes.length) {
-      return `<section class="today is-done" aria-label="Today"><div class="section-head"><span class="section-label">Today · ${escapeHtml(weekday)}</span><span class="section-meta">No more classes</span></div></section>`;
-    }
-    const left = today.classes.length;
-    const summary = today.maxSkips ? `${left} left · skip up to ${today.maxSkips}` : `${left} left · attend all`;
-    const note = planNote(today, analytics.goal);
-    const warn = today.projection && !today.projection.safe;
-    return `<section class="today" aria-label="Today">
-      <div class="section-head"><span class="section-label">Today · ${escapeHtml(weekday)}</span><span class="section-meta">${escapeHtml(summary)}</span></div>
-      <ul class="plan">${today.classes.map(planRow).join("")}</ul>
-      ${note ? `<p class="plan-note${warn ? " is-warn" : ""}">${escapeHtml(note)}</p>` : ""}
-    </section>`;
-  }
-
   function leaveCard(analytics, now) {
     const leave = analytics.overall.leave;
     const approved = leave.approved;
@@ -214,7 +175,6 @@
     const rule = goal.overall ? `${subjectMark}% per subject and ${overallMark}% overall` : `${subjectMark}% in every subject`;
     return `${toolbar(analytics, state, now)}
       ${goalSwitch(goal)}
-      ${todayCard(analytics, now)}
       <section class="overall tone-${escapeHtml(overall.tone)}" aria-label="Overall attendance">
         <div class="course-top">
           <span class="overall-label">Overall</span>
@@ -225,7 +185,7 @@
       </section>
       ${leaveCard(analytics, now)}
       <ul class="course-list" aria-label="Subjects">${analytics.subjects.map((subject) => subjectRow(subject, subjectMark)).join("")}</ul>
-      <p class="attendance-foot">Goal: ${escapeHtml(rule)}. Skips assume you attend the rest, and a class without a posted mark counts as missed. Approved leave drops a class from the count; pending leave counts as absent until approved.</p>`;
+      <p class="attendance-foot">Goal: ${escapeHtml(rule)}. Skips assume you attend the rest, and a class without a posted mark counts as missed. Approved leave drops a class from the count; pending leave counts as absent until approved. Forecast plans skips and projects your semester.</p>`;
   }
 
   api.escapeHtml = escapeHtml;

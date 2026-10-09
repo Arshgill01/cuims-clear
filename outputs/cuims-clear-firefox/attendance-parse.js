@@ -168,6 +168,35 @@
     });
   }
 
+  // A subject's whole mark list, kept small for storage: [day, start, kind]
+  // with kind p (present), a (absent), d (duty leave) or m (medical leave).
+  // Start is minutes after midnight, or -1 when CUIMS gave no timing.
+  const KIND_CHAR = { present: "p", absent: "a", dl: "d", ml: "m" };
+
+  function compactMarks(marks) {
+    const out = [];
+    for (const mark of marks || []) {
+      const day = api.parseDateKey(mark.date);
+      if (!day) continue;
+      const start = api.parseRange(mark.time)?.start;
+      out.push([day, start == null ? -1 : start, KIND_CHAR[mark.kind] || "a"]);
+    }
+    return out.sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : left[1] - right[1]));
+  }
+
+  // Back to the marks shape, for today's chips. Times come back as 24-hour
+  // ranges ("13:00 - 13:00"), which parseRange reads as given.
+  const CHAR_KIND = { p: "present", a: "absent", d: "dl", m: "ml" };
+
+  function expandMarks(compact) {
+    return (compact || []).map(([day, start, char]) => ({
+      date: day,
+      time: start >= 0 ? `${Math.floor(start / 60)}:${String(start % 60).padStart(2, "0")} - ${Math.floor(start / 60)}:${String(start % 60).padStart(2, "0")}` : "",
+      present: char === "p",
+      kind: CHAR_KIND[char] || "absent",
+    }));
+  }
+
   // A history grid as a list of {header: cell} rows.
   function gridRows(html, id) {
     const rows = tableRows(tableInner(html, id));
@@ -325,6 +354,8 @@
   api.unwrapReport = unwrapReport;
   api.normalizeSummary = normalizeSummary;
   api.normalizeMarks = normalizeMarks;
+  api.compactMarks = compactMarks;
+  api.expandMarks = expandMarks;
   api.parseTimetable = parseTimetable;
   api.hasTimetable = (html) => Boolean(firstTable(html, TIMETABLE_IDS));
   api.leaveState = leaveState;

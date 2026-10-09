@@ -21,6 +21,10 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - shows attendance on an **Attendance** tab without opening CUIMS: overall and
   per-subject percentages, how many classes you can skip while staying at 75% per
   subject and 90% overall, and today's classes as they happen;
+- forecasts the semester on a **Forecast** tab: where each subject and the overall figure
+  finish by the last day of classes at your recent pace, the likely range and the chance of
+  clearing the goal, how many classes are left to miss, a planner that shows what skipping a
+  class today or later in the week does, and which weekdays you miss most;
 - offers twenty colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
   Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Ristretto, Ethereal, Lumon,
   Hackerman, Last Horizon, Miasma, Catppuccin Latte, Flexoki Light and Rosé Pine, from Omarchy)

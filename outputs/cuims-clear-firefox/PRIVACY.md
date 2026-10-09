@@ -20,12 +20,13 @@ clicks the CU LMS control there. That URL is not saved. On
 `/my/courses.php` pages so syllabus materials and semester work can be paired. No SSO
 tokens are written to extension storage.
 
-When the student uses the Attendance tab, the extension signs in to `students.cuchd.in`
+When the student uses the Attendance or Forecast tab, the extension signs in to `students.cuchd.in`
 with the saved UID and password in the background, the same way the login page does, and
-reads the student's own attendance report, timetable, and duty and medical leave applications (to show pending leave). It uses the browser's existing
+reads the student's own attendance report, class-by-class attendance record, timetable, and duty and medical leave applications (to show pending leave). It uses the browser's existing
 CUIMS session when one is open. It talks to CUIMS only when the student uses the popup;
-nothing runs in the background on a timer. The attendance figures are stored only in
-local extension storage. Nothing is sent anywhere else.
+nothing runs in the background on a timer. The attendance figures and class record are stored
+only in local extension storage, and the Forecast tab's projections are worked out on the
+device from them. Nothing is sent anywhere else.
 
 The user can delete the stored UID, password, and attendance at any time with **Clear login** in the
 extension popup, or remove all stored settings by uninstalling the extension.

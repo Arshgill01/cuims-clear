@@ -26,6 +26,7 @@ const ATTENDANCE_KEYS = [
   "attendanceLeaves",
   "attendanceCourses",
   "attendancePlan",
+  "attendanceHistory",
 ];
 const STALE_MS = 10 * 60 * 1000;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
@@ -47,12 +48,14 @@ const switches = [...document.querySelectorAll('input[role="switch"][data-key]')
 // Rail order: what a student checks daily first, setup after.
 const tabs = {
   attendance: document.querySelector("#tab-attendance"),
+  forecast: document.querySelector("#tab-forecast"),
   login: document.querySelector("#tab-login"),
   theme: document.querySelector("#tab-theme"),
   settings: document.querySelector("#tab-settings"),
 };
 const views = {
   attendance: document.querySelector("#view-attendance"),
+  forecast: document.querySelector("#view-forecast"),
   login: document.querySelector("#view-login"),
   theme: document.querySelector("#view-theme"),
   settings: document.querySelector("#view-settings"),
@@ -71,9 +74,12 @@ let repaintTimer;
 let currentView = "";
 let settings = { ...SWITCH_DEFAULTS };
 let savedLogin = { uid: "", password: "" };
-let attendance = { snapshot: null, status: null, error: "", code: "" };
-// The student's goal is a preference; the skip plan lasts one campus day.
-let prefs = { goal: "standard", plan: { day: "", skips: [] } };
+let attendance = { snapshot: null, status: null, error: "", code: "", history: null };
+// The student's goal and last day of classes are preferences; planned skips
+// are "<day>|<class>" keys, dropped once their day has passed.
+let prefs = { goal: "standard", plan: [], end: "" };
+// Which day the planner shows and which subject is open, for this popup only.
+let forecastUi = { day: "", expanded: "" };
 // "", "ask" or "confirm", decided once per popup open (rate-nudge.js).
 let rateShow = "";
 
@@ -82,7 +88,20 @@ function todayKey() {
 }
 
 function plannedSkips() {
-  return prefs.plan?.day === todayKey() ? prefs.plan.skips || [] : [];
+  const today = todayKey();
+  return prefs.plan.filter((key) => String(key).slice(0, 10) >= today);
+}
+
+// 0.9.5 kept one day's skips as { day, skips: ["<class>"] }.
+function readPlan(stored) {
+  if (Array.isArray(stored?.keys)) return stored.keys.map(String);
+  if (stored?.day && Array.isArray(stored.skips)) return stored.skips.map((key) => `${stored.day}|${key}`);
+  return [];
+}
+
+function savePlan(keys) {
+  prefs.plan = [...new Set(keys)];
+  chrome.storage.local.set({ attendancePlan: { v: 2, keys: prefs.plan } });
 }
 
 function showStatus(message) {
@@ -126,7 +145,7 @@ form.addEventListener("submit", (event) => {
     uid.value = next.uid;
     syncLoginState();
     showStatus("Login saved");
-    if (!views.attendance.hidden) paintAttendance();
+    paintData();
   });
 });
 
@@ -154,7 +173,8 @@ clearLogin.addEventListener("click", () => {
   }
   resetClearButton();
   chrome.storage.local.remove(["uid", "password", ...ATTENDANCE_KEYS], () => {
-    attendance = { snapshot: null, status: null, error: "", code: "" };
+    attendance = { snapshot: null, status: null, error: "", code: "", history: null };
+    prefs.plan = [];
     savedLogin = { uid: "", password: "" };
     uid.value = "";
     password.value = "";
@@ -162,7 +182,7 @@ clearLogin.addEventListener("click", () => {
     togglePassword.textContent = "Show";
     togglePassword.setAttribute("aria-label", "Show password");
     syncLoginState();
-    if (!views.attendance.hidden) paintAttendance();
+    paintData();
     showStatus("Saved login and attendance cleared");
     uid.focus();
   });
@@ -277,12 +297,12 @@ bindOpenLink(document.querySelector(".lms-open-link"), "cuims-clear:launch-lms",
 
 // The attendance view is redrawn from scratch (every 30 s, and on every
 // background update), so keyboard focus is carried over by what it points at.
-function focusKey(node) {
-  if (!node || node === views.attendance || !views.attendance.contains?.(node)) return "";
+function focusKey(node, view = views.attendance) {
+  if (!node || node === view || !view.contains?.(node)) return "";
   if (node.id) return `#${CSS.escape(node.id)}`;
-  for (const name of ["planKey", "goal", "goto"]) {
+  for (const name of ["planKey", "planDay", "planClear", "planWhole", "goal", "goto", "subject", "endStep", "endReset", "endInput", "action", "chart"]) {
     const value = node.dataset?.[name];
-    if (value) return `[data-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}="${CSS.escape(value)}"]`;
+    if (value != null && name in (node.dataset || {})) return `[data-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}="${CSS.escape(value)}"]`;
   }
   return "";
 }
@@ -291,37 +311,69 @@ function focusKey(node) {
 // its key is kept and focus goes back to it once it is enabled again.
 let carriedFocus = "";
 
-function paintAttendance() {
-  const active = document.activeElement;
-  const key = focusKey(active) || (active === views.attendance || active === document.body ? carriedFocus : "");
+function readWorking() {
   const status = attendance.status || {};
-  const working = Boolean(status.working) && Date.now() - Number(status.at || 0) < 2 * 60 * 1000;
+  return Boolean(status.working) && Date.now() - Number(status.at || 0) < 2 * 60 * 1000;
+}
+
+// Redraws a view and puts keyboard focus back on what it pointed at.
+function repaint(view, html) {
+  const active = document.activeElement;
+  const key = focusKey(active, view) || (active === view || active === document.body ? carriedFocus : "");
+  view.innerHTML = html;
+  carriedFocus = "";
+  const target = key ? view.querySelector(key) : null;
+  if (target?.disabled) {
+    carriedFocus = key;
+    view.focus({ preventScroll: true });
+  } else target?.focus();
+}
+
+function paintAttendance() {
+  const status = attendance.status || {};
+  const working = readWorking();
   const analytics = attendance.snapshot?.subjects?.length
-    ? CuimsAttendance.buildAnalytics(attendance.snapshot, new Date(), { goal: prefs.goal, plan: plannedSkips() })
+    ? CuimsAttendance.buildAnalytics(attendance.snapshot, new Date(), { goal: prefs.goal })
     : null;
-  views.attendance.innerHTML = CuimsAttendance.renderAttendance(analytics, {
+  repaint(views.attendance, CuimsAttendance.renderAttendance(analytics, {
     working,
     phase: status.phase,
     needsLogin: !hasLogin(),
     error: working ? "" : attendance.error || status.error || "",
     code: working ? "" : attendance.code || status.code || "",
-  });
-  carriedFocus = "";
+  }));
   updateRate();
   paintRate();
-  const target = key ? views.attendance.querySelector(key) : null;
-  if (target?.disabled) {
-    carriedFocus = key;
-    views.attendance.focus({ preventScroll: true });
-  } else target?.focus();
   return working;
+}
+
+// The crosshair lives on the drawn chart, so the half-minute redraw waits
+// while the student is reading one.
+const forecastCharts = CuimsAttendance.bindForecastCharts(views.forecast);
+
+function paintForecast({ force = true } = {}) {
+  if (!force && forecastCharts.busy()) return readWorking();
+  const status = attendance.status || {};
+  const working = readWorking();
+  const forecast = attendance.snapshot?.subjects?.length
+    ? CuimsAttendance.buildForecast(attendance.snapshot, attendance.history, new Date(), { goal: prefs.goal, plan: plannedSkips(), end: prefs.end, day: forecastUi.day })
+    : null;
+  if (forecast?.plan) forecastUi.day = forecast.plan.day;
+  repaint(views.forecast, CuimsAttendance.renderForecast(forecast, { working, phase: status.phase, expanded: forecastUi.expanded }));
+  return working;
+}
+
+function paintData() {
+  if (currentView === "attendance") return paintAttendance();
+  if (currentView === "forecast") return paintForecast();
+  return readWorking();
 }
 
 function fetchAttendance() {
   attendance.error = "";
   attendance.code = "";
   attendance.status = { working: true, phase: "Checking your CUIMS session…", at: Date.now() };
-  paintAttendance();
+  paintData();
   chrome.runtime.sendMessage({ type: "cuims-clear:attendance-refresh" }, (response) => {
     if (chrome.runtime.lastError || !response) {
       attendance.status = null;
@@ -333,7 +385,7 @@ function fetchAttendance() {
       attendance.code = response.code || "";
       attendance.status = { working: false };
     }
-    paintAttendance();
+    paintData();
   });
 }
 
@@ -353,9 +405,9 @@ function showView(name, { remember = true } = {}) {
   window.clearInterval(repaintTimer);
   paintRate();
   if (name === "theme") renderThemes();
-  if (name !== "attendance") return;
-  const working = paintAttendance();
-  repaintTimer = window.setInterval(paintAttendance, 30_000);
+  if (name !== "attendance" && name !== "forecast") return;
+  const working = paintData();
+  repaintTimer = window.setInterval(() => (currentView === "forecast" ? paintForecast({ force: false }) : paintAttendance()), 30_000);
   const fetchedAt = Date.parse(attendance.snapshot?.fetchedAt || "") || 0;
   if (!working && Date.now() - fetchedAt > STALE_MS) fetchAttendance();
 }
@@ -390,6 +442,11 @@ document.addEventListener?.("click", (event) => {
   tabs[jump.dataset.goto].focus();
 });
 
+function setGoal(goal) {
+  prefs.goal = goal;
+  chrome.storage.local.set({ attendanceGoal: prefs.goal });
+}
+
 views.attendance.addEventListener("click", (event) => {
   if (event.target.closest("#fetch-attendance")) {
     fetchAttendance();
@@ -397,23 +454,114 @@ views.attendance.addEventListener("click", (event) => {
   }
   const goal = event.target.closest("[data-goal]");
   if (goal) {
-    prefs.goal = goal.dataset.goal;
-    chrome.storage.local.set({ attendanceGoal: prefs.goal });
+    setGoal(goal.dataset.goal);
     paintAttendance();
     views.attendance.querySelector(`[data-goal="${prefs.goal}"]`)?.focus();
+  }
+});
+
+// ---- forecast ----
+
+// The planner's keys are "<day>|<class>"; the day is the first ten characters.
+function dayOfKey(key) {
+  return String(key).slice(0, 10);
+}
+
+function setEnd(key) {
+  prefs.end = key;
+  chrome.storage.local.set({ forecastEnd: key });
+}
+
+function shiftDay(key, days) {
+  const number = CuimsAttendance.dayNumber(key);
+  return number == null ? "" : CuimsAttendance.dayKeyOf(number + days);
+}
+
+views.forecast.addEventListener("click", (event) => {
+  const target = event.target;
+  const focusAfter = (selector) => views.forecast.querySelector(selector)?.focus();
+  // The date shows as a label; open the browser's picker where it has one.
+  const picker = target.closest("[data-end-input]");
+  if (picker) {
+    try {
+      picker.showPicker?.();
+    } catch {
+      // Typing the date still works.
+    }
     return;
   }
-  const row = event.target.closest("[data-plan-key]");
+  if (target.closest("[data-action='refresh']")) {
+    fetchAttendance();
+    return;
+  }
+  const goal = target.closest("[data-goal]");
+  if (goal) {
+    setGoal(goal.dataset.goal);
+    paintForecast();
+    focusAfter(`[data-goal="${prefs.goal}"]`);
+    return;
+  }
+  const day = target.closest("[data-plan-day]");
+  if (day) {
+    forecastUi.day = day.dataset.planDay;
+    paintForecast();
+    focusAfter(`[data-plan-day="${CSS.escape(forecastUi.day)}"]`);
+    return;
+  }
+  const row = target.closest("[data-plan-key]");
   if (row) {
     const key = row.dataset.planKey;
-    const skips = new Set(plannedSkips());
-    if (skips.has(key)) skips.delete(key);
-    else skips.add(key);
-    prefs.plan = { day: todayKey(), skips: [...skips] };
-    chrome.storage.local.set({ attendancePlan: prefs.plan });
-    paintAttendance();
-    views.attendance.querySelector(`[data-plan-key="${CSS.escape(key)}"]`)?.focus();
+    const keys = new Set(plannedSkips());
+    if (keys.has(key)) keys.delete(key);
+    else keys.add(key);
+    savePlan([...keys]);
+    paintForecast();
+    focusAfter(`[data-plan-key="${CSS.escape(key)}"]`);
+    return;
   }
+  if (target.closest("[data-plan-whole]")) {
+    const keys = [...views.forecast.querySelectorAll("[data-plan-key]")].map((node) => node.dataset.planKey);
+    savePlan([...plannedSkips(), ...keys]);
+    paintForecast();
+    focusAfter("[data-plan-clear='day']");
+    return;
+  }
+  const clear = target.closest("[data-plan-clear]");
+  if (clear) {
+    savePlan(clear.dataset.planClear === "all" ? [] : plannedSkips().filter((key) => dayOfKey(key) !== forecastUi.day));
+    paintForecast();
+    focusAfter(`[data-plan-day="${CSS.escape(forecastUi.day)}"]`);
+    return;
+  }
+  const subject = target.closest("[data-subject]");
+  if (subject) {
+    const code = subject.dataset.subject;
+    forecastUi.expanded = forecastUi.expanded === code ? "" : code;
+    paintForecast();
+    focusAfter(`[data-subject="${CSS.escape(code)}"]`);
+    return;
+  }
+  const step = target.closest("[data-end-step]");
+  if (step) {
+    const current = views.forecast.querySelector("[data-end-input]")?.value || prefs.end;
+    const next = shiftDay(current, Number(step.dataset.endStep));
+    if (next && next >= todayKey()) setEnd(next);
+    paintForecast();
+    focusAfter(`[data-end-step="${step.dataset.endStep}"]`);
+    return;
+  }
+  if (target.closest("[data-end-reset]")) {
+    setEnd("");
+    paintForecast();
+    focusAfter("[data-end-step='7']");
+  }
+});
+
+views.forecast.addEventListener("change", (event) => {
+  const input = event.target.closest?.("[data-end-input]");
+  if (!input || !/^\d{4}-\d{2}-\d{2}$/.test(input.value) || input.value < todayKey()) return;
+  setEnd(input.value);
+  paintForecast();
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -428,7 +576,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
     attendance.error = "";
     attendance.code = "";
   }
-  if ((changes.attendanceSnapshot || changes.attendanceStatus) && !views.attendance.hidden) paintAttendance();
+  if (changes.attendanceHistory) attendance.history = changes.attendanceHistory.newValue || null;
+  if (changes.attendanceSnapshot || changes.attendanceStatus || changes.attendanceHistory) paintData();
   // A switch flipped elsewhere (the LMS page's own Original view button).
   let flipped = false;
   for (const key of Object.keys(SWITCH_DEFAULTS)) {
@@ -673,6 +822,8 @@ chrome.storage.local.get(
     popupView: "",
     attendanceGoal: "standard",
     attendancePlan: null,
+    attendanceHistory: null,
+    forecastEnd: "",
     rateNudge: null,
   },
   (stored) => {
@@ -684,7 +835,8 @@ chrome.storage.local.get(
     paintSwitches();
     attendance.snapshot = stored.attendanceSnapshot;
     attendance.status = stored.attendanceStatus;
-    prefs = { goal: stored.attendanceGoal || "standard", plan: stored.attendancePlan || { day: "", skips: [] } };
+    attendance.history = stored.attendanceHistory;
+    prefs = { goal: stored.attendanceGoal || "standard", plan: readPlan(stored.attendancePlan), end: String(stored.forecastEnd || "") };
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";
     showView(start, { remember: false });

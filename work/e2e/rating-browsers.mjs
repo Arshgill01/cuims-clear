@@ -29,7 +29,7 @@ try {
   });
   await page.goto(`${base}/popup.html`);
   const reload = () => page.reload();
-  await page.waitForFunction(() => document.querySelector("#version")?.textContent === "v0.9.5");
+  await page.waitForFunction(() => document.querySelector("#version")?.textContent === `v${chrome.runtime.getManifest().version}`);
   const snapshot = { fetchedAt: new Date().toISOString(), subjects: [
     { code: "24CST-302", title: "Computer Networks", attended: 36, delivered: 40, marks: [] },
     { code: "24SMT-341", title: "Probability and Statistics", attended: 32, delivered: 40, marks: [] },
@@ -40,7 +40,7 @@ try {
       attendanceSnapshot: snapshot, attendanceStatus: null, popupView: "attendance", rateNudge: null, ...values,
     });
     await reload();
-    await page.waitForFunction(() => document.querySelector("#version")?.textContent === "v0.9.5");
+    await page.waitForFunction(() => document.querySelector("#version")?.textContent === `v${chrome.runtime.getManifest().version}`);
   }
   const hidden = () => page.$eval("#rate-nudge", (node) => node.hidden);
   const state = () => page.evaluate(() => new Promise((resolve) => chrome.storage.local.get("rateNudge", (data) => resolve(data.rateNudge))));

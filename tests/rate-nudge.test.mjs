@@ -108,6 +108,9 @@ function popup({ rateNudge, snapshot, status = null, view = "attendance" }) {
     CuimsAttendance: {
       buildAnalytics() { return null; },
       renderAttendance() { return ""; },
+      buildForecast() { return null; },
+      renderForecast() { return ""; },
+      bindForecastCharts: () => ({ busy: () => false }),
       escapeHtml: (v) => String(v),
       campusParts: (date) => ({ key: date.toISOString().slice(0, 10) }),
     },

@@ -18,6 +18,10 @@
             <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2.5" /><path d="M3 8h14M7 2.5v3M13 2.5v3M7.5 12.5l1.8 1.8 3.4-3.6" /></svg>
             <span>Attendance</span>
           </button>
+          <button id="tab-forecast" type="button" role="tab" aria-selected="false" aria-controls="view-forecast" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15.5l3.6-4 2.8 2.2 3.4-4.7" /><path d="M12.8 9l3.9-5.2" class="dash" /><circle cx="16.7" cy="3.8" r="1.2" class="fill" /></svg>
+            <span>Forecast</span>
+          </button>
           <button id="tab-login" type="button" role="tab" aria-selected="false" aria-controls="view-login" tabindex="-1">
             <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="10" r="3.5" /><path d="M10.5 10H17.5M15 10v3M17.5 10v2.2" /></svg>
             <span>Login</span>
@@ -59,6 +63,7 @@
         <div class="views" id="views">
           <section id="view-attendance" class="view attendance" role="tabpanel" aria-labelledby="tab-attendance" tabindex="-1" hidden></section>
 
+          <section id="view-forecast" class="view forecast" role="tabpanel" aria-labelledby="tab-forecast" tabindex="-1" hidden></section>
           <section id="view-login" class="view" role="tabpanel" aria-labelledby="tab-login" tabindex="-1" hidden>
             <form id="settings-form" class="login-form">
               <fieldset class="login-fields">
@@ -229,6 +234,8 @@
     </div>
     <script src="attendance-model.js"></script>
     <script src="attendance-view.js"></script>
+    <script src="forecast-model.js"></script>
+    <script src="forecast-view.js"></script>
     <script src="rate-nudge.js"></script>
     <script src="popup.js"></script>
   </body>

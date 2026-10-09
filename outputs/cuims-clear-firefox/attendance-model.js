@@ -239,88 +239,6 @@
     return `${normCode(code)}@${start}`;
   }
 
-  // Today's planner. Every remaining class counts as attended unless it is in
-  // the skip set; a set is safe when each skipped subject, and the overall
-  // figure when the goal has one, still meet the goal at the end of the day.
-  function planToday(rows, goal, planned) {
-    const classes = [];
-    for (const row of rows) {
-      for (const item of row.today) {
-        if (item.state === "next" || item.state === "now") classes.push({ ...item, key: slotKey(row.code, item.start), row });
-      }
-    }
-    classes.sort((left, right) => left.start - right.start);
-    const endOfDay = (skips) => {
-      const bySubject = new Map();
-      let attended = 0;
-      let held = 0;
-      for (const row of rows) {
-        const mine = classes.filter((item) => item.row === row);
-        const skipped = mine.filter((item) => skips.has(item.key)).length;
-        const a = row.attended + mine.length - skipped;
-        const h = row.delivered + row.pending + mine.length;
-        bySubject.set(row, { attended: a, held: h, skipped });
-        attended += a;
-        held += h;
-      }
-      return { bySubject, attended, held };
-    };
-    const safe = (skips) => {
-      if (!skips.size) return true;
-      const day = endOfDay(skips);
-      for (const [, figures] of day.bySubject) {
-        if (figures.skipped && figures.attended / figures.held + 1e-12 < goal.subject) return false;
-      }
-      return !goal.overall || (day.held > 0 && day.attended / day.held + 1e-12 >= goal.overall);
-    };
-    const margin = (skips) => {
-      const day = endOfDay(skips);
-      let least = Infinity;
-      for (const [, figures] of day.bySubject) if (figures.skipped) least = Math.min(least, figures.attended / figures.held - goal.subject);
-      if (goal.overall) least = Math.min(least, day.attended / day.held - goal.overall);
-      return least;
-    };
-
-    // Largest safe set, keeping the most headroom. A day has a handful of
-    // classes, so every subset is checked.
-    let best = new Set();
-    const limit = Math.min(classes.length, 12);
-    for (let mask = 1; mask < 1 << limit; mask += 1) {
-      const set = new Set(classes.slice(0, limit).filter((_, index) => mask & (1 << index)).map((item) => item.key));
-      if (set.size < best.size || !safe(set)) continue;
-      if (set.size > best.size || margin(set) > margin(best)) best = set;
-    }
-
-    const plan = new Set((planned || []).filter((key) => classes.some((item) => item.key === key)));
-    const planSafe = safe(plan);
-    const items = classes.map((item) => {
-      const skipping = plan.has(item.key);
-      const next = new Set(plan);
-      next.add(item.key);
-      return {
-        key: item.key,
-        time: item.time,
-        title: item.row.title,
-        code: item.row.code,
-        state: item.state,
-        kind: item.kind,
-        skipping,
-        verdict: skipping ? (planSafe ? "planned" : "too-many") : safe(next) ? "can-skip" : "attend",
-      };
-    });
-
-    let projection = null;
-    if (plan.size) {
-      const day = endOfDay(plan);
-      projection = {
-        safe: planSafe,
-        overall: day.held > 0 ? (day.attended / day.held) * 100 : null,
-        subjects: [...day.bySubject].filter(([, figures]) => figures.skipped).map(([row, figures]) => ({ title: row.title, percent: (figures.attended / figures.held) * 100, below: figures.attended / figures.held + 1e-12 < goal.subject })),
-      };
-    }
-    return { classes: items, maxSkips: best.size, planned: plan.size, projection };
-  }
-
   // Skips assume every other class is attended. A class that ended without a
   // posted mark counts as missed, so a late mark can only raise the number.
   function buildAnalytics(snapshot, now = new Date(), options = {}) {
@@ -402,7 +320,6 @@
       row.line = subjectLine(row, overall, goal);
     }
     overall.line = overallLine(overall, goal, rows);
-    const today = slots.length ? planToday(rows, goal, options.plan) : null;
     rows.sort((left, right) => (left.percent ?? 101) - (right.percent ?? 101) || left.title.localeCompare(right.title));
 
     return {
@@ -412,7 +329,6 @@
       timetableKnown: Array.isArray(snapshot?.slots) && snapshot.slots.length > 0,
       leavesCheckedAt: leaves?.checkedAt || null,
       overall,
-      today,
       subjects: rows,
     };
   }
@@ -422,6 +338,7 @@
   api.maxMisses = maxMisses;
   api.classesToRecover = classesToRecover;
   api.formatPercent = formatPercent;
+  api.formatClock = formatClock;
   api.campusParts = campusParts;
   api.parseDateKey = parseDateKey;
   api.parseRange = parseRange;
@@ -431,7 +348,6 @@
   api.GOALS = GOALS;
   api.VDL_PER_SUBJECT = VDL_PER_SUBJECT;
   api.LEAVES_VERSION = LEAVES_VERSION;
-  api.planToday = planToday;
   api.slotKey = slotKey;
   api.normCode = normCode;
 })(globalThis);
