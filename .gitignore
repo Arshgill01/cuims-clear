@@ -25,3 +25,5 @@ store/screenshots/src/.*.png
 store/screenshots/src/.captcha.jpg
 # Local test credentials for the live e2e runs
 .env
+# Local-only CUIMS marks verification (never package or publish).
+work/marks-live.html

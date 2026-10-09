@@ -201,6 +201,18 @@
       <p class="attendance-foot">Goal: ${escapeHtml(rule)}. Skips assume you attend the rest, and a class without a posted mark counts as missed. Approved leave drops a class from the count; pending leave counts as absent until approved. Forecast plans skips and projects your semester.</p>`;
   }
 
+  // Shared first-fetch layout for the Marks and Timetable popup views.
+  function renderFetchEmpty(feature, state = {}) {
+    const needsLogin = !state.working && (state.needsLogin || state.code === "needs-login");
+    const notice = state.working ? { ...state, error: "" } : needsLogin
+      ? { ...state, error: "Save your UID and password on the Login tab first.", code: "needs-login" } : state;
+    return '<div class="attendance-empty"><p>' + escapeHtml(feature.description) + '</p>'
+      + '<button id="' + feature.id + '" class="save-button" type="button"' + (state.working ? ' disabled' : '') + '>'
+      + escapeHtml(state.working ? state.phase || "Fetching…" : feature.label) + '</button>'
+      + message(notice) + '</div>';
+  }
+
+  api.renderFetchEmpty = renderFetchEmpty;
   api.escapeHtml = escapeHtml;
   api.ago = ago;
   api.renderAttendance = renderAttendance;

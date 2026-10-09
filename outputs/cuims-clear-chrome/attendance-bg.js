@@ -13,6 +13,13 @@ function startAttendanceBackground(solveCaptcha) {
     },
     fetchImpl: (url, options) => fetch(url, options),
     solveCaptcha,
+    loginTabPresent: async () => {
+      const tabs = await chrome.tabs.query({});
+      return tabs.some(tab => [tab.url, tab.pendingUrl].some(value => {
+        try { return new URL(value).origin === "https://students.cuchd.in" && CuimsAttendance.isLoginUrl(value); }
+        catch { return false; }
+      }));
+    },
   });
 
   const hasAccess = () => chrome.permissions.contains(CUIMS_ORIGINS);
@@ -32,6 +39,25 @@ function startAttendanceBackground(solveCaptcha) {
       })
       .then(sendResponse)
       .catch((error) => sendResponse({ error: String(error?.message || error), code: "network" }));
+    return true;
+  });
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== "cuims-clear:marks-read" || !fromExtensionPage(sender)) return;
+    hasAccess()
+      .then((granted) => granted
+        ? attendance.fetchRegularMarks({ force: message.refresh === true })
+        : { error: "Allow access to CUIMS at the top of the popup first.", code: "no-access" })
+      .then(sendResponse)
+      .catch(() => sendResponse({ error: "Could not read marks. Try again.", code: "network" }));
+    return true;
+  });
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type !== "cuims-clear:timetable-read" || !fromExtensionPage(sender)) return;
+    hasAccess().then(granted => granted ? attendance.fetchCachedTimetable()
+      : { error: "Allow access to CUIMS at the top of the popup first.", code: "no-access" })
+      .then(sendResponse).catch(() => sendResponse({ error: "Could not read the timetable. Try again.", code: "network" }));
     return true;
   });
 
