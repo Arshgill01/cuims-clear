@@ -298,12 +298,16 @@
 
     // Folds one leave page's applications in and recounts pending leave when
     // the set of pending applications changed.
-    async function mergeLeaves(state, request, meta, which, applications) {
+    // `count: false` keeps the last pending counts and leaves the recount,
+    // which reads marks, to the next Refresh.
+    async function mergeLeaves(state, request, meta, which, applications, { count = true } = {}) {
       const cached = currentLeaves(state) || {};
       const apps = { dl: cached.apps?.dl || [], ml: cached.apps?.ml || [], [which]: applications };
       const all = [...apps.dl, ...apps.ml];
-      const pendingKey = all.filter((leave) => leave.state === "pending").map((leave) => leave.id).sort().join(",");
-      const pending = pendingKey === cached.pendingKey && cached.pending ? cached.pending : await countPendingLeave(request, meta, state.attendanceCourses, all);
+      const wantedKey = all.filter((leave) => leave.state === "pending").map((leave) => leave.id).sort().join(",");
+      const current = wantedKey === cached.pendingKey && cached.pending;
+      const pending = current ? cached.pending : count ? await countPendingLeave(request, meta, state.attendanceCourses, all) : cached.pending || {};
+      const pendingKey = current || count ? wantedKey : cached.pendingKey || "";
       const leaves = { ...cached, v: client.LEAVES_VERSION, apps, pending, pendingKey, [`${which}At`]: now(), checkedAt: now(), triedAt: now() };
       await storage.set({ attendanceLeaves: leaves });
       return leaves;
@@ -329,6 +333,8 @@
     }
 
     // The student opened a leave page on CUIMS: read it there, for free.
+    // The student opened a leave page on CUIMS: keep what it shows, with no
+    // request of our own. Reads happen only on Refresh.
     async function readLeaveUpdate(which, html) {
       if (!client.LEAVE_PAGES[which]) return null;
       const state = await storage.get(DEFAULTS);
@@ -338,7 +344,7 @@
       const applications = which === "dl" ? client.parseDutyLeaves(html) : client.parseMedicalLeaves(html);
       const budget = meter(state);
       try {
-        const leaves = await mergeLeaves(state, createRequest(budget), meta, which, applications);
+        const leaves = await mergeLeaves(state, createRequest(budget), meta, which, applications, { count: false });
         if (state.attendanceSnapshot) {
           await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: snapshotLeaves(leaves) } });
         }

@@ -256,6 +256,10 @@
     };
     const merged = { ...palette, ...derived, ...(palette.fixed || {}) };
     merged.success = merged.success || merged.goodInk;
+    // Muted text also sits on the second surface and the tinted cards (an
+    // "Attend" chip, a red Overall card): it steps toward the ink until it
+    // reads on all of them. Moving toward the ink only raises the others.
+    merged.muted = [merged.surface2, merged.goodBg, merged.warnBg, merged.badBg].reduce((color, bg) => readable(color, bg, 4.5, ink), merged.muted);
     merged.onGood = onColor(merged.goodInk, "#ffffff", dark ? canvas : ink);
     merged.onBad = onColor(merged.badInk, "#ffffff", dark ? canvas : ink);
     merged.meterMark = mix(ink, surface, 0.45);

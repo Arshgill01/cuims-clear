@@ -859,11 +859,15 @@ test("a duty-leave approval is reflected by the next attendance refresh without 
   assert.doesNotMatch(A.renderAttendance(view), /open Duty Leave/);
 });
 
-test("opening a leave page on CUIMS updates pending leave with no page request", async () => {
-  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK] });
+test("opening a leave page on CUIMS keeps it with no request of ours; the next Refresh counts it", async () => {
+  const pendingLeave = [{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }];
+  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK], dutyLeaves: pendingLeave });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceCourses: { "24CSP305": "enc305" }, attendanceSnapshot: { fetchedAt: new Date(MONDAY_11).toISOString(), subjects: [] } });
-  await daemon(server, storage).ingestLeavePage("dl", dutyLeavePage([{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }]));
-  assert.equal(server.state.leavePageLoads, 0);
+  const bg = daemon(server, storage);
+  await bg.ingestLeavePage("dl", dutyLeavePage(pendingLeave));
+  assert.equal(server.state.requests.length, 0, "reads happen only on Refresh");
+  assert.equal(storage.data.attendanceLeaves.apps.dl.length, 1);
+  await bg.refresh("manual");
   assert.deepEqual({ ...storage.data.attendanceSnapshot.leaves.pending["24CSP305"] }, { vdl: 1, idl: 0, adl: 0, ml: 0 });
 });
 
@@ -1040,7 +1044,8 @@ test("leave ingestion waits for the shared request queue and cannot overwrite an
   assert.equal(server.state.requests.length, 1);
   release();
   await Promise.all([opening, ingest]);
-  assert.equal(storage.data.attendanceRequests.length, 2);
+  // Ingesting makes no request; the open's one is kept, not overwritten.
+  assert.equal(storage.data.attendanceRequests.length, 1);
 });
 
 test("a marks throttle stops the refresh before leave work and preserves cached attendance", async () => {

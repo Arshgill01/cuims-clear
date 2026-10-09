@@ -20,7 +20,9 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
   with an **Original view** escape on LMS pages;
 - shows attendance on an **Attendance** tab without opening CUIMS: overall and
   per-subject percentages, how many classes you can skip while staying at 75% per
-  subject and 90% overall, and today's classes as they happen;
+  subject and 90% overall, and today's classes as they happen. It reads CUIMS only when
+  you press Refresh: one press brings attendance, duty leave, the timetable when due and
+  the class record, inside a 25-request budget;
 - forecasts the semester on a **Forecast** tab: where each subject and the overall figure
   finish by the last day of classes at your recent pace, the likely range and the chance of
   clearing the goal, how many classes are left to miss, a planner that shows what skipping a

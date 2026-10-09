@@ -44,8 +44,9 @@ session to pair syllabus materials with semester work.
 
 When you use the Attendance or Forecast tab, the extension reads your own attendance report,
 class-by-class attendance record, timetable, and duty and medical leave applications from CUIMS with your browser's CUIMS session, signing in with your
-saved UID and password in the background when needed. It talks to CUIMS only when
-you use the popup; nothing runs in the background on a timer. Attendance figures and the
+saved UID and password in the background when needed. It reads them only when
+you press Refresh; opening the popup or a tab never starts a read, and nothing runs on
+a timer. Attendance figures and the
 class record are stored only in chrome.storage.local on this device and are removed by
 Clear login. The Forecast tab's projections are calculated on the device from them.
 

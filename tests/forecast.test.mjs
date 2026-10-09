@@ -37,12 +37,12 @@ test("the beta-binomial sums to one and centres on the pace", () => {
   assert.deepEqual(plain(A.betaBinomial(0, 2, 2)), [1]);
 });
 
-test("the last day of classes is the student's, else late November or late April", () => {
+test("the last day of classes is the student's, else 13 November or 30 April", () => {
   const today = A.dayNumber("2026-10-09");
   assert.equal(A.dayKeyOf(A.semesterEnd("2026-12-04", today).day), "2026-12-04");
   assert.equal(A.semesterEnd("2026-12-04", today).estimated, false);
   const estimate = A.semesterEnd("", today);
-  assert.equal(A.dayKeyOf(estimate.day), "2026-11-20");
+  assert.equal(A.dayKeyOf(estimate.day), "2026-11-13");
   assert.equal(estimate.estimated, true);
   assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2027-02-10")).day), "2027-04-30");
   // Past the estimate, classes are over.

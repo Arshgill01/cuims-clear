@@ -129,12 +129,10 @@
   function toolbar(analytics, state, now) {
     const note = state.working
       ? state.phase || "Refreshing…"
-      : analytics?.fetchedAt
-        ? `Updated ${clock(analytics.fetchedAt)} (${ago(analytics.fetchedAt, now)})`
-        : "";
+      : readNote(analytics?.fetchedAt, now, `Updated ${clock(analytics?.fetchedAt)} (${ago(analytics?.fetchedAt, now)})`);
     return `<div class="attendance-bar">
       <p class="attendance-note" role="status" aria-live="polite">${escapeHtml(note)}</p>
-      ${refreshButton(state, "refresh-button", "Refresh")}
+      ${refreshButton({ ...state, due: readIsOld(analytics?.fetchedAt, now) }, "refresh-button", "Refresh")}
     </div>
     ${message(state)}`;
   }
@@ -168,7 +166,19 @@
     const remaining = Math.ceil((Number(state.nextRefreshAt || 0) - (state.now || new Date()).getTime()) / 1000);
     const waiting = remaining > 0;
     const label = state.working ? state.phase || "Refreshing…" : waiting ? `Refresh in ${Math.ceil(remaining / 60)} min` : idle;
-    return `<button ${target} class="${className}" type="button"${state.working || waiting ? " disabled" : ""}>${escapeHtml(label)}</button>`;
+    const due = state.due && !state.working && !waiting ? " is-due" : "";
+    return `<button ${target} class="${className}${due}" type="button"${state.working || waiting ? " disabled" : ""}>${escapeHtml(label)}</button>`;
+  }
+
+  // Nothing reads CUIMS until Refresh, so a read from an earlier day says so.
+  function readIsOld(fetchedAt, now) {
+    const then = Date.parse(fetchedAt || "");
+    return Boolean(then) && api.campusParts(new Date(then)).key !== api.campusParts(now).key;
+  }
+
+  function readNote(fetchedAt, now, fresh) {
+    if (!fetchedAt) return "";
+    return readIsOld(fetchedAt, now) ? `Last read ${ago(fetchedAt, now)} · Refresh for today` : fresh;
   }
 
   function renderAttendance(analytics, state = {}) {
@@ -205,5 +215,7 @@
   api.ago = ago;
   api.renderAttendance = renderAttendance;
   api.refreshButton = refreshButton;
+  api.readIsOld = readIsOld;
+  api.readNote = readNote;
   api.refreshMessage = message;
 })(globalThis);

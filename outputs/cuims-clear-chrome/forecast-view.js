@@ -63,8 +63,9 @@
 
   // ---- charts ----
 
-  function niceStep(span) {
-    return span > 30 ? 10 : span > 12 ? 5 : 2;
+  // The smallest round step that keeps value labels 16 px apart.
+  function niceStep(span, plotH) {
+    return [1, 2, 5, 10, 20, 25, 50].find((step) => (plotH * step) / span >= 16) || 50;
   }
 
   // One line chart: attendance so far (solid), the pace forecast (dashed)
@@ -75,7 +76,8 @@
     const future = (series.future?.points || []).slice(past.length ? 1 : 0);
     const goal = series.future?.goal ?? 75;
     const all = [...past.map((point) => point.value), ...future.flatMap((point) => [point.low, point.high, point.best]), goal];
-    if (!all.length || (!past.length && !future.length)) return "";
+    // A single point is not a chart.
+    if (past.length + future.length < 2) return "";
     let min = Math.min(...all);
     let max = Math.max(...all);
     min = Math.max(0, Math.floor(min - 2));
@@ -88,7 +90,9 @@
     const xs = [...past.map((point) => point.x), ...future.map((point) => point.x)];
     const x0 = Math.min(...xs);
     const x1 = Math.max(...xs, x0 + 1);
-    const pad = { left: 2, right: 42, top: 10, bottom: 20 };
+    // Value ticks in a left gutter; the right edge is the forecast's own label.
+    // Room for a bold "100%" either side, with a few pixels to spare.
+    const pad = { left: 34, right: 40, top: 10, bottom: 20 };
     const plotW = width - pad.left - pad.right;
     const plotH = height - pad.top - pad.bottom;
     const sx = (x) => pad.left + ((x - x0) / (x1 - x0)) * plotW;
@@ -96,14 +100,12 @@
     const f = (value) => value.toFixed(1);
     const path = (points, pick) => points.map((point, index) => `${index ? "L" : "M"}${f(sx(point.x))} ${f(sy(pick(point)))}`).join("");
 
-    const step = niceStep(max - min);
-    const endValue = future.length ? future[future.length - 1].mid : null;
+    const step = niceStep(max - min, plotH);
     const grid = [];
     for (let value = Math.ceil(min / step) * step; value <= max; value += step) {
-      if (Math.abs(value - goal) < step / 2) continue;
-      // The forecast's end label sits on the right edge; its tick gives way.
-      if (endValue != null && Math.abs(sy(value) - sy(endValue)) < 11) continue;
-      grid.push(`<line class="fc-grid" x1="${pad.left}" x2="${f(pad.left + plotW)}" y1="${f(sy(value))}" y2="${f(sy(value))}"/><text class="fc-axis" x="${f(width - 2)}" y="${f(sy(value) + 3.5)}" text-anchor="end">${value}</text>`);
+      // The goal is a tick of its own; a plain one beside it would crowd it.
+      if (Math.abs(sy(value) - sy(goal)) < 14) continue;
+      grid.push(`<line class="fc-grid" x1="${pad.left}" x2="${f(pad.left + plotW)}" y1="${f(sy(value))}" y2="${f(sy(value))}"/><text class="fc-axis" x="${pad.left - 5}" y="${f(sy(value) + 3.5)}" text-anchor="end">${value}</text>`);
     }
 
     // Month ticks along the bottom.
@@ -111,7 +113,7 @@
     const first = new Date(x0 * 86_400_000);
     for (let cursor = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1)); cursor.getTime() / 86_400_000 <= x1; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) {
       const x = sx(cursor.getTime() / 86_400_000);
-      if (x < 12 || x > pad.left + plotW - 12) continue;
+      if (x < pad.left + 10 || x > pad.left + plotW - 10) continue;
       ticks.push(`<line class="fc-tick" x1="${f(x)}" x2="${f(x)}" y1="${f(pad.top + plotH)}" y2="${f(pad.top + plotH + 3)}"/><text class="fc-axis" x="${f(x)}" y="${height - 5}" text-anchor="middle">${MONTHS[cursor.getUTCMonth()]}</text>`);
     }
 
@@ -127,8 +129,6 @@
     const now = past[past.length - 1];
     const goalY = sy(goal);
     const endY = last ? sy(last.mid) : null;
-    // The goal label moves off the end value when they would touch.
-    const goalLabelY = endY != null && Math.abs(endY - goalY) < 11 ? (endY > goalY ? goalY - 4 : goalY + 10) : goalY + 3.5;
 
     charts.set(id, {
       x0, x1, width, height, pad, plotW, plotH, min, max,
@@ -140,7 +140,7 @@
       ${ticks.join("")}
       ${band}
       <line class="fc-goal" x1="${pad.left}" x2="${f(pad.left + plotW)}" y1="${f(goalY)}" y2="${f(goalY)}"/>
-      <text class="fc-goal-label" x="${f(width - 2)}" y="${f(goalLabelY)}" text-anchor="end">${Math.round(goal)}%</text>
+      <text class="fc-goal-label" x="${pad.left - 5}" y="${f(goalY + 3.5)}" text-anchor="end">${Math.round(goal)}%</text>
       ${future.length ? `<path class="fc-best" d="${path([...join, ...future], (point) => point.best)}"/>` : ""}
       ${past.length > 1 ? `<path class="fc-past" d="${path(past, (point) => point.value)}"/>` : ""}
       ${future.length ? `<path class="fc-mid" d="${path([...join, ...future], (point) => point.mid)}"/>` : ""}
@@ -203,22 +203,92 @@
     return `<dl class="fc-stats">${cells.join("")}</dl>`;
   }
 
-  function endControl(forecast) {
+  function endControl(forecast, calendarState) {
     const end = forecast.end;
+    const open = Boolean(calendarState?.open);
     return `<div class="fc-end">
       <span class="fc-end-label-text">Classes end</span>
       <span class="fc-end-pick">
         <button type="button" class="fc-step" data-end-step="-7" aria-label="A week earlier">‹</button>
-        <label class="fc-end-date"><span>${esc(end.label)}</span><input type="date" data-end-input value="${esc(end.key)}" aria-label="Last day of classes"/></label>
+        <button type="button" class="fc-end-date" data-cal-toggle aria-expanded="${open}" aria-controls="fc-cal" aria-label="Last day of classes, ${esc(end.label)}. Pick a date">${esc(end.label)}</button>
         <button type="button" class="fc-step" data-end-step="7" aria-label="A week later">›</button>
       </span>
       ${end.estimated ? `<span class="fc-end-tag">Estimated</span>` : `<button type="button" class="fc-end-reset" data-end-reset>Use estimate</button>`}
+    </div>
+    ${open ? calendar(forecast, calendarState) : ""}`;
+  }
+
+  const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  // A month of days drawn inside the popup: the browser's own date picker
+  // opens behind an extension popup in Firefox. One day is in the tab order;
+  // the arrow keys move between days (popup.js).
+  function calendar(forecast, calendarState) {
+    const selected = forecast.end.key;
+    const today = forecast.todayKey;
+    const month = /^\d{4}-\d{2}$/.test(calendarState.month || "") ? calendarState.month : selected.slice(0, 7);
+    const [year, monthIndex] = month.split("-").map(Number);
+    const days = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+    const lead = (new Date(Date.UTC(year, monthIndex - 1, 1)).getUTCDay() + 6) % 7;
+    const keyOf = (day) => `${month}-${String(day).padStart(2, "0")}`;
+    const wanted = calendarState.focus && calendarState.focus.startsWith(month) ? calendarState.focus : selected.startsWith(month) ? selected : null;
+    const focus = wanted && wanted >= today ? wanted : [...Array(days)].map((_, index) => keyOf(index + 1)).find((key) => key >= today);
+    const cells = [];
+    for (let index = 0; index < lead; index += 1) cells.push('<span class="fc-cal-blank" aria-hidden="true"></span>');
+    for (let day = 1; day <= days; day += 1) {
+      const key = keyOf(day);
+      const classes = ["fc-cal-day"];
+      if (key === today) classes.push("is-today");
+      if (key === forecast.end.estimate) classes.push("is-estimate");
+      if ((lead + day - 1) % 7 === 6) classes.push("is-sunday");
+      const label = `${api.dayLabel(api.dayNumber(key))}${key === today ? ", today" : ""}${key === forecast.end.estimate ? ", the estimate" : ""}`;
+      cells.push(`<button type="button" class="${classes.join(" ")}" data-cal-day="${key}" aria-pressed="${key === selected}" aria-label="${esc(label)}" tabindex="${key === focus ? 0 : -1}"${key < today ? " disabled" : ""}>${day}</button>`);
+    }
+    const earliest = today.slice(0, 7);
+    const estimate = api.dayLabel(api.dayNumber(forecast.end.estimate));
+    return `<div class="fc-cal" id="fc-cal" role="group" aria-label="Last day of classes">
+      <div class="fc-cal-head">
+        <button type="button" class="fc-step" data-cal-month="-1" aria-label="Previous month"${month <= earliest ? " disabled" : ""}>‹</button>
+        <strong aria-live="polite">${MONTH_FULL[monthIndex - 1]} ${year}</strong>
+        <button type="button" class="fc-step" data-cal-month="1" aria-label="Next month">›</button>
+      </div>
+      <div class="fc-cal-week" aria-hidden="true"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+      <div class="fc-cal-grid">${cells.join("")}</div>
+      <div class="fc-cal-foot">
+        <button type="button" class="fc-cal-estimate" data-end-reset${forecast.end.estimated ? " disabled" : ""}>Estimate: ${esc(estimate)}</button>
+        <button type="button" class="fc-cal-done" data-cal-close>Done</button>
+      </div>
     </div>`;
   }
 
-  function hero(forecast) {
+  // Before the timetable is read there is nothing to count ahead: the card
+  // says so, with today's figure and the semester so far.
+  function waitingHero(forecast, state) {
+    const overall = forecast.overall;
+    const label = `Overall attendance so far, ${pct(overall.now)}. The forecast needs your timetable.`;
+    return `<section class="fc-hero is-none" aria-label="Semester forecast">
+      <div class="fc-hero-top">
+        <div class="fc-hero-figure">
+          <p class="fc-eyebrow">Overall now</p>
+          <p class="fc-big">${esc(pct(overall.now).replace("%", ""))}<span class="fc-unit">%</span></p>
+          <p class="fc-range">${esc(`${overall.attended}/${overall.delivered} classes`)}</p>
+        </div>
+        <div class="fc-verdict" role="status">
+          <span class="fc-verdict-icon" aria-hidden="true">…</span>
+          <strong>Waiting for your timetable</strong>
+          <span>read on the next refresh</span>
+        </div>
+      </div>
+      ${figure("overall", { past: overall.series.past }, label, { height: 120 })}
+      <p class="fc-hero-note">The forecast counts the classes left from your timetable. To keep CUIMS requests light it is read on the refresh after your attendance, so Refresh once the button is ready.</p>
+      ${endControl(forecast, state.calendar)}
+    </section>`;
+  }
+
+  function hero(forecast, state) {
     const overall = forecast.overall;
     const result = overall.result;
+    if (!forecast.timetableKnown) return waitingHero(forecast, state);
     if (!result) return "";
     const verdict = heroVerdict(forecast);
     const planned = forecast.plan?.planned || 0;
@@ -239,7 +309,7 @@
       ${figure("overall", overall.series, label, { height: 138 })}
       ${legend()}
       ${heroStats(forecast)}
-      ${endControl(forecast)}
+      ${endControl(forecast, state.calendar)}
     </section>`;
   }
 
@@ -389,6 +459,12 @@
   }
 
   function subjectRow(subject, forecast, expanded) {
+    if (!forecast.timetableKnown) {
+      return `<li class="fc-subject is-none"><div class="fc-subject-head is-static">
+        <span class="fc-s-top"><span class="fc-s-title">${esc(subject.title)}</span><span class="fc-s-figures"><span class="fc-s-end">${esc(pct(subject.now))}</span></span></span>
+        <span class="fc-s-bottom"><span class="fc-s-line">${esc(subject.delivered ? `${subject.attended}/${subject.delivered} · forecast after the timetable` : "No classes yet")}</span></span>
+      </div></li>`;
+    }
     const result = subject.result;
     const state = chanceState(result);
     const open = expanded === subject.code;
@@ -414,7 +490,7 @@
     return `<section class="fc-card fc-subjects" aria-label="By subject">
       <div class="section-head"><h2 class="section-label">By subject</h2><span class="section-meta">most at risk first</span></div>
       <ul class="fc-subject-list">${forecast.subjects.map((subject) => subjectRow(subject, forecast, expanded)).join("")}</ul>
-      <p class="fc-key" aria-hidden="true"><span class="pip is-must"></span>attend <span class="pip is-spare"></span>can miss <span class="pip is-skip"></span>planned skip · one per class left</p>
+      <p class="fc-key" aria-hidden="true"${forecast.timetableKnown ? "" : " hidden"}><span class="pip is-must"></span>attend <span class="pip is-spare"></span>can miss <span class="pip is-skip"></span>planned skip · one per class left</p>
     </section>`;
   }
 
@@ -460,7 +536,7 @@
 
   function method(forecast) {
     const ratio = forecast.goal.overall ? `${whole(forecast.goal.subject)} per subject and ${whole(forecast.goal.overall)} overall` : `${whole(forecast.goal.subject)} in every subject`;
-    return `<details class="fc-method">
+    return `<details class="fc-method" data-keep="method">
       <summary>How the forecast works</summary>
       <p><strong>Classes left</strong> come from your timetable, every week up to the last day of classes. Holidays are not known, so a week off means fewer classes and less room.</p>
       <p><strong>Your pace</strong> is the share of classes you attended lately; each class counts half as much every three weeks. A subject with few classes leans on your habit across all of them.</p>
@@ -475,12 +551,10 @@
     const now = state.now || new Date();
     const note = state.working
       ? state.phase || "Refreshing…"
-      : forecast?.fetchedAt
-        ? `From your read ${api.ago(forecast.fetchedAt, now)}`
-        : "";
+      : api.readNote(forecast?.fetchedAt, now, `From your read ${api.ago(forecast?.fetchedAt, now)}`);
     return `<div class="attendance-bar">
       <p class="attendance-note" role="status" aria-live="polite">${esc(note)}</p>
-      ${api.refreshButton(state, "refresh-button", "Refresh", 'data-action="refresh"')}
+      ${api.refreshButton({ ...state, due: api.readIsOld(forecast?.fetchedAt, now) }, "refresh-button", "Refresh", 'data-action="refresh"')}
     </div>
     ${api.refreshMessage(state)}`;
   }
@@ -501,7 +575,7 @@
     }
     return `${bar(forecast, state)}
       ${goalSwitch(forecast.goal)}
-      ${hero(forecast)}
+      ${hero(forecast, state)}
       ${planCard(forecast)}
       ${subjectsCard(forecast, state.expanded)}
       ${habitsCard(forecast)}
@@ -533,9 +607,23 @@
     tip.hidden = false;
     tip.querySelector("strong").textContent = point.past ? pct(point.value) : `≈${pct(point.value)}`;
     tip.querySelector("span").textContent = point.past ? `${dateOf(point.x - (point.x % 1 ? 0 : 1))}` : `${dateOf(point.x - 1)} · likely ${pct(point.low, 0)}–${pct(point.high, 0)}`;
-    const share = sx / chart.width;
-    tip.style.left = `${(share * 100).toFixed(2)}%`;
-    tip.classList.toggle("is-left", share > 0.6);
+    // Beside the crosshair, inside the chart: right of it unless that runs
+    // off the edge, and at the top or bottom of the plot, away from the point.
+    const width = figureEl.clientWidth || chart.width;
+    const scale = width / chart.width;
+    const px = sx * scale;
+    // Measured at the left edge, where nothing squeezes it.
+    tip.style.left = "0px";
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
+    let left = px + 10;
+    if (left + tipW > width) left = px - 10 - tipW;
+    left = Math.max(0, Math.min(width - tipW, left));
+    const plotTop = chart.pad.top * scale;
+    const plotBottom = (chart.pad.top + chart.plotH) * scale;
+    const top = sy * scale < (plotTop + plotBottom) / 2 ? plotBottom - tipH : plotTop;
+    tip.style.left = `${left.toFixed(1)}px`;
+    tip.style.top = `${Math.max(0, top).toFixed(1)}px`;
     figureEl.dataset.at = String(chart.points.indexOf(point));
   }
 

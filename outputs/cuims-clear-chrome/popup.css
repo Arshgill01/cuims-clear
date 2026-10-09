@@ -53,6 +53,11 @@
   box-sizing: border-box;
 }
 
+/* Hidden means hidden, whatever display a class gives the element. */
+[hidden] {
+  display: none !important;
+}
+
 /* A fixed frame: the rail and the portal buttons stay put, the view scrolls.
    600px is the tallest popup Chrome and Firefox both allow. */
 html,
@@ -882,6 +887,17 @@ input[role="switch"]:disabled {
   background: var(--canvas);
 }
 
+/* The last read is from an earlier day: Refresh is the thing to press. */
+.refresh-button.is-due {
+  border-color: var(--accent-line);
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.refresh-button.is-due:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
 .refresh-button:disabled,
 .save-button:disabled {
   cursor: progress;
@@ -1513,7 +1529,10 @@ input[role="switch"]:disabled {
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    /* Off, not shortened: a duration on its own animates every property
+       (transition-property defaults to all), so layout read right after a
+       change would be a frame stale. */
+    transition: none !important;
   }
 }
 
@@ -1770,7 +1789,8 @@ input[role="switch"]:disabled {
 
 .fc-tip {
   position: absolute;
-  top: -4px;
+  top: 0;
+  left: 0;
   z-index: 2;
   display: grid;
   gap: 1px;
@@ -1779,13 +1799,9 @@ input[role="switch"]:disabled {
   color: var(--surface);
   background: var(--ink);
   box-shadow: 0 6px 16px var(--shadow);
+  width: max-content;
   pointer-events: none;
-  transform: translate(-50%, -100%);
   white-space: nowrap;
-}
-
-.fc-tip.is-left {
-  transform: translate(calc(-100% + 14px), -100%);
 }
 
 .fc-tip[hidden] {
@@ -1870,7 +1886,7 @@ input[role="switch"]:disabled {
 
 .fc-stats dt {
   color: var(--h-muted);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1942,34 +1958,20 @@ input[role="switch"]:disabled {
 }
 
 .fc-end-date {
-  position: relative;
-  display: inline-flex;
   min-height: 28px;
-  align-items: center;
-  padding: 0 8px;
+  padding: 0 9px;
+  border: 0;
   border-radius: 7px;
+  color: var(--h-ink);
   background: var(--h-line);
   font-size: 12.5px;
   font-weight: 800;
-  cursor: pointer;
 }
 
-.fc-end-date:focus-within {
-  outline: 2px solid var(--focus-outline);
-  outline-offset: 2px;
-}
-
-/* The native date field takes the clicks and keys; the label is what shows. */
-.fc-end-date input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  cursor: pointer;
+.fc-end-date:hover,
+.fc-end-date[aria-expanded="true"] {
+  color: var(--brand-bg);
+  background: var(--h-accent);
 }
 
 .fc-end-tag,
@@ -1988,6 +1990,159 @@ input[role="switch"]:disabled {
   text-decoration: underline;
   text-decoration-color: var(--h-faint);
   text-underline-offset: 3px;
+}
+
+.fc-hero-note {
+  position: relative;
+  margin: 10px 0 0;
+  color: var(--h-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.fc-subject-head.is-static {
+  cursor: default;
+}
+
+.fc-subject-head.is-static:hover {
+  background: transparent;
+}
+
+/* The last-day calendar, inside the hero. */
+.fc-cal {
+  margin: 8px 0 2px;
+  padding: 8px;
+  border-radius: 10px;
+  /* The card's own colour, so its text keeps the contrast checked for it. */
+  background: var(--brand-bg);
+  box-shadow: inset 0 0 0 1px var(--h-line);
+  animation: fc-rise 160ms ease-out;
+}
+
+.fc-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.fc-cal-head strong {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.fc-cal-head .fc-step:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.fc-cal-week,
+.fc-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.fc-cal-week span {
+  padding: 2px 0;
+  color: var(--h-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.fc-cal-day {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  color: var(--h-ink);
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-cal-day:hover:not(:disabled) {
+  background: var(--h-line);
+}
+
+.fc-cal-day.is-sunday {
+  color: var(--h-muted);
+}
+
+.fc-cal-day.is-today {
+  box-shadow: inset 0 0 0 1px var(--h-muted);
+}
+
+/* The estimate carries a dot under its number. */
+.fc-cal-day.is-estimate {
+  background-image: radial-gradient(circle, var(--h-accent) 2px, transparent 2.5px);
+  background-position: 50% 88%;
+  background-repeat: no-repeat;
+  background-size: 6px 6px;
+}
+
+.fc-cal-day[aria-pressed="true"] {
+  color: var(--brand-bg);
+  background-color: var(--h-accent);
+  font-weight: 900;
+}
+
+.fc-cal-day:disabled {
+  color: var(--h-faint);
+  cursor: default;
+}
+
+.fc-cal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--h-line);
+}
+
+.fc-cal-estimate,
+.fc-cal-done {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 750;
+}
+
+.fc-cal-estimate {
+  color: var(--h-ink);
+  background: transparent;
+  text-decoration: underline;
+  text-decoration-color: var(--h-faint);
+  text-underline-offset: 3px;
+}
+
+.fc-cal-estimate:disabled {
+  color: var(--h-muted);
+  text-decoration: none;
+  cursor: default;
+}
+
+.fc-cal-done {
+  color: var(--brand-bg);
+  background: var(--h-accent);
+}
+
+.fc-hero button:focus-visible {
+  outline: 2px solid var(--h-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-cal {
+    animation: none;
+  }
 }
 
 /* ---- cards ---- */
@@ -2074,7 +2229,6 @@ input[role="switch"]:disabled {
 
 .fc-day.is-on .fc-day-date {
   color: inherit;
-  opacity: 0.75;
 }
 
 .fc-day-dot {
@@ -2108,6 +2262,7 @@ input[role="switch"]:disabled {
 
 .fc-classes {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   margin: 0;
   padding: 0;
@@ -2310,6 +2465,7 @@ input[role="switch"]:disabled {
 
 .fc-impact-rows {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   margin: 0;
   padding: 0;
@@ -2318,6 +2474,7 @@ input[role="switch"]:disabled {
 
 .fc-impact-rows li {
   display: flex;
+  min-width: 0;
   align-items: baseline;
   gap: 6px;
   font-variant-numeric: tabular-nums;
@@ -2403,6 +2560,7 @@ input[role="switch"]:disabled {
 /* Subjects. */
 .fc-subject-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   margin: 0;
   padding: 0;
@@ -2592,7 +2750,7 @@ input[role="switch"]:disabled {
 
 .fc-facts dt {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -2722,6 +2880,7 @@ input[role="switch"]:disabled {
 
 .fc-insights {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   margin: 10px 0 0;
   padding: 9px 0 0;

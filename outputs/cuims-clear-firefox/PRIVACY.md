@@ -23,8 +23,8 @@ tokens are written to extension storage.
 When the student uses the Attendance or Forecast tab, the extension signs in to `students.cuchd.in`
 with the saved UID and password in the background, the same way the login page does, and
 reads the student's own attendance report, class-by-class attendance record, timetable, and duty and medical leave applications (to show pending leave). It uses the browser's existing
-CUIMS session when one is open. It talks to CUIMS only when the student uses the popup;
-nothing runs in the background on a timer. The attendance figures and class record are stored
+CUIMS session when one is open. It reads them only when the student presses Refresh;
+opening the popup or a tab never starts a read, and nothing runs on a timer. The attendance figures and class record are stored
 only in local extension storage, and the Forecast tab's projections are worked out on the
 device from them. Nothing is sent anywhere else.
 

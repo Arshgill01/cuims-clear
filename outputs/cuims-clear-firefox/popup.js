@@ -28,7 +28,6 @@ const ATTENDANCE_KEYS = [
   "attendancePlan",
   "attendanceHistory",
 ];
-const STALE_MS = 10 * 60 * 1000;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
 const CONFIRM_MS = 4000;
 
@@ -79,7 +78,8 @@ let attendance = { snapshot: null, status: null, error: "", code: "", history: n
 // are "<day>|<class>" keys, dropped once their day has passed.
 let prefs = { goal: "standard", plan: [], end: "" };
 // Which day the planner shows and which subject is open, for this popup only.
-let forecastUi = { day: "", expanded: "" };
+let lastForecast = null;
+let forecastUi = { day: "", expanded: "", calendar: { open: false, month: "", focus: "" } };
 // "", "ask" or "confirm", decided once per popup open (rate-nudge.js).
 let rateShow = "";
 
@@ -300,7 +300,7 @@ bindOpenLink(document.querySelector(".lms-open-link"), "cuims-clear:launch-lms",
 function focusKey(node, view = views.attendance) {
   if (!node || node === view || !view.contains?.(node)) return "";
   if (node.id) return `#${CSS.escape(node.id)}`;
-  for (const name of ["planKey", "planDay", "planClear", "planWhole", "goal", "goto", "subject", "endStep", "endReset", "endInput", "action", "chart"]) {
+  for (const name of ["planKey", "planDay", "planClear", "planWhole", "goal", "goto", "subject", "endStep", "endReset", "calToggle", "calDay", "calMonth", "calClose", "action", "chart"]) {
     const value = node.dataset?.[name];
     if (value != null && name in (node.dataset || {})) return `[data-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}="${CSS.escape(value)}"]`;
   }
@@ -326,16 +326,54 @@ function readWorking() {
 }
 
 // Redraws a view and puts keyboard focus back on what it pointed at.
+// A redraw is invisible: the same markup is left alone, and otherwise the
+// scroll position, open <details> and focus survive it. Focus never scrolls,
+// so a control coming back (Refresh after its wait) cannot pull the view up.
+const painted = new WeakMap();
+
+// The section being read: the first of the view's own blocks still on screen,
+// named by its tag and first class, and how far it sits from the top. After
+// a redraw the same block goes back to the same place, even when a message
+// above it came or went.
+function scrollAnchor(view) {
+  if (!viewport || view.hidden || !viewport.getBoundingClientRect) return null;
+  const top = viewport.getBoundingClientRect().top;
+  for (const node of view.children || []) {
+    const box = node.getBoundingClientRect();
+    if (box.bottom > top + 1) return { name: anchorName(node), offset: box.top - top, scroll: viewport.scrollTop };
+  }
+  return { name: "", offset: 0, scroll: viewport.scrollTop };
+}
+
+// Cards share classes; their labels tell them apart.
+function anchorName(node) {
+  return `${node.tagName}|${node.getAttribute?.("aria-label") || (typeof node.className === "string" ? node.className : "")}`;
+}
+
+function restoreAnchor(view, anchor) {
+  if (!anchor || view.hidden) return;
+  viewport.scrollTop = anchor.scroll;
+  const node = anchor.name && [...view.children].find((child) => anchorName(child) === anchor.name);
+  if (!node) return;
+  viewport.scrollTop += node.getBoundingClientRect().top - viewport.getBoundingClientRect().top - anchor.offset;
+}
+
 function repaint(view, html) {
+  if (painted.get(view) === html) return;
   const active = document.activeElement;
   const key = focusKey(active, view) || (active === view || active === document.body ? carriedFocus : "");
+  const open = [...(view.querySelectorAll?.("details[data-keep][open]") || [])].map((node) => node.dataset.keep);
+  const anchor = scrollAnchor(view);
   view.innerHTML = html;
+  painted.set(view, html);
+  for (const name of open) view.querySelector(`details[data-keep="${name}"]`)?.setAttribute("open", "");
+  restoreAnchor(view, anchor);
   carriedFocus = "";
   const target = key ? view.querySelector(key) : null;
   if (target?.disabled) {
     carriedFocus = key;
     view.focus({ preventScroll: true });
-  } else target?.focus();
+  } else target?.focus({ preventScroll: true });
 }
 
 function paintAttendance() {
@@ -369,11 +407,13 @@ function paintForecast({ force = true } = {}) {
   const forecast = attendance.snapshot?.subjects?.length
     ? CuimsAttendance.buildForecast(attendance.snapshot, attendance.history, new Date(), { goal: prefs.goal, plan: plannedSkips(), end: prefs.end, day: forecastUi.day })
     : null;
+  lastForecast = forecast;
   if (forecast?.plan) forecastUi.day = forecast.plan.day;
   repaint(views.forecast, CuimsAttendance.renderForecast(forecast, {
     working,
     phase: status.phase,
     expanded: forecastUi.expanded,
+    calendar: forecastUi.calendar,
     nextRefreshAt: attendance.nextRefreshAt,
     error: working ? "" : attendance.error || status.error || "",
     code: working ? "" : attendance.code || status.code || "",
@@ -428,10 +468,9 @@ function showView(name, { remember = true } = {}) {
   paintRate();
   if (name === "theme") renderThemes();
   if (name !== "attendance" && name !== "forecast") return;
-  const working = paintData();
+  // Showing a tab never reads CUIMS: that waits for Refresh.
+  paintData();
   repaintTimer = window.setInterval(() => (currentView === "forecast" ? paintForecast({ force: false }) : paintAttendance()), 30_000);
-  const fetchedAt = Date.parse(attendance.snapshot?.fetchedAt || "") || 0;
-  if (!working && Date.now() - fetchedAt > STALE_MS) fetchAttendance();
 }
 
 // A vertical tab list: arrows move and select, Home and End jump.
@@ -478,7 +517,7 @@ views.attendance.addEventListener("click", (event) => {
   if (goal) {
     setGoal(goal.dataset.goal);
     paintAttendance();
-    views.attendance.querySelector(`[data-goal="${prefs.goal}"]`)?.focus();
+    views.attendance.querySelector(`[data-goal="${prefs.goal}"]`)?.focus({ preventScroll: true });
   }
 });
 
@@ -501,17 +540,8 @@ function shiftDay(key, days) {
 
 views.forecast.addEventListener("click", (event) => {
   const target = event.target;
-  const focusAfter = (selector) => views.forecast.querySelector(selector)?.focus();
-  // The date shows as a label; open the browser's picker where it has one.
-  const picker = target.closest("[data-end-input]");
-  if (picker) {
-    try {
-      picker.showPicker?.();
-    } catch {
-      // Typing the date still works.
-    }
-    return;
-  }
+  const focusAfter = (selector) => views.forecast.querySelector(selector)?.focus({ preventScroll: true });
+  if (calendarClick(target)) return;
   if (target.closest("[data-action='refresh']")) {
     fetchAttendance();
     return;
@@ -565,7 +595,7 @@ views.forecast.addEventListener("click", (event) => {
   }
   const step = target.closest("[data-end-step]");
   if (step) {
-    const current = views.forecast.querySelector("[data-end-input]")?.value || prefs.end;
+    const current = prefs.end || paintedEnd();
     const next = shiftDay(current, Number(step.dataset.endStep));
     if (next && next >= todayKey()) setEnd(next);
     paintForecast();
@@ -574,16 +604,93 @@ views.forecast.addEventListener("click", (event) => {
   }
   if (target.closest("[data-end-reset]")) {
     setEnd("");
+    openCalendar(false);
     paintForecast();
     focusAfter("[data-end-step='7']");
   }
 });
 
-views.forecast.addEventListener("change", (event) => {
-  const input = event.target.closest?.("[data-end-input]");
-  if (!input || !/^\d{4}-\d{2}-\d{2}$/.test(input.value) || input.value < todayKey()) return;
-  setEnd(input.value);
+// ---- the last-day calendar ----
+
+function openCalendar(open, focus = "") {
+  forecastUi.calendar = { open, month: focus.slice(0, 7), focus };
+}
+
+function shiftMonth(month, by) {
+  const [year, index] = month.split("-").map(Number);
+  const date = new Date(Date.UTC(year, index - 1 + by, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function calendarClick(target) {
+  const focus = (selector) => views.forecast.querySelector(selector)?.focus({ preventScroll: true });
+  if (target.closest("[data-cal-toggle]")) {
+    openCalendar(!forecastUi.calendar.open, paintedEnd());
+    paintForecast();
+    if (forecastUi.calendar.open) {
+      views.forecast.querySelector(".fc-cal")?.scrollIntoView({ block: "nearest" });
+      focus(".fc-cal-day[tabindex='0']");
+    } else focus("[data-cal-toggle]");
+    return true;
+  }
+  const move = target.closest("[data-cal-month]");
+  if (move) {
+    const month = shiftMonth(forecastUi.calendar.month || paintedEnd().slice(0, 7), Number(move.dataset.calMonth));
+    forecastUi.calendar = { open: true, month, focus: "" };
+    paintForecast();
+    // At the earliest month the back button is disabled; focus goes to the days.
+    const again = views.forecast.querySelector(`[data-cal-month="${move.dataset.calMonth}"]`);
+    if (again && !again.disabled) again.focus({ preventScroll: true });
+    else focus(".fc-cal-day[tabindex='0']");
+    return true;
+  }
+  const day = target.closest("[data-cal-day]");
+  if (day && !day.disabled) {
+    setEnd(day.dataset.calDay);
+    openCalendar(false);
+    paintForecast();
+    focus("[data-cal-toggle]");
+    return true;
+  }
+  if (target.closest("[data-cal-close]")) {
+    openCalendar(false);
+    paintForecast();
+    focus("[data-cal-toggle]");
+    return true;
+  }
+  return false;
+}
+
+// The last day as drawn, for the calendar's starting month.
+function paintedEnd() {
+  return lastForecast?.end?.key || todayKey();
+}
+
+// Arrow keys walk the days, Page Up and Down the months, Esc closes.
+views.forecast.addEventListener("keydown", (event) => {
+  if (!event.target.closest?.(".fc-cal")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    openCalendar(false);
+    paintForecast();
+    views.forecast.querySelector("[data-cal-toggle]")?.focus({ preventScroll: true });
+    return;
+  }
+  const day = event.target.closest("[data-cal-day]");
+  const steps = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+  if (!day || !(event.key in steps || event.key === "PageUp" || event.key === "PageDown")) return;
+  event.preventDefault();
+  let next;
+  if (event.key in steps) next = shiftDay(day.dataset.calDay, steps[event.key]);
+  else {
+    const month = shiftMonth(day.dataset.calDay.slice(0, 7), event.key === "PageUp" ? -1 : 1);
+    const days = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+    next = `${month}-${String(Math.min(Number(day.dataset.calDay.slice(8)), days)).padStart(2, "0")}`;
+  }
+  if (!next || next < todayKey()) return;
+  forecastUi.calendar = { open: true, month: next.slice(0, 7), focus: next };
   paintForecast();
+  views.forecast.querySelector(`[data-cal-day="${next}"]`)?.focus({ preventScroll: true });
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {

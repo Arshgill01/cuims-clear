@@ -49,16 +49,15 @@
     return `${DAY_NAMES[weekdayOf(number)]} ${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()]}`;
   }
 
-  // The last day of classes the student set, else an estimate: 20 November
-  // for the July semester, 30 April for the January one (nearby universities
-  // end teaching then; CU publishes no calendar to read it from). Past it,
-  // classes are over.
+  // The last day of classes the student set, else an estimate: 13 November
+  // for the July semester (the 2026 date) and 30 April for the January one.
+  // CU publishes no calendar to read it from. Past it, classes are over.
   function semesterEnd(setKey, todayN) {
     const set = dayNumber(setKey);
     if (set != null) return { day: set, estimated: false };
     const date = new Date(todayN * DAY_MS);
     const year = date.getUTCFullYear();
-    const day = date.getUTCMonth() >= 6 ? Date.UTC(year, 10, 20) / DAY_MS : Date.UTC(year, 3, 30) / DAY_MS;
+    const day = date.getUTCMonth() >= 6 ? Date.UTC(year, 10, 13) / DAY_MS : Date.UTC(year, 3, 30) / DAY_MS;
     return { day: Math.max(day, todayN), estimated: true };
   }
 
@@ -594,6 +593,7 @@
         key: dayKeyOf(end.day),
         label: dayLabel(end.day),
         estimated: end.estimated,
+        estimate: dayKeyOf(semesterEnd("", todayN).day),
         days: end.day - todayN,
         weeks: Math.max(0, Math.round(((end.day - todayN) / 7) * 10) / 10),
       },
