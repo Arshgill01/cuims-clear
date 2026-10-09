@@ -25,6 +25,19 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
   finish by the last day of classes at your recent pace, the likely range and the chance of
   clearing the goal, how many classes are left to miss, a planner that shows what skipping a
   class today or later in the week does, and which weekdays you miss most;
+- shows published regular examination marks on a **Marks** tab, with each
+  subject's assessment, maximum marks, and obtained marks exactly as CUIMS lists them;
+- fetches only the current examination session and saves it locally. Reopening
+  the popup, switching tabs, or restarting Firefox reuses the saved marks;
+  **Refresh** fetches the latest current marks from CUIMS on demand, with a
+  30-second gap between refreshes;
+- shows a **Timetable** tab sorted Monday–Sunday and by class start time, with
+  course, teacher and room details. Weekday buttons show one day at a time,
+  defaulting to today in India time; class times stay in a column on the left.
+  One successful read is cached for the saved UID;
+  reopening the popup does not fetch it again. Neither Marks nor Timetable needs
+  an open CUIMS tab: an uncached read checks the session and signs in once with
+  the saved login if needed;
 - offers twenty colour themes (CUIMS Clear plus Tokyo Night, Catppuccin, Gruvbox, Everforest,
   Kanagawa, Nord, Osaka Jade, Retro-82, Matte Black, Solitude, Ristretto, Ethereal, Lumon,
   Hackerman, Last Horizon, Miasma, Catppuccin Latte, Flexoki Light and Rosé Pine, from Omarchy)
@@ -38,6 +51,8 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - keeps every automation and quiet-mode switch on one **Settings** tab, where each switch
   saves as you flip it;
 - lets you erase the saved UID, password, and attendance from the popup at any time.
+  **Clear login** also erases the saved marks and timetable. Failed reads can be retried with
+  **Refresh**, keeping the last successful marks visible; there is no automatic refresh.
 
 CAPTCHA solving happens entirely inside the extension, in plain JavaScript
 (`captcha-solver.js`, with the font's glyphs in `captcha-glyphs.js`): CUIMS

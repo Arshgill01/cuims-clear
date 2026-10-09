@@ -322,7 +322,7 @@
     return /^(mon|tue|wed|thu|fri|sat|sun)/i.test(String(value || "").trim());
   }
 
-  function parseTimetable(html) {
+  function parseTimetable(html, { details = false } = {}) {
     const courseNames = courseNamesFrom(html);
     const rows = tableRows(firstTable(html, TIMETABLE_IDS));
     const headerIndex = rows.findIndex((row) => row.some(isWeekday));
@@ -337,7 +337,7 @@
       for (const day of days) {
         const label = parseSlotLabel(row[day.index] || "", courseNames);
         if (!label) continue;
-        slots.push({ weekday: day.weekday, start: range.start, end: range.end, ...label });
+        slots.push({ weekday: day.weekday, start: range.start, end: range.end, ...label, ...(details ? { rawLabel: row[day.index] || "" } : {}) });
       }
     }
     return slots;
@@ -358,6 +358,7 @@
   api.expandMarks = expandMarks;
   api.parseTimetable = parseTimetable;
   api.hasTimetable = (html) => Boolean(firstTable(html, TIMETABLE_IDS));
+  api.hasTimetableGrid = api.hasTimetable;
   api.leaveState = leaveState;
   api.parseDutyLeaves = parseDutyLeaves;
   api.parseMedicalLeaves = parseMedicalLeaves;

@@ -7,6 +7,8 @@ importScripts(
   "attendance-parse.js",
   "attendance-model.js",
   "attendance-client.js",
+  "marks.js",
+  "timetable.js",
   "attendance-daemon.js",
   "attendance-bg.js",
 );

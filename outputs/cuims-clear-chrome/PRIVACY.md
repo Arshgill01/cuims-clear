@@ -52,6 +52,29 @@ Clear login. The Forecast tab's projections are calculated on the device from th
 Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
 The extension does not maintain a browsing-history record.
 
+## Marks and Timetable
+
+The Marks tab reads the signed-in student's Regular Marks page on CUIMS using
+the same session and guarded sign-in as attendance. Published assessment names,
+maximum marks, obtained marks, and examination session labels are saved in local
+extension storage for the saved UID and current examination session. Reopening
+the popup does not fetch them again; pressing **Refresh** fetches current marks
+again on demand. Previous sessions are not fetched. Viewstate and other postback tokens are not saved in
+the marks cache. Changing the saved UID stops the old account's marks from being
+shown; **Clear login** removes the marks cache as well.
+
+The Timetable tab reads My Time Table through the same guarded session. Class
+days, times, course titles and the published class details stay in local storage
+for the saved UID. A successful result is fetched once and reused, including by
+attendance. Changing UID hides the old cache; Clear login removes it. No
+viewstate, cookies or sign-in tokens are included in the timetable cache.
+
+Marks and Timetable count their own extension requests in a local rolling
+10-minute log (tab name and timestamp only), including the session check and
+guarded sign-in. Attendance and other features are excluded from these counts.
+The log is cleared by Clear login. Login-tab checks read CUIMS tab URLs locally
+to avoid stale sign-in flags after a tab closes; no tab URLs are saved or sent.
+
 ## Limited use
 
 Data is used only to provide the portal features described above, in accordance
@@ -61,4 +84,4 @@ or lending. The developer does not have access to your portal data.
 
 Contact: arshgill6120@gmail.com
 
-Last updated: 30 September 2026.
+Last updated: 8 October 2026.

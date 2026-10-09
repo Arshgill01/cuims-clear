@@ -4,8 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import jpeg from "jpeg-js";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const PACKAGE_DIR = path.join(ROOT, "outputs/cuims-clear-firefox");
 export const CORPUS_DIR = path.join(ROOT, "work/corpus");
 export const LABEL_SETS = ["labels.json", "labels-holdout.json", "labels-live.json"];

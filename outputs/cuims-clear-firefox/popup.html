@@ -22,6 +22,14 @@
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 15.5l3.6-4 2.8 2.2 3.4-4.7" /><path d="M12.8 9l3.9-5.2" class="dash" /><circle cx="16.7" cy="3.8" r="1.2" class="fill" /></svg>
             <span>Forecast</span>
           </button>
+          <button id="tab-marks" type="button" role="tab" aria-selected="false" aria-controls="view-marks" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h3"/></svg>
+            <span>Marks</span>
+          </button>
+          <button id="tab-timetable" type="button" role="tab" aria-selected="false" aria-controls="view-timetable" tabindex="-1">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 3v3M13 3v3M7 11h2M12 11h2M7 14h2M12 14h2"/></svg>
+            <span>Timetable</span>
+          </button>
           <button id="tab-login" type="button" role="tab" aria-selected="false" aria-controls="view-login" tabindex="-1">
             <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="10" r="3.5" /><path d="M10.5 10H17.5M15 10v3M17.5 10v2.2" /></svg>
             <span>Login</span>
@@ -62,6 +70,9 @@
 
         <div class="views" id="views">
           <section id="view-attendance" class="view attendance" role="tabpanel" aria-labelledby="tab-attendance" tabindex="-1" hidden></section>
+          <section id="view-marks" class="view marks" role="tabpanel" aria-labelledby="tab-marks" tabindex="-1" hidden></section>
+
+          <section id="view-timetable" class="view timetable" role="tabpanel" aria-labelledby="tab-timetable" tabindex="-1" hidden></section>
 
           <section id="view-forecast" class="view forecast" role="tabpanel" aria-labelledby="tab-forecast" tabindex="-1" hidden></section>
           <section id="view-login" class="view" role="tabpanel" aria-labelledby="tab-login" tabindex="-1" hidden>
@@ -113,7 +124,7 @@
             <section class="local-data" aria-labelledby="local-data-title">
               <div>
                 <h2 id="local-data-title">Local by design</h2>
-                <p id="storage-note">Your login and attendance stay in this browser profile. CAPTCHA is solved on-device.</p>
+                <p id="storage-note">Your login, attendance, marks, and timetable stay in this browser profile. CAPTCHA is solved on-device.</p>
               </div>
               <button id="clear-login" class="clear-button" type="button">Clear login</button>
             </section>
@@ -237,6 +248,10 @@
     <script src="forecast-model.js"></script>
     <script src="forecast-view.js"></script>
     <script src="rate-nudge.js"></script>
+    <script src="marks.js"></script>
+    <script src="marks-view.js"></script>
+    <script src="timetable.js"></script>
+    <script src="timetable-view.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
