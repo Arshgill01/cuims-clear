@@ -3,6 +3,8 @@
 // Markup mirrors the live login forms and the saved attendance page.
 
 const ORIGIN = "https://students.cuchd.in";
+// The pages CUIMS's per-account limit applies to (lower-cased paths).
+const INNER_PAGES = new Set(["/frmstudentcoursewiseattendancesummary.aspx", "/frmmytimetable.aspx", "/frmstudentapplydutyleave.aspx", "/frmstudentmedicalleaveapply.aspx"]);
 
 export const SUMMARY = [
   { Code: "24CSP-305", Title: "Competitive Coding-II", Total_Delv: "32", Total_Attd: "26", EligibilityDelivered: "32", EligibilityAttended: "26", EncryptCode: "enc305" },
@@ -83,6 +85,7 @@ export function fakeCuims({
   refuseAttendanceAfter = Infinity,
   reportId = "RID+/=",
   landed = true,
+  limited = false,
   dutyLeaves = [],
   medicalLeaves = [],
 } = {}) {
@@ -91,7 +94,7 @@ export function fakeCuims({
   // redirects to error.html.
   // `summary` is GetReport's answer; tests move its counts the way CUIMS
   // does when a mark is posted or a leave is decided.
-  const state = { landed, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
+  const state = { landed, limited, limitedHits: 0, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -152,7 +155,14 @@ export function fakeCuims({
     }
     if (!state.signedIn) return login();
     if (path === "/studenthome.aspx") return response(url.href, 200, "<html>home</html>");
-    if (!state.landed && (path === "/frmstudentcoursewiseattendancesummary.aspx" || path === "/frmmytimetable.aspx")) {
+    // Before the landing step, and while CUIMS limits the account's page
+    // loads (`limited`), an inner page redirects to error.html. With
+    // redirect: "manual" that is the same opaque redirect a signed-out page
+    // gives, as it is in a browser.
+    const unlanded = !state.landed && (path === "/frmstudentcoursewiseattendancesummary.aspx" || path === "/frmmytimetable.aspx");
+    if (unlanded || (state.limited && INNER_PAGES.has(path))) {
+      state.limitedHits += 1;
+      if (options.redirect === "manual") return { ...response(url.href, 0, ""), type: "opaqueredirect" };
       return response(`${ORIGIN}/error.html`, 200, "<html><head><title>UIMS Error</title></head></html>");
     }
     if (path === "/frmstudentcoursewiseattendancesummary.aspx") {

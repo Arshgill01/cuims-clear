@@ -28,6 +28,10 @@ const ATTENDANCE_KEYS = [
   "attendancePlan",
   "attendanceHistory",
 ];
+// Opening Attendance or Forecast reads CUIMS by itself, once per popup, when
+// the last read is this old.
+const STALE_MS = 10 * 60 * 1000;
+let autoRead = false;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
 const CONFIRM_MS = 4000;
 
@@ -501,8 +505,14 @@ function showView(name, { remember = true } = {}) {
   paintRate();
   if (name === "theme") renderThemes();
   if (name !== "attendance" && name !== "forecast") return;
-  // Showing a tab never reads CUIMS: that waits for Refresh.
-  paintData();
+  // A normal read is the report calls alone, outside CUIMS's page limit; the
+  // background spaces out any page it needs (attendance-daemon.js).
+  const working = paintData();
+  const fetchedAt = Date.parse(attendance.snapshot?.fetchedAt || "") || 0;
+  if (!autoRead && !working && Date.now() - fetchedAt > STALE_MS) {
+    autoRead = true;
+    fetchAttendance();
+  }
   repaintTimer = window.setInterval(() => (currentView === "forecast" ? paintForecast({ force: false }) : paintAttendance()), 30_000);
 }
 

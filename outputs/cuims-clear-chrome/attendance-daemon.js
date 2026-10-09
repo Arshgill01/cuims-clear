@@ -47,6 +47,11 @@
   // Open CUIMS skips its StudentHome check this soon after a read or a CUIMS
   // tab showed the session alive.
   const SESSION_FRESH_MS = 2 * MINUTE;
+  // When CUIMS limits the account's page loads (inner pages redirect to
+  // error.html, for 10+ minutes), the background loads no inner page and
+  // never signs in for this long, longer each time it happens again. The
+  // report calls are outside the limit, so attendance still updates.
+  const PAGE_PAUSE_MINUTES = [15, 30, 60];
 
   const DEFAULTS = {
     uid: "",
@@ -60,6 +65,9 @@
     attendanceRequests: [],
     attendancePageAt: 0,
     tabPageAt: 0,
+    pagesPausedUntil: 0,
+    pagesPauseStreak: 0,
+    tabLimitedAt: 0,
     attendanceRunUntil: 0,
     attendanceStatus: null,
     attendanceMeta: null,
@@ -72,6 +80,12 @@
     pageLoginAt: 0,
     loginTabAt: 0,
   };
+
+  // A CUIMS tab that lands on error.html (tabLimitedAt, from content.js) has
+  // met the limit too.
+  function pagesPauseEnd(state) {
+    return Math.max(Number(state.pagesPausedUntil || 0), Number(state.tabLimitedAt || 0) + PAGE_PAUSE_MINUTES[0] * MINUTE);
+  }
 
   function freshGuard(guard, now) {
     const value = guard && typeof guard === "object" ? guard : {};
@@ -118,6 +132,7 @@
       const log = (state.attendanceRequests || []).filter((at) => now() - at < BUDGET_WINDOW_MS);
       let pageAt = Number(state.attendancePageAt || 0);
       const tabPageAt = Number(state.tabPageAt || 0);
+      const pausedUntil = pagesPauseEnd(state);
       return {
         log,
         take(target) {
@@ -126,7 +141,7 @@
           if (client.isInnerPage(target)) pageAt = now();
         },
         room: () => BUDGET_MAX - log.length,
-        pageFree: () => now() - Math.max(pageAt, tabPageAt) >= PAGE_GAP_MS,
+        pageFree: () => now() >= pausedUntil && now() - Math.max(pageAt, tabPageAt) >= PAGE_GAP_MS,
         saved: () => ({ attendanceRequests: log, attendancePageAt: pageAt }),
       };
     }
@@ -159,6 +174,24 @@
         ...(error.detail ? { attendanceLastBad: { ...error.detail, code, at: now() } } : {}),
       });
       return message;
+    }
+
+    // CUIMS refused an inner page: hold every page load and sign-in. A page
+    // that loads again ends the streak.
+    async function pausePages(state) {
+      const streak = Number(state.pagesPauseStreak || 0) + 1;
+      const until = now() + PAGE_PAUSE_MINUTES[Math.min(streak, PAGE_PAUSE_MINUTES.length) - 1] * MINUTE;
+      Object.assign(state, { pagesPausedUntil: until, pagesPauseStreak: streak });
+      await storage.set({ pagesPausedUntil: until, pagesPauseStreak: streak });
+      return until;
+    }
+
+    function pagesPaused(state) {
+      const until = pagesPauseEnd(state);
+      if (until <= now()) return null;
+      const minutes = Math.max(1, Math.ceil((until - now()) / MINUTE));
+      const kept = state.attendanceSnapshot ? " Showing your last read." : "";
+      return { until, error: client.coded("page-limit", `${client.MESSAGES["page-limit"]}${kept} Next try in ${minutes} min.`) };
     }
 
     async function recordFailure(guard, patch = {}) {
@@ -258,11 +291,13 @@
       if (!budget.pageFree() || now() - Number(cached?.triedAt || 0) < TIMETABLE_RETRY_MS) return slots;
       try {
         const fresh = await client.readTimetable(request);
+        await storage.set({ pagesPauseStreak: 0 });
         if (fresh.length) {
           await storage.set({ attendanceTimetable: { day: today, slots: fresh, triedAt: now() } });
           return fresh;
         }
       } catch (error) {
+        if (error.code === "page-limit") await pausePages(state);
         if (error.code === "portal-busy" || error.code === "busy") {
           await storage.set({ attendanceTimetable: { day: cached?.day || "", slots, triedAt: now() } });
           throw error;
@@ -355,10 +390,16 @@
         await onStep(which === "dl" ? "Reading duty leave…" : "Reading medical leave…");
         try {
           const applications = await client.readLeavePage(request, which);
-          await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
+          await storage.set({ sessionAlive: true, sessionCheckedAt: now(), pagesPauseStreak: 0 });
           leaves = await mergeLeaves(leaves, which, applications);
         } catch (error) {
           if (error.code === "portal-busy" || error.code === "busy") throw error;
+          // Limited, not signed out: the attendance already read stands, and
+          // this page is tried again once the pause is over.
+          if (error.code === "page-limit") {
+            await pausePages(state);
+            break;
+          }
           if (error.code === "signed-out") await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
           if (error.code === "signed-out" || error.code === "tab-login") break;
           leaves = { ...(leaves || {}), v: client.LEAVES_VERSION, triedAt: now(), [`${which}TriedAt`]: now() };
@@ -497,6 +538,10 @@
             meta = null;
           }
         }
+        // The page and any sign-in wait out CUIMS's page limit; nothing more
+        // can be read without the report ids.
+        const limit = subjects ? null : pagesPaused(state);
+        if (limit) throw limit.error;
         if (!subjects) {
           try {
             meta = await client.openAttendance(request);
@@ -511,7 +556,7 @@
               throw again;
             }
           }
-          await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
+          await storage.set({ sessionAlive: true, sessionCheckedAt: now(), pagesPauseStreak: 0 });
           state.sessionAlive = true;
           await onStep("Reading attendance…");
           subjects = await client.readSummary(request, meta);
@@ -545,6 +590,14 @@
           await storage.set({ attendanceAfterTab: now(), attendanceLastAttemptAt: 0 });
           await setStatus({ working: false, phase: "", error: message, code });
           return { snapshot: state.attendanceSnapshot, error: message, code, nextRefreshAt: 0 };
+        }
+        if (code === "page-limit") {
+          // The attendance page (or a sign-in's landing step) was limited.
+          // Only pages wait; nothing else is held back.
+          if (!pagesPaused(state)) await pausePages(state);
+          const limit = pagesPaused(state);
+          await setStatus({ working: false, phase: "", error: limit.error.message, code });
+          return { snapshot: state.attendanceSnapshot, error: limit.error.message, code, nextRefreshAt: limit.until };
         }
         message = await recordBackoff(state, error);
         await setStatus({ working: false, phase: "", error: message, code });
@@ -587,11 +640,18 @@
         }
         await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
         if (state.autoSubmitLogin === false) return { alive: false, reason: "disabled" };
+        // A sign-in ends on an inner page, so it waits out CUIMS's page limit.
+        // The tab still opens and can sign itself in.
+        if (pagesPaused(state)) return { alive: false, reason: "page-limit" };
         signing = true;
         await ensureSignedIn(state, request, "open", (phase) => setStatus({ working: true, phase }), signal);
         await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
         return { alive: true, signedIn: true };
       } catch (error) {
+        if (error.code === "page-limit") {
+          await pausePages(state);
+          return { alive: false, reason: "page-limit" };
+        }
         const message = await recordBackoff(state, error);
         if (BACKOFF_CODES.has(error.code || "network")) await setStatus({ working: false, error: message, code: error.code || "network" });
         return { alive: false, reason: error.code || "network", error: message };

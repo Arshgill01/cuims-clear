@@ -69,13 +69,22 @@ Refresh, from the report calls (the subject's counts move and the absent mark
 becomes a leave mark); a refusal shows when the leave page is next read.
 Opening a leave page on CUIMS updates the list for free.
 
+When CUIMS limits the account's page loads anyway (its pages redirect to
+`error.html`, and CUIMS's own sidebar comes up empty), the extension loads no
+CUIMS page and never signs in for 15 minutes (30, then 60, if it happens
+again soon after). Attendance keeps updating from the report calls, which the
+limit does not touch, and Open CUIMS and Open LMS still work. A CUIMS tab that
+lands on the error page counts too. A redirected page is never taken for a
+signed-out session until StudentHome confirms it, so the limit never sets off
+a sign-in.
+
 Background attendance, session checks and LMS SSO also share a rolling budget
 of 25 requests per 10 minutes, and manual refreshes wait at least 60 seconds.
 These are extension safeguards, not CUIMS's published limits; portal tabs and
 browser-followed redirects add their own traffic.
 
-HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
-five minutes, increasing after repeated failures and honoring a longer
+HTTP 429/503, or an error page from the report calls or StudentHome, pauses
+background reads for at least five minutes, increasing after repeated failures and honoring a longer
 `Retry-After`. Optional attendance detail also stops on a refusal. Cached
 attendance stays visible, with a disabled refresh button showing when it is
 ready again. The countdown sends no requests.

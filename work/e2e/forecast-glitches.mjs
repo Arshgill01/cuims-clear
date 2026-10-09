@@ -397,16 +397,19 @@ for (const scenario of only) {
       await settle(80);
       await geometry(`${where}: ${view} tab`);
     }
-    // Nothing above may read CUIMS: only Refresh does, once per press.
+    // Opening the popup reads CUIMS by itself only when the last read is
+    // over ten minutes old, and then once, however many tabs are shown.
+    // Each Refresh press is one more.
     const reads = () => page.evaluate(() => __sent.filter((type) => type === "cuims-clear:attendance-refresh").length);
-    if (await reads()) await fail(`${where}: refresh-only`, [`${await reads()} attendance reads without a Refresh press`]);
+    const automatic = scenario === "old-read" ? 1 : 0;
+    if ((await reads()) !== automatic) await fail(`${where}: reads`, [`${await reads()} attendance reads without a Refresh press, expected ${automatic}`]);
     await page.click("#tab-forecast");
     await settle(60);
     const button = await page.$("[data-action='refresh']:not(:disabled)");
     if (button) {
       await button.click();
       await settle(60);
-      if ((await reads()) !== 1) await fail(`${where}: refresh-only`, [`Refresh sent ${await reads()} reads`]);
+      if ((await reads()) !== automatic + 1) await fail(`${where}: reads`, [`Refresh sent ${(await reads()) - automatic} reads`]);
     }
   }
 }

@@ -184,8 +184,15 @@ function stampTabLogin() {
 // This tab loaded an inner CUIMS page (attendance, marks, leave…), which
 // CUIMS's throttle counts like the background's own. The background keeps
 // its optional page reads five minutes clear of it (attendance-daemon.js).
+// A tab sent to error.html has met CUIMS's page limit, so the background
+// holds its own page loads and sign-ins for a while.
 function stampTabPage() {
-  if (!isTopFrame() || !/\.aspx$/i.test(location.pathname) || /^\/(studenthome|login|generatecaptcha|landingpage)\.aspx$/i.test(location.pathname)) return;
+  if (!isTopFrame()) return;
+  if (/^\/error\.html$/i.test(location.pathname)) {
+    shareLocalStorageWrite({ tabLimitedAt: Date.now() });
+    return;
+  }
+  if (!/\.aspx$/i.test(location.pathname) || /^\/(studenthome|login|generatecaptcha|landingpage)\.aspx$/i.test(location.pathname)) return;
   shareLocalStorageWrite({ tabPageAt: Date.now() });
 }
 

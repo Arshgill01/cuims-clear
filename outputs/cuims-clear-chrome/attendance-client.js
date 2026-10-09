@@ -43,6 +43,7 @@
     "signed-out": "Signed out of CUIMS.",
     "tab-login": "A CUIMS tab is signing in. Attendance refreshes once it is done.",
     "portal-busy": "CUIMS is limiting requests right now.",
+    "page-limit": "CUIMS is limiting page loads for your account right now.",
     cancelled: "Sign-in was stopped before it submitted.",
   };
 
@@ -141,7 +142,9 @@
       if (response.status === 429 || response.status === 503) {
         throw coded("portal-busy", null, { retryAfter: response.headers?.get?.("retry-after") || "" });
       }
-      if (isErrorPage(finalUrl)) throw coded("portal-busy");
+      // error.html after an inner page is CUIMS limiting this account's page
+      // loads; anywhere else it is CUIMS itself pushing back.
+      if (isErrorPage(finalUrl)) throw coded(isInnerPage(target) ? "page-limit" : "portal-busy");
       if (response.status >= 500) throw coded("server");
       if (options.response) return response;
       if (options.raw) return { url: finalUrl, status: response.status, bytes: await response.arrayBuffer() };
@@ -203,7 +206,7 @@
     try {
       await request(url(LANDING_INIT), { method: "POST", body: "{}", headers: { "content-type": "application/json; charset=utf-8" } });
     } catch (error) {
-      if (error.code === "portal-busy" || error.code === "busy" || error.code === "tab-login") throw error;
+      if (error.code === "portal-busy" || error.code === "page-limit" || error.code === "busy" || error.code === "tab-login") throw error;
     }
   }
 
@@ -212,7 +215,7 @@
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
     // CUIMS throttles a session that opens inner pages quickly: it answers
     // with error.html (no 429) for several minutes. Never a reason to sign in.
-    if (isErrorPage(page.url)) throw coded("portal-busy");
+    if (isErrorPage(page.url)) throw coded("page-limit");
     const meta = api.extractReportMeta(page.html);
     if (meta.reportId && meta.sessionId) return meta;
     if (/StudentHome\.aspx/i.test(page.url)) throw coded("portal-redirect", null, describe(page));
@@ -235,13 +238,28 @@
     return api.normalizeMarks(rows);
   }
 
-  // Optional, so it never follows a redirect: signed out just means "later",
-  // and never a login page load.
+  // An optional page (timetable, leave) never follows a redirect, so it never
+  // loads a login page. But CUIMS's page limit is a redirect too (to
+  // error.html), and unfollowed it looks just like being signed out (a
+  // redirect to Login.aspx). StudentHome is outside the limit, so it tells
+  // the two apart: still signed in there means the page was limited.
+  async function optionalPage(request, target) {
+    let page;
+    try {
+      page = await request(target, { manual: true });
+    } catch (error) {
+      if (error.code === "signed-out" && (await pingHome(request))) throw coded("page-limit");
+      throw error;
+    }
+    if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
+    if (isErrorPage(page.url)) throw coded("page-limit");
+    return page;
+  }
+
+  // Optional, so signed out just means "later".
   async function readTimetable(request) {
     const target = url(TIMETABLE);
-    let page = await request(target, { manual: true });
-    if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
-    if (isErrorPage(page.url)) throw coded("portal-busy");
+    let page = await optionalPage(request, target);
     if (!api.hasTimetable(page.html)) {
       page = await postForm(request, target, { ...api.hiddenFields(page.html), __EVENTTARGET: TIMETABLE_TARGET, __EVENTARGUMENT: "" });
     }
@@ -254,9 +272,7 @@
   // Never follow a redirect to a login page; the daemon owns sign-in and
   // retry decisions so the page cannot replace a tab's captcha.
   async function readLeavePage(request, which) {
-    const page = await request(url(LEAVE_PAGES[which]), { manual: true });
-    if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
-    if (isErrorPage(page.url)) throw coded("portal-busy");
+    const page = await optionalPage(request, url(LEAVE_PAGES[which]));
     return which === "dl" ? api.parseDutyLeaves(page.html) : api.parseMedicalLeaves(page.html);
   }
 

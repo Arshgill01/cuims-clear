@@ -43,7 +43,7 @@ export function scenarios() {
   add("sunday", { now: at("2026-10-11", 12, 0) });
   add("evening", { now: at("2026-10-09", 19, 30) });
   add("planned", { extra: { attendancePlan: { v: 2, keys: ["2026-10-09|24CSH306@680", "2026-10-10|24TDT312@580", "2026-10-10|24CST304@630"] } } });
-  // Last read yesterday evening: nothing reads until Refresh.
+  // Last read yesterday evening: opening the popup reads once by itself.
   add("old-read", { readAgo: 16 * 60 * 60_000 });
   add("cooldown", { extra: { attendanceLastAttemptAt: at("2026-10-09", 10, 4) } });
   add("throttled", {

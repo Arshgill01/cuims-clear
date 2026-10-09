@@ -678,21 +678,75 @@ test("a background sign-in finishes CUIMS's landing step, so attendance opens in
   assert.equal(result.snapshot.subjects.length, 3);
 });
 
-test("CUIMS's throttle page is waited out: no sign-in, no retries, last read kept, five minutes first", async () => {
-  const server = fakeCuims({ signedIn: true, landed: false });
+test("CUIMS's page limit on the attendance page is waited out: no sign-in, last read kept, fifteen minutes, then thirty", async () => {
+  const server = fakeCuims({ signedIn: true, limited: true });
   const storage = saved({ attendanceSnapshot: { fetchedAt: new Date(MONDAY_11 - 3_600_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] } });
   const bg = daemon(server, storage);
   const result = await bg.refresh("manual");
-  assert.equal(result.code, "portal-busy");
-  assert.match(result.error, /limiting requests.*Showing your last read.*5 min/);
+  assert.equal(result.code, "page-limit");
+  assert.match(result.error, /limiting page loads.*Showing your last read.*15 min/);
+  assert.equal(result.nextRefreshAt, MONDAY_11 + 15 * 60_000);
   assert.equal(result.snapshot.subjects.length, 1);
   assert.equal(server.state.loginPosts + server.state.uidPosts + server.state.landingCalls, 0);
+  assert.equal(storage.data.attendanceBackoffUntil || 0, 0, "only pages wait");
   const sent = server.state.requests.length;
   bg.advance(60_000);
   const again = await bg.refresh("manual");
-  assert.equal(again.code, "backoff");
-  assert.equal(server.state.requests.length, sent, "nothing is sent while waiting");
-  assert.doesNotMatch(again.error, /Next try in \d+ min\. Next try/);
+  assert.equal(again.code, "page-limit");
+  assert.match(again.error, /Next try in 14 min\.$/);
+  assert.equal(server.state.requests.length, sent, "no page and no sign-in while it lasts");
+  bg.advance(14 * 60_000);
+  assert.equal((await bg.refresh("manual")).code, "page-limit");
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 45 * 60_000, "limited again soon after: thirty minutes");
+  server.state.limited = false;
+  bg.advance(30 * 60_000);
+  const ok = await bg.refresh("manual");
+  assert.equal(ok.error, undefined, ok.error);
+  assert.equal(ok.snapshot.subjects.length, 3);
+  assert.equal(storage.data.pagesPauseStreak, 0);
+});
+
+// The screenshot behind 0.10.3: 0.9.7 took the limited duty leave page's
+// redirect for a signed-out session, signed in, met the redirect again and
+// said "CUIMS accepted the login but did not keep the session", dropping
+// the attendance it had just read.
+test("a limited duty-leave page is not taken for signed out: no sign-in, fresh attendance, leave read after the pause", async () => {
+  const server = fakeCuims({ signedIn: true, limited: true });
+  const old = { fetchedAt: new Date(MONDAY_11 - 3_600_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) }, attendanceSnapshot: old });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh("manual");
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.snapshot.subjects.length, 3, "the report calls answered, so the read is fresh");
+  assert.equal(server.state.limitedHits, 1);
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.captchaReads + server.state.loginPageLoads, 0);
+  assert.notEqual(storage.data.sessionAlive, false, "limited is not signed out");
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000);
+  assert.equal(storage.data.attendanceBackoffUntil || 0, 0);
+  bg.advance(10 * 60_000);
+  assert.equal((await bg.refresh("manual")).error, undefined);
+  assert.equal(server.state.limitedHits, 1, "no page while paused");
+  server.state.limited = false;
+  bg.advance(5 * 60_000);
+  await bg.refresh("manual");
+  assert.equal(server.state.leavePageLoads, 1, "tried again once the pause is over, not three hours on");
+  assert.equal(storage.data.pagesPauseStreak, 0);
+});
+
+test("a CUIMS tab sent to error.html holds the background's pages and sign-ins for fifteen minutes", async () => {
+  const server = fakeCuims({ signedIn: false });
+  const storage = saved({ tabLimitedAt: MONDAY_11 - 60_000 });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh("manual");
+  assert.equal(result.code, "page-limit");
+  assert.match(result.error, /Next try in 14 min\.$/);
+  assert.equal(server.state.requests.length, 0);
+  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: false, reason: "page-limit" });
+  assert.deepEqual(server.state.requests, ["GET /StudentHome.aspx"], "Open CUIMS checks the session but does not sign in");
+  bg.advance(14 * 60_000);
+  const ok = await bg.refresh("manual");
+  assert.equal(ok.error, undefined, ok.error);
+  assert.equal(server.state.loginPosts, 1);
 });
 
 test("the first read skips the timetable, and it follows five minutes after the attendance page", async () => {
@@ -711,20 +765,23 @@ test("the first read skips the timetable, and it follows five minutes after the 
   assert.ok(storage.data.attendanceTimetable.slots.length > 0);
 });
 
-test("a throttled timetable pauses reads for five minutes and is retried after an hour, not sooner", async () => {
+test("a limited timetable keeps the read, holds pages for fifteen minutes and is retried after an hour", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
   const bg = daemon(server, storage);
-  server.state.landed = false; // inner pages answer error.html
+  server.state.limited = true;
   const first = await bg.refresh("manual");
-  assert.equal(first.code, "portal-busy");
-  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
+  assert.equal(first.error, undefined, first.error);
+  assert.equal(first.snapshot.subjects.length, 3);
+  assert.equal(storage.data.attendanceBackoffUntil || 0, 0);
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000);
   const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
   assert.equal(timetableLoads(), 1);
   bg.advance(10 * 60_000);
-  await bg.refresh("manual");
+  assert.equal((await bg.refresh("manual")).error, undefined);
   assert.equal(timetableLoads(), 1);
-  server.state.landed = true;
+  assert.equal(server.state.limitedHits, 1, "no page while paused");
+  server.state.limited = false;
   bg.advance(60 * 60_000);
   await bg.refresh("manual");
   assert.equal(timetableLoads(), 2);
@@ -1057,19 +1114,22 @@ test("HTTP 429 is a portal throttle and stops both refreshes and session checks 
   assert.equal(requests, 1);
 });
 
-test("a throttled optional timetable stops further requests and does not clear the shared cooldown", async () => {
-  const server = fakeCuims({ signedIn: true, landed: false });
-  const snapshot = { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] };
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceSnapshot: snapshot });
+test("while CUIMS limits pages, Open CUIMS and LMS still work, and a signed-out open leaves the sign-in to the tab", async () => {
+  const server = fakeCuims({ signedIn: true, limited: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
   const bg = daemon(server, storage);
-  const result = await bg.refresh();
-  assert.equal(result.code, "portal-busy");
-  assert.deepEqual(result.snapshot, snapshot);
-  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
-  assert.equal(server.state.requests.length, 2, "summary and timetable only");
+  assert.equal((await bg.refresh()).error, undefined);
+  const inner = server.state.requests.filter((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`));
+  assert.deepEqual(inner, ["GET /frmMyTimeTable.aspx"], "one limited page, then none");
+  assert.ok(server.state.requests.includes("GET /StudentHome.aspx"), "StudentHome told the limit from a sign-out");
   bg.advance(60_000);
-  assert.equal((await bg.ensureSession()).reason, "backoff");
-  assert.equal(server.state.requests.length, 2);
+  assert.equal((await bg.ensureSession()).alive, true);
+  const lms = await bg.withRequests((request) => request("https://students.cuchd.in/StudentHome.aspx"));
+  assert.equal(lms.status, 200);
+  server.state.signedIn = false;
+  storage.data.sessionAlive = false;
+  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: false, reason: "page-limit" });
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.captchaReads, 0);
 });
 
 test("an error.html home response is a throttle, not an alive session", async () => {
@@ -1327,10 +1387,11 @@ test("a CUIMS tab's own inner page holds the background's optional pages back fo
   assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
 });
 
-test("a CUIMS tab stamps its inner page loads, but not StudentHome, login or landing", () => {
+test("a CUIMS tab stamps its inner page loads, but not StudentHome, login or landing, and says when it met the limit", () => {
   for (const [pathname, stamped] of [["/frmStudentCourseWiseAttendanceSummary.aspx", true], ["/frmStudentApplyDutyLeave.aspx", true], ["/StudentHome.aspx", false], ["/Login.aspx", false], ["/", false], ["/error.html", false]]) {
     const page = contentRuntime(pathname);
     page.call("stampTabPage()");
     assert.equal(page.writes.some((values) => "tabPageAt" in values), stamped, pathname);
+    assert.equal(page.writes.some((values) => "tabLimitedAt" in values), pathname === "/error.html", pathname);
   }
 });

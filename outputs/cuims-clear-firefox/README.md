@@ -20,9 +20,10 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
   with an **Original view** escape on LMS pages;
 - shows attendance on an **Attendance** tab without opening CUIMS: overall and
   per-subject percentages, how many classes you can skip while staying at 75% per
-  subject and 90% overall, and today's classes as they happen. It reads CUIMS only when
-  you press Refresh: one press brings attendance and the class record, and at most one
-  slower CUIMS page (the timetable once a day, leave every few hours), spaced well apart;
+  subject and 90% overall, and today's classes as they happen. It reads CUIMS by itself
+  when you open the popup and the last read is over ten minutes old, and whenever you press
+  Refresh: a read brings attendance and the class record, and at most one slower CUIMS page
+  (the timetable once a day, leave every few hours), spaced well apart;
 - forecasts the semester on a **Forecast** tab: where each subject and the overall figure
   finish by the last day of classes at your recent pace, the likely range and the chance of
   clearing the goal, how many classes are left to miss, a planner that shows what skipping a
@@ -109,13 +110,22 @@ Refresh, from the report calls (the subject's counts move and the absent mark
 becomes a leave mark); a refusal shows when the leave page is next read.
 Opening a leave page on CUIMS updates the list for free.
 
+When CUIMS limits the account's page loads anyway (its pages redirect to
+`error.html`, and CUIMS's own sidebar comes up empty), the extension loads no
+CUIMS page and never signs in for 15 minutes (30, then 60, if it happens
+again soon after). Attendance keeps updating from the report calls, which the
+limit does not touch, and Open CUIMS and Open LMS still work. A CUIMS tab that
+lands on the error page counts too. A redirected page is never taken for a
+signed-out session until StudentHome confirms it, so the limit never sets off
+a sign-in.
+
 Background attendance, session checks and LMS SSO also share a rolling budget
 of 25 requests per 10 minutes, and manual refreshes wait at least 60 seconds.
 These are extension safeguards, not CUIMS's published limits; portal tabs and
 browser-followed redirects add their own traffic.
 
-HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
-five minutes, increasing after repeated failures and honoring a longer
+HTTP 429/503, or an error page from the report calls or StudentHome, pauses
+background reads for at least five minutes, increasing after repeated failures and honoring a longer
 `Retry-After`. Optional attendance detail also stops on a refusal. Cached
 attendance stays visible, with a disabled refresh button showing when it is
 ready again. The countdown sends no requests.

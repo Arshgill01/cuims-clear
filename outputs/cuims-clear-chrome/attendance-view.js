@@ -145,7 +145,7 @@
 
   function message(state) {
     if (!state.error) return "";
-    const calm = new Set(["tab-login", "portal-busy", "backoff", "busy", "cooldown"]);
+    const calm = new Set(["tab-login", "portal-busy", "page-limit", "backoff", "busy", "cooldown"]);
     const kind = calm.has(state.code) ? "attendance-info" : "attendance-error";
     const jump = LOGIN_CODES.has(state.code) ? GOTO_LOGIN : "";
     const remaining = Math.ceil((Number(state.nextRefreshAt || 0) - (state.now || new Date()).getTime()) / 60000);
@@ -170,7 +170,8 @@
     return `<button ${target} class="${className}${due}" type="button"${state.working || waiting ? " disabled" : ""}>${escapeHtml(label)}</button>`;
   }
 
-  // Nothing reads CUIMS until Refresh, so a read from an earlier day says so.
+  // A read from an earlier day says so (the last read may have failed, or the
+  // popup was not opened since).
   function readIsOld(fetchedAt, now) {
     const then = Date.parse(fetchedAt || "");
     return Boolean(then) && api.campusParts(new Date(then)).key !== api.campusParts(now).key;
