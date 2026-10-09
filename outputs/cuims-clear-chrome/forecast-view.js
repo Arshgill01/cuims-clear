@@ -480,8 +480,9 @@
         : "";
     return `<div class="attendance-bar">
       <p class="attendance-note" role="status" aria-live="polite">${esc(note)}</p>
-      <button type="button" class="refresh-button" data-action="refresh"${state.working ? " disabled" : ""}>${state.working ? "Refreshing" : "Refresh"}</button>
-    </div>`;
+      ${api.refreshButton(state, "refresh-button", "Refresh", 'data-action="refresh"')}
+    </div>
+    ${api.refreshMessage(state)}`;
   }
 
   function goalSwitch(goal) {

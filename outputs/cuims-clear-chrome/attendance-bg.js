@@ -62,6 +62,11 @@ function startAttendanceBackground(solveCaptcha) {
   globalThis.cuimsEnsureSession = (options) =>
     hasAccess().then((granted) => (granted ? attendance.ensureSession(options) : { alive: false, reason: "no-access" }));
 
+  globalThis.cuimsWithRequests = async (task) => {
+    if (!(await hasAccess())) throw CuimsAttendance.coded("no-access", "Allow access to CUIMS first.");
+    return attendance.withRequests(task);
+  };
+
   return attendance;
 }
 

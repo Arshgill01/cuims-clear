@@ -282,7 +282,7 @@ function bindOpenLink(link, type, busyLabel) {
       if (chrome.runtime.lastError || !response || response.error) {
         link.removeAttribute("aria-busy");
         if (label) label.textContent = idle;
-        showStatus(type === "cuims-clear:launch-lms" ? "Could not open LMS. Try again." : "Could not open CUIMS. Try again.");
+        showStatus(response?.error || (type === "cuims-clear:launch-lms" ? "Could not open LMS. Try again." : "Could not open CUIMS. Try again."));
         return;
       }
       window.close();
@@ -310,6 +310,15 @@ function focusKey(node, view = views.attendance) {
 // A control redrawn disabled (Refresh while refreshing) cannot hold focus;
 // its key is kept and focus goes back to it once it is enabled again.
 let carriedFocus = "";
+let refreshReadyTimer;
+
+// When the wait between refreshes ends, Refresh comes back on its own,
+// without a request.
+function scheduleRefreshReady() {
+  window.clearTimeout(refreshReadyTimer);
+  const remaining = Number(attendance.nextRefreshAt || 0) - Date.now();
+  if (remaining > 0 && (currentView === "attendance" || currentView === "forecast")) refreshReadyTimer = window.setTimeout(paintData, remaining);
+}
 
 function readWorking() {
   const status = attendance.status || {};
@@ -337,11 +346,13 @@ function paintAttendance() {
     : null;
   repaint(views.attendance, CuimsAttendance.renderAttendance(analytics, {
     working,
+    nextRefreshAt: attendance.nextRefreshAt,
     phase: status.phase,
     needsLogin: !hasLogin(),
     error: working ? "" : attendance.error || status.error || "",
     code: working ? "" : attendance.code || status.code || "",
   }));
+  scheduleRefreshReady();
   updateRate();
   paintRate();
   return working;
@@ -359,7 +370,15 @@ function paintForecast({ force = true } = {}) {
     ? CuimsAttendance.buildForecast(attendance.snapshot, attendance.history, new Date(), { goal: prefs.goal, plan: plannedSkips(), end: prefs.end, day: forecastUi.day })
     : null;
   if (forecast?.plan) forecastUi.day = forecast.plan.day;
-  repaint(views.forecast, CuimsAttendance.renderForecast(forecast, { working, phase: status.phase, expanded: forecastUi.expanded }));
+  repaint(views.forecast, CuimsAttendance.renderForecast(forecast, {
+    working,
+    phase: status.phase,
+    expanded: forecastUi.expanded,
+    nextRefreshAt: attendance.nextRefreshAt,
+    error: working ? "" : attendance.error || status.error || "",
+    code: working ? "" : attendance.code || status.code || "",
+  }));
+  scheduleRefreshReady();
   return working;
 }
 
@@ -370,6 +389,7 @@ function paintData() {
 }
 
 function fetchAttendance() {
+  if (Date.now() < Number(attendance.nextRefreshAt || 0)) return;
   attendance.error = "";
   attendance.code = "";
   attendance.status = { working: true, phase: "Checking your CUIMS session…", at: Date.now() };
@@ -383,6 +403,7 @@ function fetchAttendance() {
       attendance.snapshot = response.snapshot || attendance.snapshot;
       attendance.error = response.error || "";
       attendance.code = response.code || "";
+      attendance.nextRefreshAt = response.nextRefreshAt || 0;
       attendance.status = { working: false };
     }
     paintData();
@@ -403,6 +424,7 @@ function showView(name, { remember = true } = {}) {
   currentView = name;
   if (remember) chrome.storage.local.set({ popupView: name });
   window.clearInterval(repaintTimer);
+  window.clearTimeout(refreshReadyTimer);
   paintRate();
   if (name === "theme") renderThemes();
   if (name !== "attendance" && name !== "forecast") return;
@@ -570,6 +592,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const phase = changes.attendanceStatus?.newValue?.working && changes.attendanceStatus.newValue.phase;
   const busy = document.querySelector(".open-link[aria-busy='true'] span");
   if (phase && busy) busy.textContent = phase;
+  if (changes.attendanceLastAttemptAt) attendance.lastAttemptAt = changes.attendanceLastAttemptAt.newValue || 0;
+  if (changes.attendanceBackoffUntil) attendance.backoffUntil = changes.attendanceBackoffUntil.newValue || 0;
+  attendance.nextRefreshAt = Math.max(Number(attendance.lastAttemptAt || 0) + 60_000, Number(attendance.backoffUntil || 0));
   if (changes.attendanceSnapshot) attendance.snapshot = changes.attendanceSnapshot.newValue || null;
   if (changes.attendanceStatus) {
     attendance.status = changes.attendanceStatus.newValue || null;
@@ -577,7 +602,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     attendance.code = "";
   }
   if (changes.attendanceHistory) attendance.history = changes.attendanceHistory.newValue || null;
-  if (changes.attendanceSnapshot || changes.attendanceStatus || changes.attendanceHistory) paintData();
+  if (changes.attendanceSnapshot || changes.attendanceStatus || changes.attendanceHistory || changes.attendanceLastAttemptAt || changes.attendanceBackoffUntil) paintData();
   // A switch flipped elsewhere (the LMS page's own Original view button).
   let flipped = false;
   for (const key of Object.keys(SWITCH_DEFAULTS)) {
@@ -819,6 +844,8 @@ chrome.storage.local.get(
     password: "",
     attendanceSnapshot: null,
     attendanceStatus: null,
+    attendanceLastAttemptAt: 0,
+    attendanceBackoffUntil: 0,
     popupView: "",
     attendanceGoal: "standard",
     attendancePlan: null,
@@ -836,6 +863,9 @@ chrome.storage.local.get(
     attendance.snapshot = stored.attendanceSnapshot;
     attendance.status = stored.attendanceStatus;
     attendance.history = stored.attendanceHistory;
+    attendance.lastAttemptAt = stored.attendanceLastAttemptAt;
+    attendance.backoffUntil = stored.attendanceBackoffUntil;
+    attendance.nextRefreshAt = Math.max(Number(stored.attendanceLastAttemptAt || 0) + 60_000, Number(stored.attendanceBackoffUntil || 0));
     prefs = { goal: stored.attendanceGoal || "standard", plan: readPlan(stored.attendancePlan), end: String(stored.forecastEnd || "") };
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";

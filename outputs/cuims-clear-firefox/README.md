@@ -93,6 +93,23 @@ The blocker only acts on dialog-style elements whose text looks like an event or
 
 Because the logged-in CUIMS dashboard was not available during development, the blocker uses conservative Bootstrap, jQuery UI, and SweetAlert modal selectors. If a CUIMS popup survives, inspect it or share a screenshot/HTML sample so its exact selector can be added.
 
+## Conservative CUIMS reads
+
+Background attendance, session checks and LMS SSO share a rolling budget of
+25 explicit requests per 10 minutes. Manual attendance refreshes wait at least
+60 seconds. Each permitted attendance read also fetches duty-leave status,
+including the first read, so opening the CUIMS leave page is unnecessary.
+An expired duty-leave session uses the existing guarded background sign-in;
+medical-leave reads remain infrequent. These are extension safeguards, not
+CUIMS's published UID limits;
+portal tabs and browser-followed redirects can add their own traffic.
+
+HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
+five minutes, increasing after repeated failures and honoring a longer
+`Retry-After`. Optional attendance detail also stops on a refusal. Cached
+attendance stays visible, with a disabled refresh button showing when it is
+ready again. The countdown sends no requests.
+
 ## Privacy
 
 - Host access is limited to `https://students.cuchd.in/*` and `https://lms.cuchd.in/*`.

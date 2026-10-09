@@ -133,29 +133,36 @@ function isLmsSignedInUrl(value) {
 // shares the browser's cookie jar, so the tab can open LMS directly. Older
 // CUIMS builds answered with a page calling window.open(<ticket>) instead.
 // Returns the URL for the tab, or null when the tab has to do it.
+async function readLmsTicket(request) {
+  const home = await request(CUIMS_HOME, { redirect: "manual", timeoutMs: SSO_TIMEOUT_MS });
+  if (!answered(home)) return null;
+  const html = await home.text();
+  const postback = ssoPostback(html);
+  if (!postback) return null;
+  const fields = hiddenInputs(html);
+  fields.set("__EVENTTARGET", postback.target);
+  fields.set("__EVENTARGUMENT", postback.argument);
+  const action = decodeHtml(html.match(/<form\b[^>]*\baction\s*=\s*["']([^"']*)["']/i)?.[1] || "");
+  // Follow this one: the chain leads to LMS, not to a CUIMS login page,
+  // because the session was just seen alive.
+  const posted = await request(new URL(action || CUIMS_HOME, CUIMS_HOME).href, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: fields.toString(),
+    redirect: "follow",
+    timeoutMs: SSO_TIMEOUT_MS,
+  });
+  if (isLmsSignedInUrl(posted.url)) return LMS_COURSES;
+  if (posted.status !== 200) return null;
+  return ssoTicketUrl(await posted.text());
+}
+
 async function fetchLmsTicket() {
   try {
-    const home = await cuimsFetch(CUIMS_HOME);
-    if (!answered(home)) return null;
-    const html = await home.text();
-    const postback = ssoPostback(html);
-    if (!postback) return null;
-    const fields = hiddenInputs(html);
-    fields.set("__EVENTTARGET", postback.target);
-    fields.set("__EVENTARGUMENT", postback.argument);
-    const action = decodeHtml(html.match(/<form\b[^>]*\baction\s*=\s*["']([^"']*)["']/i)?.[1] || "");
-    // Follow this one: the chain leads to LMS, not to a CUIMS login page,
-    // because the session was just seen alive.
-    const posted = await cuimsFetch(new URL(action || CUIMS_HOME, CUIMS_HOME).href, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: fields.toString(),
-      redirect: "follow",
-    });
-    if (isLmsSignedInUrl(posted.url)) return LMS_COURSES;
-    if (posted.status !== 200) return null;
-    return ssoTicketUrl(await posted.text());
-  } catch {
+    if (typeof globalThis.cuimsWithRequests === "function") return await globalThis.cuimsWithRequests(readLmsTicket);
+    return await readLmsTicket(cuimsFetch);
+  } catch (error) {
+    if (["portal-busy", "busy", "backoff", "no-access"].includes(error.code)) throw error;
     return null;
   }
 }
@@ -191,7 +198,11 @@ async function openLms(hint) {
   }
   const tab = await resolveTab(hint);
   let ticket = await fetchLmsTicket();
-  if (!ticket && (await ensureSession()).signedIn) ticket = await fetchLmsTicket();
+  if (!ticket) {
+    const session = await ensureSession();
+    if (["portal-busy", "busy", "backoff"].includes(session.reason)) throw new Error(session.error || "CUIMS is limiting requests. Try again in a few minutes.");
+    if (session.signedIn) ticket = await fetchLmsTicket();
+  }
   if (ticket) {
     await openIn(tab, ticket);
     return { via: "sso" };

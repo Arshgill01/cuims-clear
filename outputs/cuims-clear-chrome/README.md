@@ -55,6 +55,23 @@ Version 0.6.2 is published. Version 0.6.3 is being prepared for store review.
 and LMS files from the Firefox build. Chrome manifest and service-worker files
 remain Chrome-specific.
 
+## Conservative CUIMS reads
+
+Background attendance, session checks and LMS SSO share a rolling budget of
+25 explicit requests per 10 minutes. Manual attendance refreshes wait at least
+60 seconds. Each permitted attendance read also fetches duty-leave status,
+including the first read, so opening the CUIMS leave page is unnecessary.
+An expired duty-leave session uses the existing guarded background sign-in;
+medical-leave reads remain infrequent. These are extension safeguards, not
+CUIMS's published UID limits;
+portal tabs and browser-followed redirects can add their own traffic.
+
+HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
+five minutes, increasing after repeated failures and honoring a longer
+`Retry-After`. Optional attendance detail also stops on a refusal. Cached
+attendance stays visible, with a disabled refresh button showing when it is
+ready again. The countdown sends no requests.
+
 ## Privacy
 
 - Host access is limited to `https://students.cuchd.in/*` and `https://lms.cuchd.in/*`.

@@ -103,7 +103,7 @@
       const yielding = Boolean(await yieldToTab?.());
       if (yielding && isLoginFlow(target)) throw coded("tab-login");
       budget?.();
-      const manual = yielding || options.manual;
+      const manual = yielding || options.manual || options.redirect === "manual";
       const headers = new Headers(options.headers || {});
       let response;
       try {
@@ -112,9 +112,9 @@
           headers,
           body: options.body,
           credentials: options.anonymous ? "omit" : "include",
-          redirect: manual ? "manual" : "follow",
+          redirect: manual ? "manual" : options.redirect || "follow",
           cache: "no-store",
-          signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined,
+          signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(options.timeoutMs ?? timeoutMs) : undefined,
         });
       } catch {
         throw coded("network");
@@ -124,8 +124,12 @@
       if (manual && isRedirect(response)) throw coded(yielding ? "tab-login" : "signed-out");
       const finalUrl = response.url || target;
       if (!isLoginFlow(target) && isLoginUrl(finalUrl)) await onLoginTouch?.();
-      if (response.status === 429 || response.status === 503) throw coded("busy");
+      if (response.status === 429 || response.status === 503) {
+        throw coded("portal-busy", null, { retryAfter: response.headers?.get?.("retry-after") || "" });
+      }
+      if (isErrorPage(finalUrl)) throw coded("portal-busy");
       if (response.status >= 500) throw coded("server");
+      if (options.response) return response;
       if (options.raw) return { url: finalUrl, status: response.status, bytes: await response.arrayBuffer() };
       return { url: finalUrl, status: response.status, html: await response.text() };
     };
@@ -185,7 +189,7 @@
     try {
       await request(url(LANDING_INIT), { method: "POST", body: "{}", headers: { "content-type": "application/json; charset=utf-8" } });
     } catch (error) {
-      if (error.code === "busy" || error.code === "tab-login") throw error;
+      if (error.code === "portal-busy" || error.code === "busy" || error.code === "tab-login") throw error;
     }
   }
 
@@ -233,8 +237,8 @@
   const LEAVE_PAGES = { dl: "/frmStudentApplyDutyLeave.aspx", ml: "/frmStudentMedicalLeaveApply.aspx" };
 
   // The student's own duty or medical leave applications and their status.
-  // A heavy inner page, so the daemon reads it rarely and never follows a
-  // redirect: signed out just means "later".
+  // Never follow a redirect to a login page; the daemon owns sign-in and
+  // retry decisions so the page cannot replace a tab's captcha.
   async function readLeavePage(request, which) {
     const page = await request(url(LEAVE_PAGES[which]), { manual: true });
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
