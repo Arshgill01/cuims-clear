@@ -6,9 +6,9 @@
   const api = root.CuimsAttendance || (root.CuimsAttendance = {});
 
   const MINUTE = 60_000;
-  const MANUAL_GAP_MS = 30_000;
+  const MANUAL_GAP_MS = 60_000;
   const BUDGET_WINDOW_MS = 10 * MINUTE;
-  const BUDGET_MAX = 40;
+  const BUDGET_MAX = 25;
   const FAILURE_WINDOW_MS = 20 * MINUTE;
   const LOCKOUT_MS = 20 * MINUTE;
   // Any refused login in the last 20 minutes, the tab's or its own, stops the
@@ -27,6 +27,9 @@
   // The marks call is cookie-less and outside CUIMS's page throttle; a
   // subject is read again only after its counts move.
   const MAX_HISTORY_READS = 4;
+  // History is optional: it only spends the budget while this much is left
+  // for the reads that matter (a refresh, a sign-in, opening CUIMS or LMS).
+  const HISTORY_RESERVE = 12;
   const HISTORY_VERSION = 1;
   const BACKOFF_MINUTES = [1, 2, 5, 10, 20];
   // CUIMS's own throttle lasts minutes, so its backoff starts at five.
@@ -120,6 +123,7 @@
           if (log.length >= BUDGET_MAX) throw client.coded("busy");
           log.push(now());
         },
+        room: () => BUDGET_MAX - log.length,
       };
     }
 
@@ -151,12 +155,35 @@
       }
       return false;
     }
-    async function dataPageFailure(code, state) {
-      if (!BACKOFF_CODES.has(code)) return;
+
+    function paused(state) {
+      const until = Number(state.attendanceBackoffUntil || 0);
+      if (until <= now()) return null;
+      const minutes = Math.max(1, Math.ceil((until - now()) / MINUTE));
+      const reason = (state.attendanceStatus?.error || "").replace(/\s*Next try in \d+ min\.\s*$/, "") || "CUIMS refused the last read.";
+      return client.coded("backoff", `${reason} Next try in ${minutes} min.`);
+    }
+
+    async function recordBackoff(state, error) {
+      const code = error.code || "network";
+      let message = error.code ? error.message : client.MESSAGES.network;
+      if (!BACKOFF_CODES.has(code)) return message;
       const streak = Number(state.attendanceFailStreak || 0) + 1;
-      const steps = code === "portal-busy" || code === "busy" ? THROTTLE_MINUTES : BACKOFF_MINUTES;
-      const minutes = steps[Math.min(streak, steps.length) - 1];
-      await storage.set({ attendanceFailStreak: streak, attendanceBackoffUntil: now() + minutes * MINUTE });
+      const table = code === "portal-busy" ? THROTTLE_MINUTES : BACKOFF_MINUTES;
+      const retryAfter = error.detail?.retryAfter || "";
+      const retryMs = /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Math.max(0, (Date.parse(retryAfter) || 0) - now());
+      const until = now() + Math.max(table[Math.min(streak, table.length) - 1] * MINUTE, retryMs);
+      const minutes = Math.ceil((until - now()) / MINUTE);
+      const said = (error.detail?.title || error.detail?.text || "").trim().slice(0, 70);
+      const kept = state.attendanceSnapshot ? " Showing your last read." : "";
+      message = `${message}${said ? ` CUIMS said “${said}”.` : ""}${kept} Next try in ${minutes} min.`;
+      await storage.set({
+        attendanceFailStreak: streak,
+        attendanceBackoffUntil: until,
+        ...(code === "report-shape" || code === "portal-redirect" ? { attendanceMeta: null } : {}),
+        ...(error.detail ? { attendanceLastBad: { ...error.detail, code, at: now() } } : {}),
+      });
+      return message;
     }
 
     async function recordFailure(guard, patch = {}) {
@@ -267,8 +294,12 @@
           await storage.set({ attendanceTimetable: { day: today, slots: fresh, triedAt: now() } });
           return fresh;
         }
-      } catch {
-        // Signed out, throttled, or a tab owns the session: try again later.
+      } catch (error) {
+        if (error.code === "portal-busy" || error.code === "busy") {
+          await storage.set({ attendanceTimetable: { day: cached?.day || "", slots, triedAt: now() } });
+          throw error;
+        }
+        // Other optional-page failures keep the cached timetable.
       }
       await storage.set({ attendanceTimetable: { day: cached?.day || "", slots, triedAt: now() } });
       return slots;
@@ -285,7 +316,8 @@
         let marks;
         try {
           marks = await client.readMarks(request, meta, encryptCode);
-        } catch {
+        } catch (error) {
+          if (error.code === "portal-busy" || error.code === "busy") throw error;
           continue;
         }
         for (const mark of marks || []) {
@@ -327,26 +359,31 @@
       return leaves;
     }
 
-    // Leave pages are heavy inner pages: at most one every three hours,
-    // alternating duty and medical, and never alongside another heavy page.
+    // Duty leave follows every attendance refresh; medical leave stays
+    // infrequent and yields to attendance/timetable page loads.
     async function readLeaves(state, request, meta, heavy) {
-      const cached = currentLeaves(state);
-      if (heavy.used || now() - Number(cached?.triedAt || 0) < LEAVE_CHECK_MS) return cached;
-      heavy.used += 1;
-      const which = Number(cached?.dlAt || 0) <= Number(cached?.mlAt || 0) ? "dl" : "ml";
-      try {
-        return await mergeLeaves(state, request, meta, which, await client.readLeavePage(request, which));
-      } catch {
-        const leaves = { ...(cached || {}), v: client.LEAVES_VERSION, triedAt: now() };
-        await storage.set({ attendanceLeaves: leaves });
-        return leaves;
+      let leaves = currentLeaves(state);
+      for (const which of ["dl", "ml"]) {
+        if (which === "ml" && (heavy.used || now() - Math.max(Number(leaves?.mlTriedAt || 0), Number(leaves?.mlAt || 0)) < LEAVE_CHECK_MS)) continue;
+        try {
+          const applications = await client.readLeavePage(request, which);
+          if (which === "dl") await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
+          leaves = await mergeLeaves({ ...state, attendanceLeaves: leaves }, request, meta, which, applications);
+        } catch (error) {
+          if (error.code === "portal-busy" || error.code === "busy" || (which === "dl" && ["signed-out", "tab-login"].includes(error.code))) throw error;
+          leaves = { ...(leaves || {}), v: client.LEAVES_VERSION, triedAt: now(), ...(which === "ml" ? { mlTriedAt: now() } : {}) };
+          await storage.set({ attendanceLeaves: leaves });
+        }
       }
+      return leaves;
     }
 
     // The student opened a leave page on CUIMS: read it there, for free.
-    async function ingestLeavePage(which, html) {
+    async function readLeaveUpdate(which, html) {
       if (!client.LEAVE_PAGES[which]) return null;
       const state = await storage.get(DEFAULTS);
+      const wait = paused(state);
+      if (wait) throw wait;
       const meta = state.attendanceMeta;
       const applications = which === "dl" ? client.parseDutyLeaves(html) : client.parseMedicalLeaves(html);
       const budget = meter(state);
@@ -356,6 +393,10 @@
           await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, leaves: snapshotLeaves(leaves) } });
         }
         return leaves;
+      } catch (error) {
+        const message = await recordBackoff(state, error);
+        await setStatus({ working: false, error: message, code: error.code || "network" });
+        throw error;
       } finally {
         await storage.set({ attendanceRequests: budget.log });
       }
@@ -371,7 +412,7 @@
     // today has started and is not already known to be marked. The same call
     // answers with the whole semester, which the Forecast tab keeps; subjects
     // whose counts moved are read for it too, a few per refresh.
-    async function readTodaysMarks(state, request, meta, subjects, slots, campus) {
+    async function readTodaysMarks(state, request, meta, subjects, slots, campus, budget) {
       const previous = state.attendanceSnapshot;
       const sameDay = previous?.marksDay === campus.key;
       const started = client.todaysSlots(slots, campus).filter((slot) => slot.start <= campus.minutes);
@@ -412,7 +453,8 @@
           subject.marks = (marks || []).filter((mark) => client.parseDateKey(mark.date) === campus.key);
           keep(subject, marks);
           read.add(subject);
-        } catch {
+        } catch (error) {
+          if (error.code === "portal-busy" || error.code === "busy") throw error;
           // Today's marks are extra detail; the totals already arrived.
           failed = true;
         }
@@ -421,10 +463,17 @@
       const stale = subjects
         .filter((subject) => subject.encryptCode && !read.has(subject) && historyStale(history[client.normCode(subject.code)], subject))
         .sort((left, right) => Number(history[client.normCode(left.code)]?.at || 0) - Number(history[client.normCode(right.code)]?.at || 0));
-      for (const subject of failed ? [] : stale.slice(0, MAX_HISTORY_READS)) {
+      const allowance = failed ? 0 : Math.max(0, Math.min(MAX_HISTORY_READS, budget.room() - HISTORY_RESERVE));
+      for (const subject of stale.slice(0, allowance)) {
         try {
           keep(subject, await client.readMarks(request, meta, subject.encryptCode));
-        } catch {
+        } catch (error) {
+          // CUIMS pushing back stops the whole read; anything else waits for
+          // the next refresh, keeping the attendance already read.
+          if (error.code === "portal-busy") {
+            if (changed) await storage.set({ attendanceHistory: { v: HISTORY_VERSION, subjects: history } });
+            throw error;
+          }
           break;
         }
       }
@@ -435,15 +484,12 @@
       const state = await storage.get(DEFAULTS);
       const started = now();
       const lastError = state.attendanceStatus?.error || "";
+      const wait = paused(state);
+      if (wait) return { snapshot: state.attendanceSnapshot, code: wait.code, error: wait.message, nextRefreshAt: state.attendanceBackoffUntil };
       if (started - Number(state.attendanceLastAttemptAt || 0) < MANUAL_GAP_MS) {
-        return { snapshot: state.attendanceSnapshot, recent: true, ...(lastError ? { error: lastError, code: state.attendanceStatus?.code } : {}) };
+        return { snapshot: state.attendanceSnapshot, recent: true, nextRefreshAt: Number(state.attendanceLastAttemptAt) + MANUAL_GAP_MS, ...(lastError ? { error: lastError, code: state.attendanceStatus?.code } : {}) };
       }
-      const backoffUntil = Number(state.attendanceBackoffUntil || 0);
-      if (backoffUntil > started) {
-        const minutes = Math.max(1, Math.ceil((backoffUntil - started) / MINUTE));
-        const reason = lastError.replace(/\s*Next try in \d+ min\.\s*$/, "") || "CUIMS refused the last read.";
-        return { snapshot: state.attendanceSnapshot, code: "backoff", error: `${reason} Next try in ${minutes} min.` };
-      }
+
       if (Number(state.attendanceRunUntil || 0) > started) return { snapshot: state.attendanceSnapshot, busy: true };
 
       const budget = meter(state);
@@ -456,7 +502,8 @@
       await onStep("Checking your CUIMS session…");
       try {
         // The report ids from the attendance page stay valid, so a normal
-        // refresh is one GetReport call. The heavy page is reopened only when
+        // refresh uses GetReport plus the duty-leave page. The attendance
+        // page is reopened only when
         // the ids are missing or stop working. GetReport answers without a
         // signed-in session, so only the page read says the session is alive.
         let meta = state.attendanceMeta?.reportId ? state.attendanceMeta : null;
@@ -465,7 +512,7 @@
           try {
             subjects = await client.readSummary(request, meta);
           } catch (error) {
-            if (error.code === "busy" || error.code === "network" || error.code === "server") throw error;
+            if (error.code === "portal-busy" || error.code === "busy" || error.code === "network" || error.code === "server") throw error;
             meta = null;
           }
         }
@@ -493,12 +540,27 @@
         const courses = Object.fromEntries(subjects.filter((subject) => subject.encryptCode).map((subject) => [client.normCode(subject.code), subject.encryptCode]));
         await storage.set({ attendanceCourses: courses });
         state.attendanceCourses = courses;
-        // At most one heavy CUIMS page per refresh: the attendance page, else
-        // the timetable, else a leave page.
+        // Attendance and timetable still take turns; duty leave is required
+        // on every refresh, with medical leave deferred during those loads.
         const heavy = { used: pageLoaded ? 1 : 0 };
         const slots = await readTimetable(state, request, campus.key, heavy);
-        await readTodaysMarks(state, request, meta, subjects, slots, campus);
-        const leaves = await readLeaves(state, request, meta, heavy);
+        await readTodaysMarks(state, request, meta, subjects, slots, campus, budget);
+        await onStep("Reading duty leave…");
+        let leaves;
+        try {
+          leaves = await readLeaves(state, request, meta, heavy);
+        } catch (error) {
+          if (error.code !== "signed-out") throw error;
+          await storage.set({ sessionAlive: false, sessionCheckedAt: now() });
+          await ensureSignedIn(state, request, reason, onStep);
+          heavy.used = 1;
+          try {
+            leaves = await readLeaves(state, request, meta, heavy);
+          } catch (again) {
+            if (again.code === "signed-out") throw client.coded("login-shape", "CUIMS accepted the login but did not keep the session. Try again.");
+            throw again;
+          }
+        }
         const snapshot = {
           fetchedAt: new Date(now()).toISOString(),
           marksDay: campus.key,
@@ -508,7 +570,7 @@
         };
         await storage.set({ attendanceSnapshot: snapshot, attendanceFailStreak: 0, attendanceBackoffUntil: 0 });
         await setStatus({ working: false, phase: "", error: "", code: "" });
-        return { snapshot };
+        return { snapshot, nextRefreshAt: started + MANUAL_GAP_MS };
       } catch (error) {
         const code = error.code || "network";
         let message = error.code ? error.message : client.MESSAGES.network;
@@ -516,24 +578,11 @@
           // Not a failure: the tab owns the session. Run again once it lands.
           await storage.set({ attendanceAfterTab: now(), attendanceLastAttemptAt: 0 });
           await setStatus({ working: false, phase: "", error: message, code });
-          return { snapshot: state.attendanceSnapshot, error: message, code };
+          return { snapshot: state.attendanceSnapshot, error: message, code, nextRefreshAt: 0 };
         }
-        if (BACKOFF_CODES.has(code)) {
-          const streak = Number(state.attendanceFailStreak || 0) + 1;
-          const table = code === "portal-busy" ? THROTTLE_MINUTES : BACKOFF_MINUTES;
-          const minutes = table[Math.min(streak, table.length) - 1];
-          const said = (error.detail?.title || error.detail?.text || "").trim().slice(0, 70);
-          const kept = state.attendanceSnapshot ? " Showing your last read." : "";
-          message = `${message}${said ? ` CUIMS said “${said}”.` : ""}${kept} Next try in ${minutes} min.`;
-          await storage.set({
-            attendanceFailStreak: streak,
-            attendanceBackoffUntil: now() + minutes * MINUTE,
-            ...(code === "report-shape" || code === "portal-redirect" ? { attendanceMeta: null } : {}),
-            ...(error.detail ? { attendanceLastBad: { ...error.detail, code, at: now() } } : {}),
-          });
-        }
+        message = await recordBackoff(state, error);
         await setStatus({ working: false, phase: "", error: message, code });
-        return { snapshot: state.attendanceSnapshot, error: message, code };
+        return { snapshot: state.attendanceSnapshot, error: message, code, nextRefreshAt: (await storage.get({ attendanceBackoffUntil: 0 })).attendanceBackoffUntil || started + MANUAL_GAP_MS };
       } finally {
         await storage.set({ attendanceRequests: budget.log, attendanceRunUntil: 0 });
       }
@@ -558,6 +607,8 @@
     // budget, and limits as a manual refresh.
     async function openSession({ signal } = {}) {
       const state = await storage.get({ ...DEFAULTS, autoSubmitLogin: true });
+      const wait = paused(state);
+      if (wait) return { alive: false, reason: wait.code, error: wait.message };
       if (await tabOnLoginPage()) return { alive: false, reason: "tab-login" };
       const budget = meter(state);
       const request = createRequest(budget);
@@ -574,11 +625,13 @@
         await storage.set({ sessionAlive: true, sessionCheckedAt: now() });
         return { alive: true, signedIn: true };
       } catch (error) {
-        return { alive: false, reason: error.code || "network" };
+        const message = await recordBackoff(state, error);
+        if (BACKOFF_CODES.has(error.code || "network")) await setStatus({ working: false, error: message, code: error.code || "network" });
+        return { alive: false, reason: error.code || "network", error: message };
       } finally {
         await storage.set({ attendanceRequests: budget.log });
         // Put back whatever the attendance tab was showing.
-        if (signing) await storage.set({ attendanceStatus: state.attendanceStatus ? { ...state.attendanceStatus, working: false } : null });
+        if (signing && Number((await storage.get({ attendanceBackoffUntil: 0 })).attendanceBackoffUntil) <= now()) await storage.set({ attendanceStatus: state.attendanceStatus ? { ...state.attendanceStatus, working: false } : null });
       }
     }
 
@@ -589,7 +642,7 @@
         if (inflight === tracked) inflight = null;
       });
       inflight = tracked;
-      return run;
+      return tracked;
     }
 
     // `signal` lets the caller give up: an aborted sign-in never submits.
@@ -620,11 +673,11 @@
         if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
         const loginBlocked = await tabOnLoginPage();
         if (loginBlocked) return { cache: cached, error: "A CUIMS tab is signing in. Try again after it finishes.", code: "tab-login" };
+        if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try marks again later.", code: "backoff" };
         const attemptedAt = state.marksStatus?.uid === uid && state.marksStatus.error && state.marksStatus.code !== "tab-login" ? Number(state.marksStatus.at || 0) : 0;
         if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying marks again.", code: "busy" };
-        if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try marks again later.", code: "backoff" };
         if (force && state.marksRefreshAt?.uid === uid && now() - state.marksRefreshAt.at < MANUAL_GAP_MS)
-          return { cache: cached, error: "Wait 30 seconds between marks refreshes.", code: "busy" };
+          return { cache: cached, error: "Wait 60 seconds between marks refreshes.", code: "busy" };
         if (force) await storage.set({ marksRefreshAt: { uid, at: now() } });
         const budget = newTabMeter(state, "marks");
         const request = createRequest(budget);
@@ -657,8 +710,7 @@
           return { cache, sessionId: result.sessionId, requestCounts: newTabCounts(budget.entries) };
         } catch (error) {
           const code = error.code || "network";
-          const message = error.code ? error.message : client.MESSAGES.network;
-          await dataPageFailure(code, state);
+          const message = await recordBackoff(state, error);
           await status({ working: false, error: message, code });
           return { cache: cached, error: message, code };
         } finally {
@@ -683,9 +735,9 @@
         if (!uid) return { error: "Save your student UID on the Login tab first.", code: "needs-login" };
         const loginBlocked = await tabOnLoginPage();
         if (loginBlocked) return { cache: cached, error: "A CUIMS tab is signing in. Try again after it finishes.", code: "tab-login" };
+        if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try the timetable again later.", code: "backoff" };
         const attemptedAt = state.timetableStatus?.uid === uid && state.timetableStatus.error && state.timetableStatus.code !== "tab-login" ? Number(state.timetableStatus.at || 0) : 0;
         if (attemptedAt && now() - attemptedAt < MANUAL_GAP_MS) return { error: "Wait a moment before trying the timetable again.", code: "busy" };
-        if (Number(state.attendanceBackoffUntil || 0) > now()) return { error: "CUIMS is resting after a refused request. Try the timetable again later.", code: "backoff" };
         const budget = newTabMeter(state, "timetable");
         const request = createRequest(budget);
         const sameLogin = async () => {
@@ -716,8 +768,7 @@
           return { cache, requestCounts: newTabCounts(budget.entries) };
         } catch (error) {
           const code = error.code || "network";
-          const message = error.code ? error.message : client.MESSAGES.network;
-          await dataPageFailure(code, state);
+          const message = await recordBackoff(state, error);
           await status({ working: false, error: message, code });
           return { cache: cached, error: message, code };
         } finally {
@@ -730,7 +781,31 @@
       return reading;
     }
 
-    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage, fetchRegularMarks, fetchCachedTimetable };
+    // LMS SSO shares the same queue, meter and cooldown as attendance.
+    function withRequests(task) {
+      return exclusive(async () => {
+        const state = await storage.get(DEFAULTS);
+        const wait = paused(state);
+        if (wait) throw wait;
+        const budget = meter(state);
+        const request = createRequest(budget);
+        try {
+          return await task((target, options = {}) => request(target, { ...options, response: true }));
+        } catch (error) {
+          error.message = await recordBackoff(state, error);
+          await setStatus({ working: false, error: error.message, code: error.code || "network" });
+          throw error;
+        } finally {
+          await storage.set({ attendanceRequests: budget.log });
+        }
+      });
+    }
+
+    function ingestLeavePage(which, html) {
+      return exclusive(() => readLeaveUpdate(which, html));
+    }
+
+    return { refresh, afterTabSignIn, ensureSession, ingestLeavePage, withRequests, fetchRegularMarks, fetchCachedTimetable };
   }
 
   api.DAEMON_DEFAULTS = DEFAULTS;

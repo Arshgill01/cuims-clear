@@ -12,7 +12,7 @@ Version **0.10.0** also includes:
 - **Marks** for current-session examination results, cached until you press Refresh.
 - **Timetable** with weekday buttons, today selected in India time, and classes sorted by time. Teacher, class type, room and group appear beside a fixed time column.
 - Background sign-in for both tabs when needed, without an open CUIMS tab. Timetable is fetched once per saved UID and reused by Attendance; switching days sends no requests.
-- A 30-second gap between Marks refreshes and shared backoff when CUIMS refuses requests. Clear login removes the cached marks and timetable too.
+- A 60-second gap between Marks refreshes and shared backoff when CUIMS refuses requests. Clear login removes the cached marks and timetable too.
 
 Chrome cannot load the Firefox folder. This package is the Chrome MV3 build.
 
@@ -56,6 +56,23 @@ The release zip is built locally; publishing this Git branch does not submit it 
 `scripts/sync-chrome-build.sh` synchronizes the shared login, popup, solver,
 and LMS files from the Firefox build. Chrome manifest and service-worker files
 remain Chrome-specific.
+
+## Conservative CUIMS reads
+
+Background attendance, session checks and LMS SSO share a rolling budget of
+25 explicit requests per 10 minutes. Manual attendance refreshes wait at least
+60 seconds. Each permitted attendance read also fetches duty-leave status,
+including the first read, so opening the CUIMS leave page is unnecessary.
+An expired duty-leave session uses the existing guarded background sign-in;
+medical-leave reads remain infrequent. These are extension safeguards, not
+CUIMS's published UID limits;
+portal tabs and browser-followed redirects can add their own traffic.
+
+HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
+five minutes, increasing after repeated failures and honoring a longer
+`Retry-After`. Optional attendance detail also stops on a refusal. Cached
+attendance stays visible, with a disabled refresh button showing when it is
+ready again. The countdown sends no requests.
 
 ## Privacy
 

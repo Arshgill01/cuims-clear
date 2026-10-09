@@ -30,7 +30,7 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - fetches only the current examination session and saves it locally. Reopening
   the popup, switching tabs, or restarting Firefox reuses the saved marks;
   **Refresh** fetches the latest current marks from CUIMS on demand, with a
-  30-second gap between refreshes;
+  60-second gap between refreshes;
 - shows a **Timetable** tab sorted Monday–Sunday and by class start time, with
   course, teacher and room details. Weekday buttons show one day at a time,
   defaulting to today in India time; class times stay in a column on the left.
@@ -107,6 +107,23 @@ after restart.
 The blocker only acts on dialog-style elements whose text looks like an event or feedback request. Turn either category off under **Settings** in the toolbar popup if CUIMS changes its markup or a legitimate dialog is matched.
 
 Because the logged-in CUIMS dashboard was not available during development, the blocker uses conservative Bootstrap, jQuery UI, and SweetAlert modal selectors. If a CUIMS popup survives, inspect it or share a screenshot/HTML sample so its exact selector can be added.
+
+## Conservative CUIMS reads
+
+Background attendance, session checks and LMS SSO share a rolling budget of
+25 explicit requests per 10 minutes. Manual attendance refreshes wait at least
+60 seconds. Each permitted attendance read also fetches duty-leave status,
+including the first read, so opening the CUIMS leave page is unnecessary.
+An expired duty-leave session uses the existing guarded background sign-in;
+medical-leave reads remain infrequent. These are extension safeguards, not
+CUIMS's published UID limits;
+portal tabs and browser-followed redirects can add their own traffic.
+
+HTTP 429/503 or CUIMS's error-page redirect pauses background reads for at least
+five minutes, increasing after repeated failures and honoring a longer
+`Retry-After`. Optional attendance detail also stops on a refusal. Cached
+attendance stays visible, with a disabled refresh button showing when it is
+ready again. The countdown sends no requests.
 
 ## Privacy
 

@@ -107,7 +107,7 @@
     if (waiting.dl) parts.push(`${waiting.dl} duty leave`);
     if (waiting.ml) parts.push(`${waiting.ml} medical`);
     const pendingLine = !checked
-      ? "Pending leave: open Duty Leave on CUIMS once to check."
+      ? "Pending leave hasn’t been checked yet. Refresh attendance to try again."
       : parts.length
         ? `${parts.join(" · ")} pending`
         : "No pending leave";
@@ -134,7 +134,7 @@
         : "";
     return `<div class="attendance-bar">
       <p class="attendance-note" role="status" aria-live="polite">${escapeHtml(note)}</p>
-      <button id="fetch-attendance" class="refresh-button" type="button"${state.working ? " disabled" : ""}>${state.working ? "Refreshing" : "Refresh"}</button>
+      ${refreshButton(state, "refresh-button", "Refresh")}
     </div>
     ${message(state)}`;
   }
@@ -150,7 +150,11 @@
     const calm = new Set(["tab-login", "portal-busy", "backoff", "busy", "cooldown"]);
     const kind = calm.has(state.code) ? "attendance-info" : "attendance-error";
     const jump = LOGIN_CODES.has(state.code) ? GOTO_LOGIN : "";
-    return `<p class="${kind}" role="status">${escapeHtml(state.error)}${jump}</p>`;
+    const remaining = Math.ceil((Number(state.nextRefreshAt || 0) - (state.now || new Date()).getTime()) / 60000);
+    const text = state.nextRefreshAt
+      ? state.error.replace(/\s*Next try in \d+ min\.\s*$/, remaining > 0 ? ` Next try in ${remaining} min.` : " You can refresh now.")
+      : state.error;
+    return `<p class="${kind}" role="status">${escapeHtml(text)}${jump}</p>`;
   }
 
   function overallStance(analytics) {
@@ -158,11 +162,20 @@
     return analytics.subjects.some((row) => row.recover > 0) ? "recover" : "skip";
   }
 
+  // `target` names the button: an id on Attendance, a data attribute on
+  // Forecast, so the two tabs never share an id.
+  function refreshButton(state, className, idle, target = 'id="fetch-attendance"') {
+    const remaining = Math.ceil((Number(state.nextRefreshAt || 0) - (state.now || new Date()).getTime()) / 1000);
+    const waiting = remaining > 0;
+    const label = state.working ? state.phase || "Refreshing…" : waiting ? `Refresh in ${Math.ceil(remaining / 60)} min` : idle;
+    return `<button ${target} class="${className}" type="button"${state.working || waiting ? " disabled" : ""}>${escapeHtml(label)}</button>`;
+  }
+
   function renderAttendance(analytics, state = {}) {
     if (!analytics || !analytics.subjects.length) {
       return `<div class="attendance-empty">
         <p>Reads your attendance from CUIMS in the background. No tab opens.</p>
-        <button id="fetch-attendance" class="save-button" type="button"${state.working ? " disabled" : ""}>${escapeHtml(state.working ? state.phase || "Fetching…" : "Fetch attendance")}</button>
+        ${refreshButton(state, "save-button", "Fetch attendance")}
         ${state.needsLogin && !state.working && !state.error ? `<p class="attendance-info">Signed out of CUIMS? Save your UID and password first, so the fetch can sign in.${GOTO_LOGIN}</p>` : ""}
         ${message(state)}
       </div>`;
@@ -203,4 +216,6 @@
   api.escapeHtml = escapeHtml;
   api.ago = ago;
   api.renderAttendance = renderAttendance;
+  api.refreshButton = refreshButton;
+  api.refreshMessage = message;
 })(globalThis);

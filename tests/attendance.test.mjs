@@ -269,7 +269,7 @@ test("a lockout recorded by the CUIMS tab also stops the background", async () =
   assert.equal(server.state.uidPosts, 0);
 });
 
-test("refreshes closer than 30 seconds apart reuse the saved read", async () => {
+test("refreshes closer than 60 seconds apart reuse the saved read", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
@@ -291,7 +291,7 @@ test("two refresh presses at once share a single run", async () => {
 
 test("the request budget pauses fetching instead of hammering CUIMS", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceRequests: Array.from({ length: 40 }, (_, index) => MONDAY_11 - index * 1000) });
+  const storage = saved({ attendanceRequests: Array.from({ length: 25 }, (_, index) => MONDAY_11 - index * 1000) });
   const result = await daemon(server, storage).refresh("manual");
   assert.equal(result.code, "busy");
   assert.equal(server.state.requests.length, 0);
@@ -353,7 +353,7 @@ test("the popup view escapes CUIMS text and keeps each prediction to one short l
   for (const row of view.subjects) assert.ok(row.line.length <= 30, row.line);
 });
 
-test("after the first read, a refresh is one GetReport call without the heavy attendance page", async () => {
+test("after the first read, a refresh reads GetReport and duty leave without reopening attendance", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
@@ -361,12 +361,12 @@ test("after the first read, a refresh is one GetReport call without the heavy at
   bg.advance(60_000);
   await bg.refresh("manual"); // picks up the deferred timetable
   bg.advance(60_000);
-  await bg.refresh("manual"); // first leave check
+  await bg.refresh("manual"); // deferred medical leave check
   const before = server.state.requests.length;
   bg.advance(60_000);
   const result = await bg.refresh("manual");
   assert.equal(result.error, undefined);
-  assert.deepEqual(server.state.requests.slice(before), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport"]);
+  assert.deepEqual(server.state.requests.slice(before), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport", "GET /frmStudentApplyDutyLeave.aspx"]);
   assert.equal(server.state.attendanceLoads, 1);
 });
 
@@ -430,7 +430,7 @@ test("a success clears the backoff", async () => {
   assert.equal(storage.data.attendanceBackoffUntil, 0);
 });
 
-test("a GetReport-only refresh does not claim the CUIMS session is alive", async () => {
+test("a successful duty-leave read establishes that the CUIMS session is alive", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
@@ -438,7 +438,7 @@ test("a GetReport-only refresh does not claim the CUIMS session is alive", async
   storage.data.sessionAlive = false;
   bg.advance(60_000);
   await bg.refresh("manual");
-  assert.equal(storage.data.sessionAlive, false);
+  assert.equal(storage.data.sessionAlive, true);
 });
 
 // ---- the CUIMS tab defers to the background ----
@@ -684,14 +684,14 @@ test("the first read skips the timetable, and the next one fetches it", async ()
   assert.ok(storage.data.attendanceTimetable.slots.length > 0);
 });
 
-test("a throttled timetable never fails the read and is retried after an hour, not sooner", async () => {
+test("a throttled timetable pauses reads for five minutes and is retried after an hour, not sooner", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
   const bg = daemon(server, storage);
   server.state.landed = false; // inner pages answer error.html
   const first = await bg.refresh("manual");
-  assert.equal(first.error, undefined);
-  assert.equal(first.snapshot.subjects.length, 3);
+  assert.equal(first.code, "portal-busy");
+  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
   const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
   assert.equal(timetableLoads(), 1);
   bg.advance(10 * 60_000);
@@ -710,14 +710,15 @@ test("opening CUIMS after a background sign-in hands the tab a finished session"
   assert.equal(server.state.landed, true);
 });
 
-test("with cached report ids, a refresh needs no CUIMS session: no sign-in, no cookies sent", async () => {
+test("an expired session with cached report ids signs in once to read duty leave automatically", async () => {
   const server = fakeCuims({ signedIn: false });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [] } });
   const result = await daemon(server, storage).refresh("manual");
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.snapshot.subjects.length, 3);
-  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads, 0);
-  assert.equal(server.state.cookiedReports, 0);
+  assert.ok(result.snapshot.leaves.checkedAt);
+  assert.equal(server.state.loginPosts, 1);
+  assert.equal(server.state.cookiedReports, 0, "report calls remain anonymous");
 });
 
 // ---- nothing runs on a timer ----
@@ -820,23 +821,42 @@ test("a pending duty leave is matched to the absent class it covers, and shows w
   assert.ok(view.overall.ifApproved > view.overall.percent);
 });
 
-test("leave pages are read at most every three hours, alternating, and never with another heavy page", async () => {
+test("duty leave is fetched on the first attendance read and every permitted refresh, while medical leave stays infrequent", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
-  const heavy = () => server.state.attendanceLoads + server.state.requests.filter((line) => /frmmytimetable/i.test(line) && line.startsWith("GET")).length + server.state.leavePageLoads;
-  let last = heavy();
-  for (let run = 0; run < 4; run += 1) {
-    await bg.refresh("manual");
-    assert.ok(heavy() - last <= 1, `run ${run} loaded ${heavy() - last} heavy pages`);
-    last = heavy();
+  const count = (path) => server.state.requests.filter((line) => line === `GET ${path}`).length;
+  for (let run = 1; run <= 4; run += 1) {
+    assert.equal((await bg.refresh("manual")).error, undefined);
+    assert.equal(count(A.LEAVE_PAGES.dl), run);
+    assert.ok(storage.data.attendanceLeaves.dlAt);
     bg.advance(60_000);
   }
-  assert.equal(server.state.leavePageLoads, 1);
+  assert.equal(count(A.LEAVE_PAGES.ml), 1);
   bg.advance(3 * 60 * 60_000);
   await bg.refresh("manual");
-  assert.equal(server.state.leavePageLoads, 2);
-  assert.ok(storage.data.attendanceLeaves.dlAt && storage.data.attendanceLeaves.mlAt, "duty then medical");
+  assert.equal(count(A.LEAVE_PAGES.dl), 5);
+  assert.equal(count(A.LEAVE_PAGES.ml), 2);
+});
+
+test("a duty-leave approval is reflected by the next attendance refresh without opening its page", async () => {
+  const dutyLeaves = [{ id: 11, timing: "2:30 - 3:20 PM", dated: "25 Sep 2026", status: "Pending" }];
+  const server = fakeCuims({ signedIn: true, marksToday: [LEAVE_DAY_MARK], dutyLeaves });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  const first = await bg.refresh("manual");
+  assert.equal(first.snapshot.leaves.pending["24CSP305"].vdl, 1);
+  dutyLeaves[0].status = "Recommend and Approved";
+  const requests = server.state.requests.length;
+  bg.advance(59_000);
+  assert.equal((await bg.refresh("manual")).recent, true);
+  assert.equal(server.state.requests.length, requests);
+  bg.advance(1000);
+  const next = await bg.refresh("manual");
+  assert.deepEqual({ ...next.snapshot.leaves.pending }, {});
+  const view = A.buildAnalytics(next.snapshot, new Date(MONDAY_11 + 60_000));
+  assert.equal(view.overall.leave.pending.dl, 0);
+  assert.doesNotMatch(A.renderAttendance(view), /open Duty Leave/);
 });
 
 test("opening a leave page on CUIMS updates pending leave with no page request", async () => {
@@ -910,4 +930,237 @@ test("pending duty leave is sorted into VDL, IDL, or ADL by its category", () =>
     <tr><td>2</td><td>9:40 - 10:20 AM</td><td>Industrial Visit</td><td></td><td>Lecture Bases</td><td>25 Sep 2026</td><td>Pending</td><td></td></tr>
     <tr><td>3</td><td>9:40 - 10:20 AM</td><td>Assigned Duty</td><td></td><td>Lecture Bases</td><td>25 Sep 2026</td><td>Pending</td><td></td></tr></table>`;
   assert.deepEqual(JSON.parse(JSON.stringify(A.parseDutyLeaves(page).map((leave) => leave.dlType))), ["vdl", "idl", "adl"]);
+});
+
+// ---- conservative traffic policy ----
+
+test("a refresh at 59 seconds reuses cache, including after a background restart; 60 seconds may fetch", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh();
+  const count = server.state.requests.length;
+  const restarted = daemon(server, storage, { clock: MONDAY_11 + 59_000 });
+  assert.equal((await restarted.refresh()).recent, true);
+  assert.equal(server.state.requests.length, count);
+  restarted.advance(1000);
+  assert.equal((await restarted.refresh()).recent, undefined);
+  assert.ok(server.state.requests.length > count);
+});
+
+test("HTTP 429 is a portal throttle and stops both refreshes and session checks for five minutes", async () => {
+  let requests = 0;
+  const storage = saved();
+  const server = { fetchImpl: async (url) => {
+    requests += 1;
+    return { status: 429, url, text: async () => "Too many requests" };
+  } };
+  const bg = daemon(server, storage);
+  assert.equal((await bg.refresh()).code, "portal-busy");
+  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
+  bg.advance(60_000);
+  assert.equal((await bg.ensureSession()).reason, "backoff");
+  assert.equal(requests, 1);
+});
+
+test("a throttled optional timetable stops further requests and does not clear the shared cooldown", async () => {
+  const server = fakeCuims({ signedIn: true, landed: false });
+  const snapshot = { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceSnapshot: snapshot });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh();
+  assert.equal(result.code, "portal-busy");
+  assert.deepEqual(result.snapshot, snapshot);
+  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
+  assert.equal(server.state.requests.length, 2, "summary and timetable only");
+  bg.advance(60_000);
+  assert.equal((await bg.ensureSession()).reason, "backoff");
+  assert.equal(server.state.requests.length, 2);
+});
+
+test("an error.html home response is a throttle, not an alive session", async () => {
+  const storage = saved();
+  let requests = 0;
+  const bg = daemon({ fetchImpl: async () => {
+    requests += 1;
+    return { status: 200, url: "https://students.cuchd.in/error.html", text: async () => "<html>Error</html>" };
+  } }, storage);
+  assert.equal((await bg.ensureSession()).reason, "portal-busy");
+  assert.notEqual(storage.data.sessionAlive, true);
+  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
+  assert.equal((await bg.ensureSession()).reason, "backoff");
+  assert.equal(requests, 1);
+});
+
+test("Retry-After extends the portal cooldown and survives a background restart", async () => {
+  let requests = 0;
+  const storage = saved();
+  const server = { fetchImpl: async (url) => {
+    requests += 1;
+    return { status: 429, url, headers: new Headers({ "retry-after": "600" }) };
+  } };
+  await daemon(server, storage).refresh();
+  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 10 * 60_000);
+  const restarted = daemon(server, storage, { clock: MONDAY_11 + 5 * 60_000 });
+  assert.equal((await restarted.ensureSession()).reason, "backoff");
+  await assert.rejects(restarted.withRequests((request) => request("https://students.cuchd.in/StudentHome.aspx")), { code: "backoff" });
+  assert.equal(requests, 1);
+});
+
+test("attendance and LMS share the 25-request rolling budget, including after restart", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceRequests: Array(24).fill(MONDAY_11) });
+  const bg = daemon(server, storage);
+  const home = await bg.withRequests((request) => request("https://students.cuchd.in/StudentHome.aspx", { redirect: "manual" }));
+  assert.equal(home.status, 200);
+  assert.equal(storage.data.attendanceRequests.length, 25);
+  assert.equal((await daemon(server, storage).refresh()).code, "busy");
+  assert.equal(server.state.requests.length, 1);
+  const later = daemon(server, storage, { clock: MONDAY_11 + 10 * 60_000 });
+  assert.equal((await later.refresh()).error, undefined);
+  assert.ok(storage.data.attendanceRequests.length < 25);
+});
+
+test("leave ingestion waits for the shared request queue and cannot overwrite another caller's budget", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceCourses: { "24CSP305": "enc305" } });
+  const bg = daemon(server, storage);
+  let release;
+  let entered;
+  const ready = new Promise((resolve) => entered = resolve);
+  const gate = new Promise((resolve) => release = resolve);
+  const opening = bg.withRequests(async (request) => {
+    await request("https://students.cuchd.in/StudentHome.aspx");
+    entered();
+    await gate;
+  });
+  await ready;
+  const ingest = bg.ingestLeavePage("dl", dutyLeavePage([{ id: 11, dated: "25 Sep 2026", status: "Pending" }]));
+  await Promise.resolve();
+  assert.equal(server.state.requests.length, 1);
+  release();
+  await Promise.all([opening, ingest]);
+  assert.equal(storage.data.attendanceRequests.length, 2);
+});
+
+test("a marks throttle stops the refresh before leave work and preserves cached attendance", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const base = server.fetchImpl;
+  server.fetchImpl = async (url, options) => {
+    if (url.endsWith("/GetFullReport")) {
+      server.state.requests.push("POST /GetFullReport");
+      return { status: 429, url };
+    }
+    return base(url, options);
+  };
+  const snapshot = { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) }, attendanceSnapshot: snapshot });
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.code, "portal-busy");
+  assert.deepEqual(result.snapshot, snapshot);
+  assert.equal(server.state.leavePageLoads, 0);
+  assert.equal(server.state.requests.length, 2);
+});
+
+test("refresh is visibly paused for cached and empty states, then becomes available", () => {
+  const now = new Date(MONDAY_11);
+  const view = A.buildAnalytics({ fetchedAt: now.toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] }, now);
+  for (const analytics of [view, null]) {
+    assert.match(A.renderAttendance(analytics, { now, nextRefreshAt: MONDAY_11 + 60_000 }), /id="fetch-attendance"[^>]* disabled>Refresh in 1 min/);
+    assert.doesNotMatch(A.renderAttendance(analytics, { now, nextRefreshAt: MONDAY_11 }), /id="fetch-attendance"[^>]* disabled/);
+  }
+});
+
+test("a throttled cached summary does not fall back to opening the heavy attendance page", async () => {
+  let requests = 0;
+  const server = { fetchImpl: async (url) => { requests += 1; return { status: 429, url }; } };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.code, "portal-busy");
+  assert.equal(requests, 1);
+});
+
+
+test("the pause message counts down and stops telling users to wait after it expires", () => {
+  const state = { code: "portal-busy", error: "CUIMS is limiting requests right now. Next try in 5 min.", nextRefreshAt: MONDAY_11 + 5 * 60_000 };
+  assert.match(A.renderAttendance(null, { ...state, now: new Date(MONDAY_11 + 3 * 60_000) }), /Next try in 2 min/);
+  const ready = A.renderAttendance(null, { ...state, now: new Date(MONDAY_11 + 5 * 60_000) });
+  assert.match(ready, /You can refresh now/);
+  assert.doesNotMatch(ready, /Next try in/);
+});
+
+
+test("a duty-leave throttle preserves cached attendance and blocks all further work", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const base = server.fetchImpl;
+  server.fetchImpl = async (url, options) => {
+    if (url.endsWith(A.LEAVE_PAGES.dl)) {
+      server.state.requests.push(`GET ${A.LEAVE_PAGES.dl}`);
+      return { status: 429, url };
+    }
+    return base(url, options);
+  };
+  const snapshot = { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [] };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [], triedAt: MONDAY_11 }, attendanceSnapshot: snapshot });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh();
+  assert.equal(result.code, "portal-busy");
+  assert.deepEqual(result.snapshot, snapshot);
+  // The Forecast tab's optional history calls may come first; nothing
+  // follows the refused duty-leave page.
+  const required = () => server.state.requests.filter((line) => !/getfullreport/i.test(line));
+  assert.deepEqual(required(), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport", `GET ${A.LEAVE_PAGES.dl}`]);
+  assert.equal(server.state.requests.at(-1), `GET ${A.LEAVE_PAGES.dl}`);
+  const sent = server.state.requests.length;
+  bg.advance(60_000);
+  assert.equal((await bg.refresh()).code, "backoff");
+  assert.equal((await bg.ensureSession()).reason, "backoff");
+  assert.equal(server.state.requests.length, sent);
+});
+
+test("automatic duty-leave reads use the remaining shared budget and never exceed 25 requests", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceRequests: Array(24).fill(MONDAY_11), attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [], triedAt: MONDAY_11 } });
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.code, "busy");
+  assert.equal(server.state.requests.length, 1);
+  assert.equal(server.state.leavePageLoads, 0);
+  assert.equal(storage.data.attendanceRequests.length, 25);
+});
+
+test("an expired duty-leave session never signs in while CAPTCHA solving is off", async () => {
+  const server = fakeCuims({ signedIn: false });
+  const storage = saved({ autoSolveCaptcha: false, attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  assert.equal((await daemon(server, storage).refresh()).code, "needs-login");
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads, 0);
+});
+
+test("an unchecked leave card asks for an attendance refresh instead of opening CUIMS", () => {
+  const view = A.buildAnalytics({ subjects: [{ code: "A", title: "A", attended: 9, delivered: 10, leave: { vdl: 1 } }] }, new Date(MONDAY_11));
+  const html = A.renderAttendance(view);
+  assert.match(html, /Refresh attendance to try again/);
+  assert.doesNotMatch(html, /open Duty Leave/);
+});
+
+
+test("a failed medical-leave read waits three hours, and a successful retry resets that cadence", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const base = server.fetchImpl;
+  let medicalReads = 0;
+  server.fetchImpl = async (url, options) => {
+    if (url.endsWith(A.LEAVE_PAGES.ml) && ++medicalReads === 1) return { status: 500, url };
+    return base(url, options);
+  };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const bg = daemon(server, storage);
+  assert.equal((await bg.refresh()).error, undefined);
+  bg.advance(60_000);
+  await bg.refresh();
+  assert.equal(medicalReads, 1);
+  bg.advance(3 * 60 * 60_000);
+  await bg.refresh();
+  assert.equal(medicalReads, 2);
+  bg.advance(60_000);
+  await bg.refresh();
+  assert.equal(medicalReads, 2);
 });

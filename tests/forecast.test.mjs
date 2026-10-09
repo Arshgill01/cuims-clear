@@ -330,16 +330,44 @@ test("a long report fills its history four subjects a refresh", async () => {
   const bg = A.createDaemon({ storage, fetchImpl, solveCaptcha: async () => "Ab12", now: () => time, sleep: async (ms) => (time += ms) });
   const calls = () => server.state.requests.filter((line) => /getfullreport/i.test(line)).length;
   const kept = () => Object.keys(storage.data.attendanceHistory?.subjects || {}).length;
+  // Refreshes past the 10-minute budget window, so only the cap applies.
   await bg.refresh("manual");
   assert.equal(calls(), 4);
   assert.equal(kept(), 4);
-  time += 60_000;
+  time += 11 * 60_000;
   await bg.refresh("manual");
   assert.equal(calls(), 8);
-  time += 60_000;
+  time += 11 * 60_000;
   await bg.refresh("manual");
   assert.equal(kept(), 9);
-  time += 60_000;
+  time += 11 * 60_000;
   await bg.refresh("manual");
   assert.equal(calls(), 9, "all in, nothing more to read");
+});
+
+test("history never spends the budget's last twelve requests", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const calls = () => server.state.requests.filter((line) => /getfullreport/i.test(line)).length;
+  const start = Date.UTC(2026, 8, 28, 5, 30);
+  const run = async (used) => {
+    const storage = memoryStorage({
+      uid: "24BCS00000",
+      password: "secret",
+      attendanceRequests: Array(used).fill(start),
+      attendanceMeta: { reportId: "RID+/=", sessionId: "25262" },
+      attendanceTimetable: { day: "2026-09-28", slots: [], triedAt: start },
+    });
+    let time = start;
+    const bg = A.createDaemon({ storage, fetchImpl: server.fetchImpl, solveCaptcha: async () => "Ab12", now: () => time, sleep: async (ms) => (time += ms) });
+    const before = calls();
+    const result = await bg.refresh("manual");
+    return { history: calls() - before, result, storage };
+  };
+  // 25 allowed: GetReport leaves 24, so 12 spare means no history at all.
+  const tight = await run(12);
+  assert.equal(tight.history, 0);
+  assert.ok(tight.result.snapshot?.subjects?.length, "the refresh itself still succeeds");
+  // Two to spare: two subjects.
+  assert.equal((await run(10)).history, 2);
+  assert.equal((await run(0)).history, 3);
 });

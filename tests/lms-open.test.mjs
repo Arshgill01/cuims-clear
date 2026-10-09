@@ -39,7 +39,7 @@ function cuims({ signedIn = true, handoff = HANDOFF, mode = "redirect" } = {}) {
   return { state, fetchImpl };
 }
 
-function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:newtab" }, server = cuims({ mode: "window-open" }), ensureSession, timers = { setTimeout, clearTimeout } } = {}) {
+function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:newtab" }, server = cuims({ mode: "window-open" }), ensureSession, withRequests, timers = { setTimeout, clearTimeout } } = {}) {
   const created = [];
   const updated = [];
   const focused = [];
@@ -64,6 +64,7 @@ function open({ lms = [], active = { id: 1, index: 0, windowId: 1, url: "about:n
   };
   const context = vm.createContext({ chrome, fetch: server.fetchImpl, URL, URLSearchParams, AbortSignal, AbortController, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, Promise });
   if (ensureSession) context.cuimsEnsureSession = ensureSession;
+  if (withRequests) context.cuimsWithRequests = withRequests;
   vm.runInContext(source, context);
   const send = (message, sender = { id: "ext", url: "chrome-extension://ext/popup.html" }) =>
     new Promise((resolve) => {
@@ -215,4 +216,23 @@ test("a background sign-in that outlasts Open CUIMS's wait is cancelled before t
   assert.equal(response.via, "tab");
   assert.ok(signal, "the sign-in was handed a signal");
   assert.equal(signal.aborted, true, "the sign-in is told to stop before the tab can race it");
+});
+
+
+test("LMS uses the shared CUIMS request operation for both the home read and SSO post", async () => {
+  const server = cuims();
+  let operations = 0;
+  const result = open({ server, withRequests: async (task) => { operations += 1; return task(server.fetchImpl); } });
+  assert.equal((await result.launch()).via, "sso");
+  assert.equal(operations, 1);
+  assert.equal(server.state.requests.length, 2);
+});
+
+test("a shared cooldown prevents LMS network calls and CUIMS fallback navigation", async () => {
+  const server = cuims();
+  const result = open({ server, withRequests: async () => { throw Object.assign(new Error("CUIMS is limiting requests. Next try in 5 min."), { code: "backoff" }); } });
+  const response = await result.launch();
+  assert.match(response.error, /Next try in 5 min/);
+  assert.equal(server.state.requests.length, 0);
+  assert.equal(result.created.length, 0);
 });

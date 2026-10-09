@@ -26,13 +26,14 @@ function setup({ signedIn = false, openLoginTab = false, stale = true } = {}) {
     const path = new URL(target).pathname;
     if (path === "/frmStudentMarksView.aspx" || path === "/frmMyTimeTable.aspx") {
       if (!base.state.signedIn) return base.fetchImpl("https://students.cuchd.in/StudentHome.aspx", options);
+      if (typeof refusal === "string") return { url: target, status: 503, headers: { get: () => refusal }, text: async () => "Try later" };
       if (refusal) return { url: "https://students.cuchd.in/error.html", status: 200, text: async () => "Try later" };
       return { url: target, status: 200, text: async () => path === "/frmMyTimeTable.aspx" ? timetable : marks };
     }
     return base.fetchImpl(target, options);
   };
   const daemon = () => c.CuimsAttendance.createDaemon({ storage, fetchImpl, solveCaptcha: async () => "Ab12", loginTabPresent: async () => present, now: () => at, sleep: async () => {} });
-  return { c, base, storage, requests, daemon, setTime: value => { at += value; }, closeTab: () => { present = false; }, refuse: () => { refusal = true; } };
+  return { c, base, storage, requests, daemon, setTime: value => { at += value; }, closeTab: () => { present = false; }, refuse: (retryAfter = true) => { refusal = retryAfter; } };
 }
 
 for (const [tab, method] of [["marks", "fetchRegularMarks"], ["timetable", "fetchCachedTimetable"]]) {
@@ -75,6 +76,25 @@ for (const [tab, method] of [["marks", "fetchRegularMarks"], ["timetable", "fetc
     assert.equal((await d[method]()).code, "backoff");
     assert.equal(s.requests.length, 2);
   });
+  test(`${build}: ${tab}: honors Retry-After and stops all further reads during that pause`, async () => {
+    const s = setup({ signedIn: true, stale: false });
+    s.refuse("900");
+    const d = s.daemon();
+    assert.equal((await d[method]()).code, "portal-busy");
+    assert.equal(s.storage.data.attendanceBackoffUntil, Date.UTC(2026, 9, 8, 6) + 900000);
+    s.setTime(600000);
+    assert.equal((await d[method]()).code, "backoff");
+    assert.equal(s.requests.length, 2);
+  });
+  test(`${build}: ${tab}: respects the shared 25-request budget without sending a 26th request`, async () => {
+    const s = setup({ signedIn: true, stale: false });
+    s.storage.data.attendanceRequests = Array(25).fill(Date.UTC(2026, 9, 8, 6));
+    assert.equal((await s.daemon()[method]()).code, "busy");
+    assert.equal(s.requests.length, 0);
+    assert.equal(s.storage.data.attendanceRequests.length, 25);
+    assert.equal(s.storage.data.newTabRequests.length, 0);
+  });
+
 }
 
 test(build + ": " + "the actual timetable grid parses all days and sorts morning classes before afternoon", async () => {
@@ -113,14 +133,14 @@ test(build + ": " + "request counts cover only the two new flows and use rolling
   assert.equal(ten.timetable.perTenMinutes, 0);
   assert.equal(s.requests.length, 4);
 });
-test(build + ": " + "Marks refresh clicks share a read and successful refreshes wait 30 seconds", async () => {
+test(build + ": " + "Marks refresh clicks share a read and successful refreshes wait 60 seconds", async () => {
   const s = setup({ signedIn: true, stale: false }), d = s.daemon();
   await d.fetchRegularMarks();
   await Promise.all([d.fetchRegularMarks({ force: true }), d.fetchRegularMarks({ force: true })]);
   assert.equal(s.requests.length, 4);
   assert.equal((await d.fetchRegularMarks({ force: true })).code, "busy");
   assert.equal(s.requests.length, 4);
-  s.setTime(30000);
+  s.setTime(60000);
   assert.ok((await d.fetchRegularMarks({ force: true })).cache);
   assert.equal(s.requests.length, 6);
 });
