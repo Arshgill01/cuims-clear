@@ -749,20 +749,49 @@ test("a CUIMS tab sent to error.html holds the background's pages and sign-ins f
   assert.equal(server.state.loginPosts, 1);
 });
 
-test("the first read skips the timetable, and it follows five minutes after the attendance page", async () => {
+test("the first read skips the timetable, says when it can follow, and the read a minute later loads it", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
   const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
-  await bg.refresh("manual");
-  assert.equal(timetableLoads(), 0);
+  const leaveLoads = () => server.state.requests.filter((line) => /leave/i.test(line)).length;
+  const first = await bg.refresh("manual");
+  assert.equal(timetableLoads(), 0, "not in the same burst as the attendance page");
+  assert.equal(first.snapshot.timetableDueAt, MONDAY_11 + 60_000);
+  bg.advance(60_000);
+  const second = await bg.refresh("manual");
+  assert.equal(timetableLoads(), 1);
+  assert.equal(leaveLoads(), 0, "no leave page beside it");
+  assert.ok(second.snapshot.slots.length > 0);
+  assert.equal(second.snapshot.timetableDueAt, undefined);
+});
+
+test("a saved timetable from an earlier day still waits five minutes after an inner page", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const bg = daemon(server, storage);
+  const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
+  const first = await bg.refresh("manual");
+  assert.equal(first.snapshot.timetableDueAt, undefined, "the saved one is used meanwhile");
   bg.advance(60_000);
   await bg.refresh("manual");
   assert.equal(timetableLoads(), 0, "a minute after an inner page is too soon");
   bg.advance(4 * 60_000);
   await bg.refresh("manual");
   assert.equal(timetableLoads(), 1);
-  assert.ok(storage.data.attendanceTimetable.slots.length > 0);
+});
+
+test("a first timetable that CUIMS limits is due again once the pause and the hourly retry are over", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  server.state.limited = true;
+  bg.advance(60_000);
+  const limited = await bg.refresh("manual");
+  assert.equal(limited.error, undefined, limited.error);
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 16 * 60_000);
+  assert.equal(limited.snapshot.timetableDueAt, MONDAY_11 + 61 * 60_000, "the hourly retry is the later");
 });
 
 test("a limited timetable keeps the read, holds pages for fifteen minutes and is retried after an hour", async () => {
@@ -920,7 +949,7 @@ test("a pending duty leave is matched to the absent class it covers, and shows w
   assert.ok(view.overall.ifApproved > view.overall.percent);
 });
 
-test("a Refresh loads at most one inner page, five minutes apart, and each leave page every three hours", async () => {
+test("a Refresh loads at most one inner page, five minutes apart (a first timetable one), and each leave page every three hours", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
@@ -936,9 +965,11 @@ test("a Refresh loads at most one inner page, five minutes apart, and each leave
     if (loaded) pageTimes.push(minute);
     bg.advance(60_000);
   }
-  for (let index = 1; index < pageTimes.length; index += 1) assert.ok(pageTimes[index] - pageTimes[index - 1] >= 5, pageTimes.join(","));
+  // The first timetable follows the attendance page a minute later; every
+  // other page waits five minutes after the one before.
+  for (let index = 2; index < pageTimes.length; index += 1) assert.ok(pageTimes[index] - pageTimes[index - 1] >= 5, pageTimes.join(","));
   // Attendance page, timetable, duty leave, medical leave; leave again after three hours.
-  assert.deepEqual(pageTimes.slice(0, 4), [0, 5, 10, 15]);
+  assert.deepEqual(pageTimes.slice(0, 4), [0, 1, 6, 11]);
   assert.equal(server.state.attendanceLoads, 1);
   assert.equal(count(A.LEAVE_PAGES.dl), 2);
   assert.equal(count(A.LEAVE_PAGES.ml), 2);
@@ -1353,7 +1384,7 @@ test("Refresh then Open CUIMS: the open skips its StudentHome check while a read
 
 test("a background sign-in for Open CUIMS holds optional pages back for five minutes", async () => {
   const server = fakeCuims();
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML) } });
   const bg = daemon(server, storage);
   assert.equal((await bg.ensureSession()).signedIn, true);
   const sent = server.state.requests.length;
@@ -1378,7 +1409,7 @@ test("the inner-page clock survives a background restart", async () => {
 
 test("a CUIMS tab's own inner page holds the background's optional pages back for five minutes", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, tabPageAt: MONDAY_11 - 60_000 });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML) }, tabPageAt: MONDAY_11 - 60_000 });
   const bg = daemon(server, storage);
   await bg.refresh("manual");
   assert.equal(server.state.requests.some((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`)), false, server.state.requests.join(", "));

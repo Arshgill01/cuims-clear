@@ -398,10 +398,12 @@ for (const scenario of only) {
       await geometry(`${where}: ${view} tab`);
     }
     // Opening the popup reads CUIMS by itself only when the last read is
-    // over ten minutes old, and then once, however many tabs are shown.
-    // Each Refresh press is one more.
+    // over ten minutes old, or when a first timetable is due within ten
+    // minutes, and then once, however many tabs are shown. Each Refresh
+    // press is one more.
     const reads = () => page.evaluate(() => __sent.filter((type) => type === "cuims-clear:attendance-refresh").length);
-    const automatic = scenario === "old-read" ? 1 : 0;
+    const automatic = ["old-read", "timetable-due", "timetable-soon"].includes(scenario) ? 1 : 0;
+    if (scenario === "timetable-soon") await settle(3000);
     if ((await reads()) !== automatic) await fail(`${where}: reads`, [`${await reads()} attendance reads without a Refresh press, expected ${automatic}`]);
     await page.click("#tab-forecast");
     await settle(60);

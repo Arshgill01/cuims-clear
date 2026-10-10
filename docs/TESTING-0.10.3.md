@@ -41,6 +41,14 @@ the session as signed out and did not hold back.
 - Opening the popup reads CUIMS by itself again, once per popup, when the
   last read is over ten minutes old, as 0.9.5 and earlier did. 0.10.0 had
   made reads Refresh-only. A normal read is the report calls alone.
+- The first timetable no longer waits five minutes. With none saved, it
+  follows the attendance page one minute later (not in the same burst: the
+  timetable is two loads), and the background stores when it can be read
+  (`snapshot.timetableDueAt`). The popup reads again then, once, whether it
+  stayed open or was opened later, so the Forecast fills in without a
+  Refresh. A saved timetable from an earlier day still waits five minutes,
+  and the Forecast uses it meanwhile. 0.8.7 and 0.9.5 read the timetable on
+  the read after the attendance page too, with no time rule.
 
 ## Evidence
 
@@ -57,12 +65,14 @@ is due, and the student presses Refresh:
 The six new or rewritten throttle tests fail on 0.10.2's code and pass on
 0.10.3.
 
-Also run, all passing: `npm test` (310), `node work/e2e/conservative-smoke.mjs`,
+Also run, all passing: `npm test` (312), `node work/e2e/conservative-smoke.mjs`,
 `node work/e2e/ux-browsers.mjs` and `node work/e2e/forecast-glitches.mjs` in
 Firefox and Chrome. The glitch harness now checks that opening a popup whose
 last read is 16 hours old reads exactly once across every tab switch, and
-that a fresh read is not read again. No live CUIMS requests were made for
-this build.
+that a fresh read is not read again. It also checks that a first timetable
+already due is read once on open, one due in a moment is read once when it
+is due, and one due in half an hour is not read; with that timer switched
+off, those checks fail. No live CUIMS requests were made for this build.
 
 ## Check by hand
 

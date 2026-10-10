@@ -261,6 +261,14 @@
     </div>`;
   }
 
+  // popup.js reads again at state.timetableDueAt, when it is this close.
+  function timetableWhen(state) {
+    if (state.working) return "reading it now";
+    const left = Number(state.timetableDueAt || 0) - Date.now();
+    if (state.timetableDueAt && left <= 10 * 60_000) return left > 30_000 ? `read by itself in about ${Math.ceil(left / 60_000)} min` : "read by itself in a moment";
+    return "read by itself on a later visit";
+  }
+
   // Before the timetable is read there is nothing to count ahead: the card
   // says so, with today's figure and the semester so far.
   function waitingHero(forecast, state) {
@@ -276,11 +284,11 @@
         <div class="fc-verdict" role="status">
           <span class="fc-verdict-icon" aria-hidden="true">…</span>
           <strong>Waiting for your timetable</strong>
-          <span>read on the next refresh</span>
+          <span>${esc(timetableWhen(state))}</span>
         </div>
       </div>
       ${figure("overall", { past: overall.series.past }, label, { height: 120 })}
-      <p class="fc-hero-note">The forecast counts the classes left from your timetable. To keep CUIMS requests light it is read on the refresh after your attendance, so Refresh once the button is ready.</p>
+      <p class="fc-hero-note">The forecast counts the classes left from your timetable. It is read on its own, a minute apart from the attendance page, because CUIMS limits accounts that load several pages at once.</p>
       ${endControl(forecast, state.calendar)}
     </section>`;
   }
@@ -318,7 +326,7 @@
   function planCard(forecast) {
     const plan = forecast.plan;
     if (!plan) {
-      const why = !forecast.timetableKnown ? "Your timetable has not been read yet. It comes with the next refresh." : "No classes left before the last day.";
+      const why = !forecast.timetableKnown ? "Your timetable has not been read yet. This fills in once it is." : "No classes left before the last day.";
       return `<section class="fc-card fc-plan" aria-label="Plan a skip"><div class="section-head"><h2 class="section-label">Plan a skip</h2></div><p class="fc-muted">${esc(why)}</p></section>`;
     }
     const days = plan.days

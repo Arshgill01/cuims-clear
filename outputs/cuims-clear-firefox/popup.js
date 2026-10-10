@@ -32,6 +32,12 @@ const ATTENDANCE_KEYS = [
 // the last read is this old.
 const STALE_MS = 10 * 60 * 1000;
 let autoRead = false;
+// With no timetable saved, the background says when it can read one
+// (snapshot.timetableDueAt, a minute after the attendance page); the popup
+// reads again then, once, if it is still open or opened later.
+const TIMETABLE_WAIT_MAX_MS = 10 * 60 * 1000;
+let timetableRead = false;
+let timetableTimer;
 const SITE_ORIGINS = ["https://students.cuchd.in/*", "https://lms.cuchd.in/*"];
 const CONFIRM_MS = 4000;
 
@@ -355,6 +361,22 @@ function scheduleRefreshReady() {
   window.clearTimeout(refreshReadyTimer);
   const remaining = Number(attendance.nextRefreshAt || 0) - Date.now();
   if (remaining > 0 && (currentView === "attendance" || currentView === "forecast")) refreshReadyTimer = window.setTimeout(paintData, remaining);
+  scheduleTimetableRead();
+}
+
+function scheduleTimetableRead() {
+  window.clearTimeout(timetableTimer);
+  const snapshot = attendance.snapshot;
+  const dueAt = Number(snapshot?.timetableDueAt || 0);
+  if (timetableRead || !dueAt || snapshot.slots?.length || readWorking()) return;
+  if (currentView !== "attendance" && currentView !== "forecast") return;
+  const wait = Math.max(dueAt + 1000, Number(attendance.nextRefreshAt || 0)) - Date.now();
+  if (wait > TIMETABLE_WAIT_MAX_MS) return;
+  timetableTimer = window.setTimeout(() => {
+    if (timetableRead || readWorking()) return;
+    timetableRead = true;
+    fetchAttendance();
+  }, Math.max(0, wait));
 }
 
 function readWorking() {
@@ -452,6 +474,7 @@ function paintForecast({ force = true } = {}) {
     expanded: forecastUi.expanded,
     calendar: forecastUi.calendar,
     nextRefreshAt: attendance.nextRefreshAt,
+    timetableDueAt: Number(attendance.snapshot?.timetableDueAt || 0),
     error: working ? "" : attendance.error || status.error || "",
     code: working ? "" : attendance.code || status.code || "",
   }));
@@ -502,6 +525,7 @@ function showView(name, { remember = true } = {}) {
   if (remember) chrome.storage.local.set({ popupView: name });
   window.clearInterval(repaintTimer);
   window.clearTimeout(refreshReadyTimer);
+  window.clearTimeout(timetableTimer);
   paintRate();
   if (name === "theme") renderThemes();
   if (name !== "attendance" && name !== "forecast") return;

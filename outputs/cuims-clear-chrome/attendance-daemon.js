@@ -44,6 +44,11 @@
   // nor a CUIMS tab has loaded one for five minutes. Only the attendance
   // page, when the report ids are missing, goes ahead regardless.
   const PAGE_GAP_MS = 5 * MINUTE;
+  // With no timetable saved at all, the Forecast has nothing to count ahead,
+  // so the first one waits only this long after the last inner page: still
+  // not in the same burst as the attendance page (the timetable is two
+  // loads), but read by the popup's follow-up read a minute later.
+  const FIRST_TIMETABLE_GAP_MS = MINUTE;
   // Open CUIMS skips its StudentHome check this soon after a read or a CUIMS
   // tab showed the session alive.
   const SESSION_FRESH_MS = 2 * MINUTE;
@@ -133,6 +138,7 @@
       let pageAt = Number(state.attendancePageAt || 0);
       const tabPageAt = Number(state.tabPageAt || 0);
       const pausedUntil = pagesPauseEnd(state);
+      const freeAt = (gap = PAGE_GAP_MS) => Math.max(pausedUntil, Math.max(pageAt, tabPageAt) + gap);
       return {
         log,
         take(target) {
@@ -141,7 +147,8 @@
           if (client.isInnerPage(target)) pageAt = now();
         },
         room: () => BUDGET_MAX - log.length,
-        pageFree: () => now() >= pausedUntil && now() - Math.max(pageAt, tabPageAt) >= PAGE_GAP_MS,
+        freeAt,
+        pageFree: (gap = PAGE_GAP_MS) => now() >= freeAt(gap),
         saved: () => ({ attendanceRequests: log, attendancePageAt: pageAt }),
       };
     }
@@ -283,12 +290,13 @@
     // The timetable only shapes today's class chips, so it never fails a
     // refresh. A good read lasts the day; a failed one is retried at most
     // hourly. It is an optional inner page: it waits for PAGE_GAP_MS after
-    // any other, including the attendance page in the same run.
+    // any other, including the attendance page in the same run, or only
+    // FIRST_TIMETABLE_GAP_MS while none is saved.
     async function readTimetable(state, request, today, budget) {
       const cached = state.attendanceTimetable;
       const slots = cached?.slots || [];
       if (cached?.day === today && slots.length) return slots;
-      if (!budget.pageFree() || now() - Number(cached?.triedAt || 0) < TIMETABLE_RETRY_MS) return slots;
+      if (!budget.pageFree(slots.length ? PAGE_GAP_MS : FIRST_TIMETABLE_GAP_MS) || now() - Number(cached?.triedAt || 0) < TIMETABLE_RETRY_MS) return slots;
       try {
         const fresh = await client.readTimetable(request);
         await storage.set({ pagesPauseStreak: 0 });
@@ -306,6 +314,13 @@
       }
       await storage.set({ attendanceTimetable: { day: cached?.day || "", slots, triedAt: now() } });
       return slots;
+    }
+
+    // While no timetable is saved, when a read can next try it. The popup
+    // reads again then, so the Forecast fills in without a Refresh.
+    async function firstTimetableDue(budget) {
+      const fresh = await storage.get({ attendanceTimetable: null, pagesPausedUntil: 0, tabLimitedAt: 0 });
+      return Math.max(budget.freeAt(FIRST_TIMETABLE_GAP_MS), pagesPauseEnd(fresh), Number(fresh.attendanceTimetable?.triedAt || 0) + TIMETABLE_RETRY_MS);
     }
 
     // Pending leave per subject: the absent marks on a pending application's
@@ -567,7 +582,8 @@
         await storage.set({ attendanceCourses: courses });
         state.attendanceCourses = courses;
         // At most one optional inner page follows, and only after
-        // PAGE_GAP_MS without one: the timetable when due, else a leave page.
+        // PAGE_GAP_MS without one (FIRST_TIMETABLE_GAP_MS for a first
+        // timetable): the timetable when due, else a leave page.
         const slots = await readTimetable(state, request, campus.key, budget);
         const history = await readTodaysMarks(state, request, meta, subjects, slots, campus, budget);
         let leaves = await readLeaves(state, request, budget, onStep);
@@ -576,6 +592,7 @@
           fetchedAt: new Date(now()).toISOString(),
           marksDay: campus.key,
           slots,
+          ...(slots.length ? {} : { timetableDueAt: await firstTimetableDue(budget) }),
           subjects: subjects.map(({ encryptCode, ...subject }) => subject),
           leaves: snapshotLeaves(leaves),
         };

@@ -105,7 +105,8 @@ normally the report calls alone, and loads at most one inner page: the
 attendance page only when its report ids are missing, otherwise the timetable
 once a day or a leave page every three hours, and only when neither the
 extension nor a CUIMS tab has loaded an inner page in the last five minutes.
-A leave read never signs in. A duty-leave approval still shows on the next
+The first timetable, which the Forecast tab needs, waits only one minute, and
+the popup reads again by itself then. A leave read never signs in. A duty-leave approval still shows on the next
 Refresh, from the report calls (the subject's counts move and the absent mark
 becomes a leave mark); a refusal shows when the leave page is next read.
 Opening a leave page on CUIMS updates the list for free.

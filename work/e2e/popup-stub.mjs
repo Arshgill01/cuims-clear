@@ -22,6 +22,17 @@ export function scenarios() {
   const noTimetable = base();
   noTimetable.snapshot.slots = [];
   add("no-timetable", { data: noTimetable });
+  // No timetable yet, and the background says when it can read one: the
+  // popup reads again then, once.
+  const due = (offset) => {
+    const data = base();
+    data.snapshot.slots = [];
+    data.snapshot.timetableDueAt = at("2026-10-09", 10, 5) + offset;
+    return data;
+  };
+  add("timetable-due", { data: due(-10_000) });
+  add("timetable-soon", { data: due(1500) });
+  add("timetable-later", { data: due(30 * 60_000) });
   const noHistory = base();
   noHistory.history = null;
   add("no-history", { data: noHistory });
