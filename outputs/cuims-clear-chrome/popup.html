@@ -190,6 +190,22 @@
             </fieldset>
 
             <fieldset class="settings-group">
+              <legend>Attendance</legend>
+              <label class="switch-row">
+                <span>
+                  <strong>Academic calendar</strong>
+                  <small>CU's holidays, test weeks and last day, so the forecast counts real class days</small>
+                </span>
+                <select id="academic-calendar" class="settings-select">
+                  <option value="auto">Automatic</option>
+                  <option value="cu">Most programs</option>
+                  <option value="uic">UIC (computing)</option>
+                  <option value="uid">UID (design)</option>
+                </select>
+              </label>
+            </fieldset>
+
+            <fieldset class="settings-group">
               <legend>LMS</legend>
               <label class="switch-row">
                 <span>
@@ -243,6 +259,7 @@
         <p id="status" class="toast" role="status" aria-live="polite"></p>
       </main>
     </div>
+    <script src="academic-calendar.js"></script>
     <script src="attendance-model.js"></script>
     <script src="attendance-view.js"></script>
     <script src="forecast-model.js"></script>

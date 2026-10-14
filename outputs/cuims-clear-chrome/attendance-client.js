@@ -9,6 +9,7 @@
   const ATTENDANCE = "/frmStudentCourseWiseAttendanceSummary.aspx";
   const ATTENDANCE_QUERY = "?type=etgkYfqBdH1fSfc255iYGw==";
   const TIMETABLE = "/frmMyTimeTable.aspx";
+  const DATESHEET = "/frmStudentDatesheet.aspx";
   // CUIMS finishes a login in the browser: LandingPage.aspx calls this, and
   // until it runs the session has no menu rights, so every inner page
   // (attendance, timetable) redirects to error.html.
@@ -275,13 +276,14 @@
     return api.normalizeMarks(rows);
   }
 
-  // Optional pages never follow redirects: a signed-out answer redirects to
-  // the login page, and loading it would replace a tab's captcha. CUIMS's
-  // error.html redirect looks the same from here, and nothing else is loaded
-  // to tell them apart: either way the page waits until a CUIMS tab shows the
-  // session serving pages again.
+  // Optional pages follow their redirect, so a refusal (error.html) and a
+  // signed-out session (the login page) can be told apart: the first pauses
+  // pages, the second is worth one sign-in. The login page a signed-out
+  // redirect lands on is the UID step, which draws no captcha; and while a
+  // CUIMS tab is on the login flow nothing here follows a redirect at all
+  // (createRequest), so the tab's captcha is never touched.
   async function optionalPage(request, target) {
-    const page = await request(target, { manual: true });
+    const page = await request(target);
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
     if (isErrorPage(page.url)) throw coded("page-limit");
     return page;
@@ -295,6 +297,12 @@
       page = await postForm(request, target, { ...api.hiddenFields(page.html), __EVENTTARGET: TIMETABLE_TARGET, __EVENTARGUMENT: "" });
     }
     return api.parseTimetable(page.html);
+  }
+
+  // The student's date sheet: every test type's papers in one GET.
+  async function readDateSheet(request) {
+    const page = await optionalPage(request, url(DATESHEET));
+    return api.parseDateSheet(page.html);
   }
 
   const LEAVE_PAGES = { dl: "/frmStudentApplyDutyLeave.aspx", ml: "/frmStudentMedicalLeaveApply.aspx" };
@@ -392,6 +400,7 @@
   api.readMarks = readMarks;
   api.readTimetable = readTimetable;
   api.readLeavePage = readLeavePage;
+  api.readDateSheet = readDateSheet;
   api.LEAVE_PAGES = LEAVE_PAGES;
   api.hasEmptyMenu = hasEmptyMenu;
   api.loginOutcome = loginOutcome;

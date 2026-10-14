@@ -60,8 +60,11 @@ for (const build of ["chrome", "firefox"]) {
       return { url, html: NEW_TIMETABLE };
     });
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].options.method, undefined);
-    assert.equal(calls[0].options.manual, true);
+    assert.equal(calls[0].options?.method, undefined);
+    // Followed, so a refusal (error.html) and a sign-out (the login page)
+    // are told apart; createRequest still never follows one while a CUIMS
+    // tab is on the login flow.
+    assert.equal(calls[0].options?.manual, undefined);
     assert.equal(slots.length, 4);
   });
 }

@@ -385,6 +385,20 @@ input::placeholder {
   opacity: 0.8;
 }
 
+.settings-select {
+  flex: 0 0 auto;
+  max-width: 46%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.settings-select:focus-visible,
 input[type="text"]:focus-visible,
 input[type="password"]:focus-visible {
   border-color: var(--focus);
@@ -1261,6 +1275,10 @@ input[role="switch"]:disabled {
 
 .leave-if strong {
   color: var(--tone-high-ink);
+}
+
+.day-off {
+  margin-top: 4px;
 }
 
 .leave-approved {

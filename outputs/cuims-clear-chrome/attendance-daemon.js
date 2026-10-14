@@ -37,6 +37,11 @@
   const LOGIN_TAB_FRESH_MS = 75_000;
   const AFTER_TAB_MS = 5 * MINUTE;
   const SIGNIN_LOCK_MS = 90_000;
+  // Background sign-ins in any hour, whatever they are for; and how long a
+  // sign-in for an optional page waits after the last good one (sessions
+  // ending sooner than that are being ended by something else).
+  const BACKGROUND_SIGNIN_MAX = 3;
+  const OPTIONAL_SIGNIN_GAP_MS = 30 * MINUTE;
   const RUN_LOCK_MS = 2 * MINUTE;
   const MAX_MARK_READS = 4;
   // Whole-semester mark lists for the Forecast tab, beyond today's reads. A
@@ -80,6 +85,22 @@
   const PAUSE_STREAK_RESET_MS = 2 * HOUR;
   // Local log of CUIMS requests and page refusals, for "Copy diagnostics".
   const JOURNAL_MAX = 150;
+  // Optional pages per read, each six seconds after the last: a sign-in's
+  // landing step and two pages stay far from the three-in-three-seconds
+  // pattern CUIMS refuses. One when the read already loaded the attendance
+  // page.
+  const MAX_OPTIONAL_PAGES = 2;
+  // A second optional page never takes a read past this many page loads
+  // (a legacy timetable is two: its GET and postback).
+  const READ_PAGE_CEILING = 3;
+  // The date sheet is read from this long before a test week until its end,
+  // at most daily, until it lists the student's papers for that test.
+  const DATESHEET_LEAD_DAYS = 10;
+  const DATESHEET_RETRY_MS = 24 * HOUR;
+  // Report ids read before a semester began are read again from the
+  // attendance page, and once more a week in (CUIMS may switch late): the
+  // old ones may keep answering with last semester's attendance.
+  const META_RECHECK_DAYS = 7;
 
   const DEFAULTS = {
     uid: "",
@@ -91,6 +112,8 @@
     attendanceLeaves: null,
     attendanceCourses: null,
     attendanceHistory: null,
+    attendanceDateSheet: null,
+    academicCalendar: "auto",
     attendanceRequests: [],
     attendanceSessionRequests: [],
     attendancePageAt: 0,
@@ -117,7 +140,7 @@
   const PAGE_KEYS = { tabPageAt: 0, tabMenuOkAt: 0, pagesPausedUntil: 0, pagesPausedAt: 0, tabLimitedAt: 0 };
 
   // Everything read for one student. A different saved UID starts over.
-  const STUDENT_KEYS = ["attendanceSnapshot", "attendanceTimetable", "attendanceLeaves", "attendanceCourses", "attendanceHistory", "attendanceMeta", "attendanceStatus"];
+  const STUDENT_KEYS = ["attendanceSnapshot", "attendanceTimetable", "attendanceLeaves", "attendanceCourses", "attendanceHistory", "attendanceDateSheet", "attendanceMeta", "attendanceStatus"];
 
   // A refusal the background met (pagesPausedUntil) or a CUIMS tab met
   // (tabLimitedAt: error.html or an empty menu) holds pages, unless a CUIMS
@@ -161,10 +184,6 @@
       session: String(cached.session || ""),
       failedAt: Number(cached.failedAt || (slots.length ? 0 : cached.triedAt) || 0),
     };
-  }
-
-  function sessionKnownDead(state) {
-    return state.sessionAlive === false && Number(state.sessionCheckedAt || 0) > 0;
   }
 
   function createDaemon({ storage, fetchImpl, solveCaptcha, now = () => Date.now(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)) }) {
@@ -259,6 +278,8 @@
       const reports = (state.attendanceRequests || []).filter((at) => now() - at < BUDGET_WINDOW_MS);
       const session = (state.attendanceSessionRequests || []).filter((at) => now() - at < BUDGET_WINDOW_MS);
       let pageAt = Number(state.attendancePageAt || 0);
+      // Pages this read has loaded so far.
+      let pagesTaken = 0;
       const freeAt = async (gap = PAGE_GAP_MS, ownGap = gap) => {
         // A tab may have loaded or been refused while the report was reading.
         const current = await storage.get(PAGE_KEYS);
@@ -283,13 +304,22 @@
             reports.push(now());
             return;
           }
-          if (session.length >= SESSION_MAX) throw client.coded("busy");
+          // The login flow is not what CUIMS refuses, and sign-ins have their
+          // own limits (one submit, BACKGROUND_SIGNIN_MAX an hour): only
+          // pages count here.
+          const login = client.isLoginFlow(target);
+          if (!login && session.length >= SESSION_MAX) throw client.coded("busy");
           const page = client.isInnerPage(target);
           if (page) await waitForPage({ signal: options.signal, optional: options.optional || 0 });
-          session.push(now());
-          if (page) pageAt = now();
+          if (!login) session.push(now());
+          if (page) {
+            pageAt = now();
+            pagesTaken += 1;
+          }
         },
         reportRoom: () => REPORT_MAX - reports.length,
+        sessionRoom: () => SESSION_MAX - session.length,
+        pagesTaken: () => pagesTaken,
         freeAt,
         pageFree: async (gap = PAGE_GAP_MS, ownGap = gap) => now() >= (await freeAt(gap, ownGap)),
         saved: () => ({ attendanceRequests: reports, attendanceSessionRequests: session, attendancePageAt: pageAt }),
@@ -380,7 +410,9 @@
 
     // Signs in for the attendance page. Answers the page's report ids when a
     // CUIMS tab's own sign-in already got them there, else null.
-    async function ensureSignedIn(state, request, onStep, signal) {
+    // `budget`: a sign-in starts only with room for its landing step and the
+    // page it is for, so it never leaves a session half signed in.
+    async function ensureSignedIn(state, request, onStep, signal, budget) {
       const uid = String(state.uid || "").trim();
       if (!uid || !state.password) throw client.coded("needs-login");
       if (state.autoSolveCaptcha === false) {
@@ -390,6 +422,10 @@
       if (guard.lockoutUntil > now()) throw client.coded("lockout");
       if (guard.rejectedUid && guard.rejectedUid === uid) throw client.coded("bad-password");
       if (guard.failures.length >= BACKGROUND_FAILURE_LIMIT) throw client.coded("cooldown");
+      if (budget && budget.sessionRoom() < 2) throw client.coded("busy");
+      const { bgSignIns } = await storage.get({ bgSignIns: [] });
+      const lastHour = (Array.isArray(bgSignIns) ? bgSignIns : []).filter((at) => now() - Number(at) < HOUR);
+      if (lastHour.length >= BACKGROUND_SIGNIN_MAX) throw client.coded("cooldown");
 
       if (now() - Number(state.pageLoginAt || 0) < PAGE_LOGIN_GRACE_MS) {
         onStep("Waiting for the CUIMS tab to sign in…");
@@ -402,6 +438,7 @@
         throw client.coded("cooldown", "A CUIMS tab is signing in. Refresh in a moment.");
       }
 
+      await storage.set({ bgSignIns: [...lastHour, now()] });
       // One submit per sign-in: the solver is all but always right, so a
       // refusal means something else is going on, and guessing again only
       // walks towards CUIMS's lockout. Unsure reads are re-drawn for free.
@@ -465,7 +502,8 @@
     }
 
     // The timetable only shapes the Forecast and today's class chips, so it
-    // never fails a read. A failed read is retried at most hourly.
+    // never fails a read. A failed read is retried at most hourly. Answers
+    // the slots and how the page went (optionalOutcome).
     async function readTimetablePage(state, request, meta) {
       const saved = timetableOf(state);
       try {
@@ -473,30 +511,48 @@
         await markPageServed(state);
         if (fresh.length) {
           await saveTimetable(state, fresh, meta);
-          return fresh;
+          return { slots: fresh, outcome: "ok" };
         }
       } catch (error) {
-        // Given way to a tab, or our own session budget is spent: next time.
-        if (error.code === "yield" || error.code === "tab-login" || error.code === "busy") return saved.slots;
-        if (error.code === "page-limit") await pausePages(state);
-        if (error.code === "signed-out") await markSignedOut(state);
         if (error.code === "portal-busy") {
           await storage.set({ attendanceTimetable: { ...saved, failedAt: now() } });
           throw error;
         }
-        // Other failures keep the saved timetable.
+        const outcome = await optionalOutcome(state, error);
+        // Given way to a tab, or signed out (tried again once signed in).
+        if (outcome === "stop" || outcome === "signed-out") return { slots: saved.slots, outcome };
+        // Refused or failed: the saved timetable stays, tried again hourly.
+        state.attendanceTimetable = { ...saved, failedAt: now() };
+        await storage.set({ attendanceTimetable: state.attendanceTimetable });
+        return { slots: saved.slots, outcome };
       }
       state.attendanceTimetable = { ...saved, failedAt: now() };
       await storage.set({ attendanceTimetable: state.attendanceTimetable });
-      return saved.slots;
+      return { slots: saved.slots, outcome: "failed" };
+    }
+
+    // What an optional page's failure means for the read: "stop" (a tab is
+    // in use, our own budget), "refused" (CUIMS refused it: pages pause),
+    // "signed-out" (worth one sign-in), or "failed" (this page waits for its
+    // retry).
+    async function optionalOutcome(state, error) {
+      if (error.code === "yield" || error.code === "tab-login" || error.code === "busy" || error.code === "cancelled") return "stop";
+      if (error.code === "page-limit") {
+        await pausePages(state);
+        return "refused";
+      }
+      if (error.code === "signed-out") {
+        await markSignedOut(state);
+        return "signed-out";
+      }
+      return "failed";
     }
 
     // While no timetable is saved, when a read can next try it (0: not until
     // the CUIMS session is seen alive). The popup reads again then, so the
     // Forecast fills in without a Refresh.
     async function firstTimetableDue(budget) {
-      const fresh = await storage.get({ attendanceTimetable: null, sessionAlive: false, sessionCheckedAt: 0 });
-      if (sessionKnownDead(fresh)) return 0;
+      const fresh = await storage.get({ attendanceTimetable: null });
       return Math.max(await budget.freeAt(FIRST_TIMETABLE_GAP_MS, PAGE_REQUEST_GAP_MS), timetableOf(fresh).failedAt + TIMETABLE_RETRY_MS);
     }
 
@@ -590,30 +646,23 @@
     async function readLeave(state, request, which, onStep) {
       let leaves = currentLeaves(state);
       await onStep(which === "dl" ? "Reading duty leave…" : "Reading medical leave…");
+      let outcome = "ok";
       try {
         const applications = await client.readLeavePage(request, which);
         await markPageServed(state);
         leaves = await mergeLeaves(leaves, which, applications);
       } catch (error) {
         if (error.code === "portal-busy") throw error;
-        if (error.code === "yield" || error.code === "tab-login" || error.code === "busy") return leaves;
-        // Refused, not signed out: the attendance already read stands, and
-        // this page is tried again once the pause is over.
-        if (error.code === "page-limit") {
-          await pausePages(state);
-          return leaves;
-        }
-        // Signed out: leave waits until a CUIMS tab or a sign-in shows the
-        // session alive again. Never a reason to sign in.
-        if (error.code === "signed-out") {
-          await markSignedOut(state);
-          return leaves;
-        }
+        // Refused: the attendance already read stands, and this page is
+        // tried again once the pause is over. Signed out: tried again once
+        // signed in.
+        outcome = await optionalOutcome(state, error);
+        if (outcome !== "failed") return { leaves: currentLeaves(state) || leaves, outcome };
         leaves = { ...(leaves || {}), v: client.LEAVES_VERSION, triedAt: now(), [`${which}TriedAt`]: now() };
         await storage.set({ attendanceLeaves: leaves });
       }
       state.attendanceLeaves = leaves;
-      return leaves;
+      return { leaves, outcome };
     }
 
     // The student opened a leave page on CUIMS: keep what it shows, with no
@@ -642,23 +691,174 @@
       return slots;
     }
 
+    // ---- date sheet ----
+
+    // The student's tests (MST-1, MST-2…): a week with one of their papers in
+    // it has no classes (academic-calendar.js).
+    function calendarContext(state) {
+      return { calendar: client.calendarFor ? client.calendarFor(state.academicCalendar, state.uid) : "cu" };
+    }
+
+    function savedExams(state) {
+      const saved = state.attendanceDateSheet;
+      return Array.isArray(saved?.exams) ? saved.exams : [];
+    }
+
+    // Due from DATESHEET_LEAD_DAYS before one of the calendar's test weeks
+    // until the week is over, while the saved sheet lists no paper for it
+    // this semester. At most daily.
+    function dateSheetDue(state, campus) {
+      if (!client.testWeeks) return false;
+      const saved = state.attendanceDateSheet || {};
+      if (now() - Number(saved.triedAt || 0) < DATESHEET_RETRY_MS) return false;
+      const context = calendarContext(state);
+      const today = client.dayNumberOf(campus.key);
+      const start = client.semesterStart(today, context);
+      if (start == null) return false;
+      const listed = new Set(
+        savedExams(state)
+          .filter((exam) => client.dayNumberOf(exam.day) >= start)
+          .map((exam) => Number(String(exam.type).match(/^MST-?(\d)/i)?.[1] || 0)),
+      );
+      return client.testWeeks(today, context).some((week) => today >= week.from - DATESHEET_LEAD_DAYS && today <= week.to && !listed.has(week.n));
+    }
+
+    // Rows from a page (the whole sheet, or one type the student filtered
+    // to): its types replace the saved ones, the rest stay.
+    async function mergeDateSheet(state, exams, tried) {
+      const types = new Set(exams.map((exam) => exam.type));
+      const kept = savedExams(state).filter((exam) => !types.has(exam.type));
+      const next = { exams: [...kept, ...exams].sort((left, right) => (left.day < right.day ? -1 : left.day > right.day ? 1 : 0)), savedAt: now(), triedAt: tried ? now() : Number(state.attendanceDateSheet?.triedAt || 0) };
+      state.attendanceDateSheet = next;
+      await storage.set({ attendanceDateSheet: next });
+      return next.exams;
+    }
+
+    async function readDateSheetPage(state, request, onStep) {
+      await onStep("Reading your date sheet…");
+      try {
+        const exams = await client.readDateSheet(request);
+        await markPageServed(state);
+        return { exams: await mergeDateSheet(state, exams, true), outcome: "ok" };
+      } catch (error) {
+        if (error.code === "portal-busy") throw error;
+        const outcome = await optionalOutcome(state, error);
+        if (outcome === "failed") {
+          state.attendanceDateSheet = { ...(state.attendanceDateSheet || {}), triedAt: now() };
+          await storage.set({ attendanceDateSheet: state.attendanceDateSheet });
+        }
+        return { exams: savedExams(state), outcome };
+      }
+    }
+
+    // The student opened the Date Sheet on CUIMS: keep it, with no request.
+    async function readDateSheetUpdate(html) {
+      const exams = client.parseDateSheet(html);
+      if (!exams.length) return null;
+      const state = await storage.get(DEFAULTS);
+      const all = await mergeDateSheet(state, exams, false);
+      if (state.attendanceSnapshot) await storage.set({ attendanceSnapshot: { ...state.attendanceSnapshot, exams: all } });
+      return all;
+    }
+
     // ---- optional pages ----
 
-    // At most one optional page a read, and none while the session is known
-    // signed out: a first timetable, else the most overdue leave page, else a
-    // timetable refresh. Returns what it read.
-    async function readOptionalPage(state, request, meta, budget, onStep) {
-      if (sessionKnownDead(state)) return {};
-      if (!timetableOf(state).slots.length && timetableDue(state, meta) && (await budget.pageFree(FIRST_TIMETABLE_GAP_MS, 0))) {
-        await onStep("Reading your timetable…");
-        return { slots: await readTimetablePage(state, optionalRequest(request, FIRST_TIMETABLE_GAP_MS), meta) };
+    // The session was last seen signed out, and no CUIMS tab has shown its
+    // menu since. A CUIMS session lasts a couple of hours idle, so anything
+    // else is tried as it is: a signed-out page answers with a redirect.
+    async function sessionKnownGone() {
+      const fresh = await storage.get({ sessionAlive: null, sessionCheckedAt: 0, tabMenuOkAt: 0 });
+      return fresh.sessionAlive === false && Number(fresh.sessionCheckedAt || 0) > Number(fresh.tabMenuOkAt || 0);
+    }
+
+    // Signs in for an optional page when the session is gone, if signing in
+    // is allowed at all (saved login, captcha solving on, no refused login
+    // lately, no CUIMS tab on its login page). Answers whether it did.
+    async function signInForPages(state, request, onStep, budget) {
+      if (now() - Number(state.pageLoginAt || 0) < PAGE_LOGIN_GRACE_MS) return false;
+      const { bgSignInOkAt } = await storage.get({ bgSignInOkAt: 0 });
+      if (now() - Number(bgSignInOkAt || 0) < OPTIONAL_SIGNIN_GAP_MS) return false;
+      try {
+        await ensureSignedIn(state, request, onStep, null, budget);
+        await markPageServed(state);
+        return true;
+      } catch (error) {
+        if (error.code === "portal-busy") throw error;
+        if (error.code === "page-limit") await pausePages(state);
+        // Anything else (a refused login, a tab signing in, our budget): the
+        // pages wait for the next read. The login guard keeps the count.
+        return false;
       }
-      if (!(await budget.pageFree(PAGE_GAP_MS))) return {};
-      const which = dueLeave(currentLeaves(state));
-      if (which) return { leaves: await readLeave(state, optionalRequest(request, PAGE_GAP_MS), which, onStep) };
-      if (!timetableDue(state, meta)) return {};
-      await onStep("Reading your timetable…");
-      return { slots: await readTimetablePage(state, optionalRequest(request, PAGE_GAP_MS), meta) };
+    }
+
+    // Which optional page is due, most needed first: a first timetable, the
+    // most overdue leave page, the date sheet before a test week, a
+    // timetable refresh.
+    function nextOptional(state, meta, campus, done) {
+      if (!done.has("timetable") && !timetableOf(state).slots.length && timetableDue(state, meta)) return "first-timetable";
+      const leave = dueLeave(currentLeaves(state));
+      if (leave && !done.has(leave)) return leave;
+      const other = leave === "dl" ? "ml" : leave === "ml" ? "dl" : "";
+      if (other && !done.has(other) && leaveDueAt(currentLeaves(state), other) <= now()) return other;
+      if (!done.has("datesheet") && dateSheetDue(state, campus)) return "datesheet";
+      if (!done.has("timetable") && timetableDue(state, meta)) return "timetable";
+      return "";
+    }
+
+    async function readOne(which, state, request, meta, onStep, gap) {
+      const paced = optionalRequest(request, gap);
+      if (which === "first-timetable" || which === "timetable") {
+        await onStep("Reading your timetable…");
+        const { slots, outcome } = await readTimetablePage(state, paced, meta);
+        return { outcome, found: { slots } };
+      }
+      if (which === "datesheet") {
+        const { exams, outcome } = await readDateSheetPage(state, paced, onStep);
+        return { outcome, found: { exams } };
+      }
+      const { leaves, outcome } = await readLeave(state, paced, which, onStep);
+      return { outcome, found: { leaves } };
+    }
+
+    // Up to MAX_OPTIONAL_PAGES due pages, six seconds apart, none while CUIMS
+    // is refusing pages, and only five minutes clear of a CUIMS tab's last
+    // page (a minute for the first timetable). A page that finds the session
+    // gone signs in, once, and is tried again, so leave stays current
+    // without the student opening its page, and Open CUIMS right after
+    // lands in that session.
+    async function readOptionalPages(state, request, meta, budget, onStep, campus) {
+      const found = {};
+      const done = new Set();
+      let pages = 0;
+      let signedIn = false;
+      // A read that already loaded the attendance page (a first read, new
+      // report ids) takes one optional page, not two.
+      const most = budget.pagesTaken() ? 1 : MAX_OPTIONAL_PAGES;
+      while (pages < most) {
+        const which = nextOptional(state, meta, campus, done);
+        if (!which) break;
+        done.add(which === "first-timetable" ? "timetable" : which);
+        const gap = which === "first-timetable" ? FIRST_TIMETABLE_GAP_MS : PAGE_GAP_MS;
+        // The first page also keeps five minutes from the background's own
+        // last page (not after a sign-in of this read); later ones six seconds.
+        const ownGap = pages || which === "first-timetable" ? 0 : gap;
+        if (pages && budget.pagesTaken() >= READ_PAGE_CEILING) break;
+        if (!(await budget.pageFree(gap, ownGap))) break;
+        if (!signedIn && (await sessionKnownGone())) {
+          if (!(await signInForPages(state, request, onStep, budget))) break;
+          signedIn = true;
+        }
+        let result = await readOne(which, state, request, meta, onStep, gap);
+        if (result.outcome === "signed-out" && !signedIn) {
+          if (!(await signInForPages(state, request, onStep, budget))) break;
+          signedIn = true;
+          result = await readOne(which, state, request, meta, onStep, gap);
+        }
+        Object.assign(found, result.found);
+        pages += 1;
+        if (result.outcome !== "ok" && result.outcome !== "failed") break;
+      }
+      return found;
     }
 
     // ---- marks ----
@@ -752,11 +952,12 @@
       return history;
     }
 
-    function buildSnapshot(subjects, campus, slots, leaves, timetableDueAt) {
+    function buildSnapshot(subjects, campus, slots, leaves, timetableDueAt, exams = []) {
       return {
         fetchedAt: new Date(now()).toISOString(),
         marksDay: campus.key,
         slots,
+        exams,
         ...(slots.length || !timetableDueAt ? {} : { timetableDueAt }),
         subjects: subjects.map(({ encryptCode, ...subject }) => subject),
         leaves: snapshotLeaves(leaves),
@@ -764,6 +965,44 @@
     }
 
     // ---- a read ----
+
+    // Report ids from before this semester began, or not checked since its
+    // first week ended.
+    function metaStale(state, campus) {
+      const at = Number(state.attendanceMeta?.at || 0);
+      const today = client.dayNumberOf?.(campus.key);
+      const start = today == null ? null : client.semesterStart?.(today, calendarContext(state));
+      if (!at || start == null) return false;
+      // The campus day starts at midnight in Mohali, 5 h 30 before UTC's.
+      const dayStart = (day) => day * 24 * HOUR - 330 * MINUTE;
+      if (at < dayStart(start)) return true;
+      return today >= start + META_RECHECK_DAYS && at < dayStart(start + META_RECHECK_DAYS);
+    }
+
+    // The attendance page holds the report ids. Signed out, sign in for it;
+    // it waits out a page refusal like any page.
+    async function openReportIds(state, request, onStep, budget) {
+      Object.assign(state, await storage.get(PAGE_KEYS));
+      const limit = pagesPaused(state);
+      if (limit) throw limit.error;
+      await onStep("Checking your CUIMS session…");
+      let meta;
+      try {
+        meta = await client.openAttendance(request);
+      } catch (error) {
+        if (error.code !== "signed-out") throw error;
+        await markSignedOut(state);
+        meta = await ensureSignedIn(state, request, onStep, null, budget);
+        try {
+          meta ||= await client.openAttendance(request);
+        } catch (again) {
+          if (again.code === "signed-out") throw client.coded("login-shape", "CUIMS accepted the login but did not keep the session. Try again.");
+          throw again;
+        }
+      }
+      await markPageServed(state);
+      return meta;
+    }
 
     async function run() {
       const state = await claimStudent(await storage.get(DEFAULTS));
@@ -790,8 +1029,18 @@
         // read is GetReport and the marks calls, none of them a session
         // request. The attendance page is reopened only when the ids are
         // missing or stop working, and that is the only read that signs in.
+        const campus = client.campusParts(new Date(now()));
         let meta = state.attendanceMeta?.reportId ? state.attendanceMeta : null;
         let subjects = null;
+        if (meta && metaStale(state, campus)) {
+          try {
+            meta = await openReportIds(state, request, onStep, budget);
+          } catch (error) {
+            if (error.code === "portal-busy") throw error;
+            // The page or a sign-in is not to be had now: the saved ids still
+            // answer, and the check waits for the next read.
+          }
+        }
         if (meta) {
           try {
             subjects = await client.readSummary(request, meta);
@@ -800,32 +1049,13 @@
             meta = null;
           }
         }
-        // The page and any sign-in wait out a refusal; nothing more can be
-        // read without the report ids.
-        if (!subjects) Object.assign(state, await storage.get(PAGE_KEYS));
-        const limit = subjects ? null : pagesPaused(state);
-        if (limit) throw limit.error;
         if (!subjects) {
-          await onStep("Checking your CUIMS session…");
-          try {
-            meta = await client.openAttendance(request);
-          } catch (error) {
-            if (error.code !== "signed-out") throw error;
-            await markSignedOut(state);
-            meta = await ensureSignedIn(state, request, onStep);
-            try {
-              meta ||= await client.openAttendance(request);
-            } catch (again) {
-              if (again.code === "signed-out") throw client.coded("login-shape", "CUIMS accepted the login but did not keep the session. Try again.");
-              throw again;
-            }
-          }
-          await markPageServed(state);
+          meta = await openReportIds(state, request, onStep, budget);
           await onStep("Reading attendance…");
           subjects = await client.readSummary(request, meta);
         }
-        await storage.set({ attendanceMeta: { reportId: meta.reportId, sessionId: meta.sessionId } });
-        const campus = client.campusParts(new Date(now()));
+        const fresh = meta !== state.attendanceMeta;
+        await storage.set({ attendanceMeta: { reportId: meta.reportId, sessionId: meta.sessionId, at: fresh ? now() : Number(meta.at || now()) } });
         const courses = Object.fromEntries(subjects.filter((subject) => subject.encryptCode).map((subject) => [client.normCode(subject.code), subject.encryptCode]));
         await storage.set({ attendanceCourses: courses });
         state.attendanceCourses = courses;
@@ -833,15 +1063,15 @@
         // The totals are in: show them now, before any optional work, so a
         // slow or refused page never hides fresh attendance.
         carryMarks(subjects, state.attendanceSnapshot, campus);
-        const early = buildSnapshot(subjects, campus, timetableOf(state).slots, currentLeaves(state), state.attendanceSnapshot?.timetableDueAt);
+        const early = buildSnapshot(subjects, campus, timetableOf(state).slots, currentLeaves(state), state.attendanceSnapshot?.timetableDueAt, savedExams(state));
         await storage.set({ attendanceSnapshot: early });
 
-        const optional = await readOptionalPage(state, request, meta, budget, onStep);
+        const optional = await readOptionalPages(state, request, meta, budget, onStep, campus);
         const slots = optional.slots || timetableOf(state).slots;
         const history = await readTodaysMarks(state, request, meta, subjects, slots, campus, budget);
         let leaves = optional.leaves || currentLeaves(state);
         leaves = await countPending(request, meta, subjects, history, leaves);
-        const snapshot = buildSnapshot(subjects, campus, slots, leaves, slots.length ? 0 : await firstTimetableDue(budget));
+        const snapshot = buildSnapshot(subjects, campus, slots, leaves, slots.length ? 0 : await firstTimetableDue(budget), optional.exams || savedExams(state));
         await storage.set({ attendanceSnapshot: snapshot, attendanceFailStreak: 0, attendanceBackoffUntil: 0 });
         await setStatus({ working: false, phase: "", error: "", code: "" });
         return { snapshot, nextRefreshAt: started + MANUAL_GAP_MS };
@@ -909,6 +1139,10 @@
       return exclusive(() => readTimetableUpdate(html));
     }
 
+    function ingestDateSheetPage(html) {
+      return exclusive(() => readDateSheetUpdate(html));
+    }
+
     // The saved UID changed: drop the last student's reads right away.
     function checkStudent() {
       return exclusive(async () => {
@@ -916,7 +1150,7 @@
       });
     }
 
-    return { refresh, afterTabSignIn, ingestLeavePage, ingestTimetablePage, noteTabPage, checkStudent };
+    return { refresh, afterTabSignIn, ingestLeavePage, ingestTimetablePage, ingestDateSheetPage, noteTabPage, checkStudent };
   }
 
   api.DAEMON_DEFAULTS = DEFAULTS;

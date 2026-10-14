@@ -239,13 +239,22 @@
     return `${normCode(code)}@${start}`;
   }
 
-  // Skips assume every other class is attended. A class that ended without a
-  // posted mark counts as missed, so a late mark can only raise the number.
+  // Skips assume every other class is attended. Every figure comes from the
+  // counts CUIMS has posted: a class that ended without a mark only shows as
+  // not marked yet, since teachers often mark hours or days later.
+  // What decides teaching days: the academic calendar chosen in Settings and
+  // the student's own date sheet (academic-calendar.js).
+  function calendarContext(snapshot, options = {}) {
+    return { calendar: options.calendar, exams: Array.isArray(snapshot?.exams) ? snapshot.exams : [] };
+  }
+
   function buildAnalytics(snapshot, now = new Date(), options = {}) {
     const goal = goalOf(options.goal);
     const campus = campusParts(now);
     const subjects = Array.isArray(snapshot?.subjects) ? snapshot.subjects : [];
-    const slots = todaysSlots(snapshot?.slots, campus);
+    // A holiday, a test week or a break: the timetable's classes do not run.
+    const dayOff = api.noClassReason ? api.noClassReason(campus.key, calendarContext(snapshot, options)) : null;
+    const slots = dayOff ? [] : todaysSlots(snapshot?.slots, campus);
     const marksDay = snapshot?.marksDay || "";
     // Leave counted by an older parser (which read "Not Recommend" as
     // pending) is ignored until the leave pages are read again.
@@ -296,9 +305,10 @@
       attended,
       delivered,
       effectiveDelivered: delivered + pending,
+      pending,
       percent: percentOf(attended, delivered),
-      skip: goal.overall ? maxMisses(attended, delivered + pending, goal.overall) : 0,
-      recover: goal.overall ? classesToRecover(attended, delivered + pending, goal.overall) : 0,
+      skip: goal.overall ? maxMisses(attended, delivered, goal.overall) : 0,
+      recover: goal.overall ? classesToRecover(attended, delivered, goal.overall) : 0,
       left: sum((row) => row.today.filter((item) => item.state === "next" || item.state === "now").length),
       leave: {
         pending: pendingLeaveTotal,
@@ -310,9 +320,8 @@
     overall.tone = overall.percent == null ? "none" : overall.percent < overallFloor ? "low" : overall.percent < overallFloor + 2 ? "tight" : "high";
 
     for (const row of rows) {
-      const held = row.delivered + row.pending;
-      const subjectSkip = maxMisses(row.attended, held, goal.subject);
-      row.recover = classesToRecover(row.attended, held, goal.subject);
+      const subjectSkip = maxMisses(row.attended, row.delivered, goal.subject);
+      row.recover = classesToRecover(row.attended, row.delivered, goal.subject);
       const overallRoom = !goal.overall ? Infinity : overall.recover > 0 ? 0 : overall.skip;
       row.skip = row.recover > 0 ? 0 : Math.min(subjectSkip, overallRoom);
       row.limitedByOverall = Boolean(goal.overall) && row.recover === 0 && row.skip < subjectSkip;
@@ -325,6 +334,7 @@
     return {
       fetchedAt: snapshot?.fetchedAt || null,
       todayKey: campus.key,
+      dayOff,
       goal,
       timetableKnown: Array.isArray(snapshot?.slots) && snapshot.slots.length > 0,
       leavesCheckedAt: leaves?.checkedAt || null,
@@ -345,6 +355,7 @@
   api.todaysSlots = todaysSlots;
   api.slotBelongsTo = slotBelongsTo;
   api.buildAnalytics = buildAnalytics;
+  api.calendarContext = calendarContext;
   api.GOALS = GOALS;
   api.VDL_PER_SUBJECT = VDL_PER_SUBJECT;
   api.LEAVES_VERSION = LEAVES_VERSION;

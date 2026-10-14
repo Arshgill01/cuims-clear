@@ -49,12 +49,17 @@
     return `${DAY_NAMES[weekdayOf(number)]} ${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()]}`;
   }
 
-  // The last day of classes the student set, else an estimate: 13 November
-  // for the July semester (the 2026 date) and 30 April for the January one.
-  // CU publishes no calendar to read it from. Past it, classes are over.
-  function semesterEnd(setKey, todayN) {
+  // The last day of classes the student set, else CU's academic calendar's
+  // last teaching day (academic-calendar.js), else a guess past the years it
+  // covers: 13 November for the July semester and 30 April for the January
+  // one. Past it, classes are over.
+  function semesterEnd(setKey, todayN, context = {}) {
     const set = dayNumber(setKey);
     if (set != null) return { day: set, estimated: false };
+    const listed = api.lastTeachingDay ? api.lastTeachingDay(todayN, context) : null;
+    // Past it (exams, the break) the semester's classes are over: the date
+    // stays CU's, and nothing is left to count.
+    if (listed != null) return { day: listed, estimated: true, fromCalendar: true };
     const date = new Date(todayN * DAY_MS);
     const year = date.getUTCFullYear();
     const day = date.getUTCMonth() >= 6 ? Date.UTC(year, 10, 13) / DAY_MS : Date.UTC(year, 3, 30) / DAY_MS;
@@ -128,8 +133,9 @@
   // ---- what is still to come ----
 
   // Every class left this semester, per subject: today's that have not ended,
-  // then each weekday's slots up to the last day.
-  function upcomingClasses(rows, slots, todayN, endN) {
+  // then each weekday's slots up to the last day, on teaching days only (no
+  // holidays, test weeks or breaks).
+  function upcomingClasses(rows, slots, todayN, endN, context = {}) {
     const classes = [];
     const add = (row, day, start, kind) => {
       classes.push({ row, day, start, kind: kind || "L", key: `${dayKeyOf(day)}|${api.slotKey(row.code, start)}` });
@@ -145,6 +151,9 @@
       byDay.get(slot.weekday).push({ slot, row });
     }
     for (let day = todayN + 1; day <= endN; day += 1) {
+      // Past CU's last teaching day only the student's own last day counts.
+      const off = api.noClassReason?.(day, context);
+      if (off && off.kind !== "over") continue;
       for (const { slot, row } of byDay.get(weekdayOf(day)) || []) add(row, day, slot.start, slot.kind);
     }
     return classes.sort((left, right) => left.day - right.day || left.start - right.start);
@@ -486,7 +495,8 @@
   // ---- the whole view ----
 
   function buildForecast(snapshot, stored, now = new Date(), options = {}) {
-    const analytics = api.buildAnalytics(snapshot, now, { goal: options.goal });
+    const analytics = api.buildAnalytics(snapshot, now, { goal: options.goal, calendar: options.calendar });
+    const context = api.calendarContext(snapshot, options);
     if (!analytics.subjects.length) return null;
     const goal = analytics.goal;
     const campus = api.campusParts(now);
@@ -497,9 +507,9 @@
 
     const allMarks = rows.flatMap((row) => marksBy[api.normCode(row.code)]?.marks || []).sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : left[1] - right[1]));
     const firstDay = allMarks.length ? dayNumber(allMarks[0][0]) : null;
-    const end = semesterEnd(options.end, todayN);
+    const end = semesterEnd(options.end, todayN, context);
 
-    const classes = upcomingClasses(rows, snapshot?.slots, todayN, end.day);
+    const classes = upcomingClasses(rows, snapshot?.slots, todayN, end.day, context);
     const window = new Set();
     for (const item of classes) {
       if (!window.has(item.day) && window.size >= PLAN_DAYS) break;
@@ -525,7 +535,7 @@
           : { held: 0, attended: 0 };
       const { a, b, pace } = posterior(evidence, habit);
       const mine = classes.filter((item) => item.row === row);
-      const held = row.delivered + row.pending;
+      const held = row.delivered;
       const planned = mine.filter((item) => item.planned).length;
       const base = { attended: row.attended, held, upcoming: mine.length, ratio: goal.subject, a, b };
       const result = finish({ ...base, planned });
@@ -593,7 +603,8 @@
         key: dayKeyOf(end.day),
         label: dayLabel(end.day),
         estimated: end.estimated,
-        estimate: dayKeyOf(semesterEnd("", todayN).day),
+        fromCalendar: Boolean(semesterEnd("", todayN, context).fromCalendar),
+        estimate: dayKeyOf(semesterEnd("", todayN, context).day),
         days: end.day - todayN,
         weeks: Math.max(0, Math.round(((end.day - todayN) / 7) * 10) / 10),
       },

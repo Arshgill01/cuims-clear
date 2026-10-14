@@ -1042,6 +1042,7 @@ function scanPage() {
   if (!refused) {
     shareLeavePage();
     shareTimetablePage();
+    shareDateSheetPage();
   }
 
   if (TEST_PAGE_RE.test(location.pathname)) return;
@@ -1098,6 +1099,20 @@ function shareTimetablePage() {
   const details = document.getElementById("ContentPlaceHolder1_gvMyTimeTableDetails") || document.getElementById("ContentPlaceHolder1_grdCourseDetail");
   try {
     chrome.runtime.sendMessage({ type: "cuims-clear:timetable-page", html: grid.outerHTML + (details ? details.outerHTML : "") });
+  } catch {}
+}
+
+// Opening the Date Sheet on CUIMS hands the student's test days to the
+// Attendance and Forecast tabs (no classes in a test week). The tidy layer
+// keeps CUIMS's grid in the page, with each row's values in hidden fields.
+let dateSheetShared = null;
+function shareDateSheetPage() {
+  if (!isTopFrame() || !/frmStudentDatesheet\.aspx$/i.test(location.pathname)) return;
+  const grid = document.querySelector('table[id$="gvStudentDateSheet"]');
+  if (!grid || grid.textContent === dateSheetShared) return;
+  dateSheetShared = grid.textContent;
+  try {
+    chrome.runtime.sendMessage({ type: "cuims-clear:datesheet-page", html: grid.outerHTML });
   } catch {}
 }
 

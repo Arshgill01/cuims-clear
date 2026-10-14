@@ -343,6 +343,33 @@
     return slots;
   }
 
+  // Date Sheet page (frmStudentDatesheet.aspx), grid gvStudentDateSheet.
+  // One GET lists every type (MST-1, MST-2…) without the type dropdown's
+  // postback. Each row carries its values in hidden fields: hdndatesheettype,
+  // hdnsubcode, hdnslotdate ("15 Oct 2026"), hdnslottime ("15:00").
+  function parseDateSheet(html) {
+    const text = String(html || "");
+    const grid = text.indexOf("gvStudentDateSheet");
+    if (grid < 0) return [];
+    const field = (name) => {
+      const values = new Map();
+      const pattern = new RegExp(`<input\\b[^>]*\\bid\\s*=\\s*["'][^"']*_${name}_(\\d+)["'][^>]*>`, "gi");
+      for (const match of text.slice(grid).matchAll(pattern)) values.set(match[1], String(attr(match[0], "value") || "").trim());
+      return values;
+    };
+    const types = field("hdndatesheettype");
+    const codes = field("hdnsubcode");
+    const days = field("hdnslotdate");
+    const times = field("hdnslottime");
+    const exams = [];
+    for (const [row, type] of types) {
+      const day = api.parseDateKey(days.get(row));
+      if (!type || !day) continue;
+      exams.push({ type, code: codes.get(row) || "", day, time: times.get(row) || "" });
+    }
+    return exams.sort((left, right) => (left.day < right.day ? -1 : left.day > right.day ? 1 : 0));
+  }
+
   api.stripTags = stripTags;
   api.hiddenFields = hiddenFields;
   api.formAction = formAction;
@@ -361,4 +388,5 @@
   api.leaveState = leaveState;
   api.parseDutyLeaves = parseDutyLeaves;
   api.parseMedicalLeaves = parseMedicalLeaves;
+  api.parseDateSheet = parseDateSheet;
 })(globalThis);

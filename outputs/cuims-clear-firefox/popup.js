@@ -27,6 +27,7 @@ const ATTENDANCE_KEYS = [
   "attendanceCourses",
   "attendancePlan",
   "attendanceHistory",
+  "attendanceDateSheet",
   "attendanceOwner",
 ];
 // Opening Attendance or Forecast reads CUIMS by itself, once per popup, when
@@ -91,7 +92,7 @@ let savedLogin = { uid: "", password: "" };
 let attendance = { snapshot: null, status: null, error: "", code: "", history: null };
 // The student's goal and last day of classes are preferences; planned skips
 // are "<day>|<class>" keys, dropped once their day has passed.
-let prefs = { goal: "standard", plan: [], end: "" };
+let prefs = { goal: "standard", plan: [], end: "", calendar: "auto" };
 // Which day the planner shows and which subject is open, for this popup only.
 let lastForecast = null;
 let forecastUi = { day: "", expanded: "", calendar: { open: false, month: "", focus: "" } };
@@ -490,11 +491,24 @@ function repaint(view, html) {
   } else target?.focus({ preventScroll: true });
 }
 
+// Settings → Academic calendar: "auto" picks UIC's for a BCA/MCA UID.
+function calendarId() {
+  return CuimsAttendance.calendarFor?.(prefs.calendar, savedLogin.uid) || "cu";
+}
+
+const calendarSelect = document.querySelector("#academic-calendar");
+calendarSelect?.addEventListener("change", () => {
+  prefs.calendar = calendarSelect.value;
+  chrome.storage.local.set({ academicCalendar: prefs.calendar });
+  paintAttendance();
+  paintForecast();
+});
+
 function paintAttendance() {
   const status = attendance.status || {};
   const working = readWorking();
   const analytics = attendance.snapshot?.subjects?.length
-    ? CuimsAttendance.buildAnalytics(attendance.snapshot, new Date(), { goal: prefs.goal })
+    ? CuimsAttendance.buildAnalytics(attendance.snapshot, new Date(), { goal: prefs.goal, calendar: calendarId() })
     : null;
   repaint(views.attendance, CuimsAttendance.renderAttendance(analytics, {
     working,
@@ -519,7 +533,7 @@ function paintForecast({ force = true } = {}) {
   const status = attendance.status || {};
   const working = readWorking();
   const forecast = attendance.snapshot?.subjects?.length
-    ? CuimsAttendance.buildForecast(attendance.snapshot, attendance.history, new Date(), { goal: prefs.goal, plan: plannedSkips(), end: prefs.end, day: forecastUi.day })
+    ? CuimsAttendance.buildForecast(attendance.snapshot, attendance.history, new Date(), { goal: prefs.goal, calendar: calendarId(), plan: plannedSkips(), end: prefs.end, day: forecastUi.day })
     : null;
   lastForecast = forecast;
   if (forecast?.plan) forecastUi.day = forecast.plan.day;
@@ -718,8 +732,14 @@ views.forecast.addEventListener("click", (event) => {
   const step = target.closest("[data-end-step]");
   if (step) {
     const current = prefs.end || paintedEnd();
-    const next = shiftDay(current, Number(step.dataset.endStep));
+    const days = Number(step.dataset.endStep);
+    let next = shiftDay(current, days);
+    // CU's last day can be behind us (classes over): a week later starts
+    // no earlier than today.
+    if (next && days > 0 && next < todayKey()) next = todayKey();
     if (next && next >= todayKey()) setEnd(next);
+    // Back past today, when CU's own day is already behind us: CU's day.
+    else if (next && days < 0 && prefs.end && (lastForecast?.end?.estimate || "") < todayKey()) setEnd("");
     paintForecast();
     focusAfter(`[data-end-step="${step.dataset.endStep}"]`);
     return;
@@ -1076,6 +1096,7 @@ chrome.storage.local.get(
     attendancePlan: null,
     attendanceHistory: null,
     forecastEnd: "",
+    academicCalendar: "auto",
     rateNudge: null,
   },
   (stored) => {
@@ -1091,7 +1112,8 @@ chrome.storage.local.get(
     attendance.lastAttemptAt = stored.attendanceLastAttemptAt;
     attendance.backoffUntil = stored.attendanceBackoffUntil;
     attendance.nextRefreshAt = refreshAt(stored.attendanceLastAttemptAt, stored.attendanceBackoffUntil);
-    prefs = { goal: stored.attendanceGoal || "standard", plan: readPlan(stored.attendancePlan), end: String(stored.forecastEnd || "") };
+    prefs = { goal: stored.attendanceGoal || "standard", plan: readPlan(stored.attendancePlan), end: String(stored.forecastEnd || ""), calendar: String(stored.academicCalendar || "auto") };
+    if (calendarSelect) calendarSelect.value = prefs.calendar;
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";
     showView(start, { remember: false });

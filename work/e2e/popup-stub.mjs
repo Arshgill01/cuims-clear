@@ -12,7 +12,7 @@ const at = (key, hours, minutes = 0) => campusTime(key, hours, minutes).getTime(
 export function scenarios() {
   const base = (options = {}) => semester({ until: "2026-10-08", ...options });
   const list = {};
-  const add = (name, { data = base(), now = at("2026-10-09", 10, 5), extra = {}, readAgo = 3 * 60_000 } = {}) => {
+  const add = (name, { data = base(), now = at("2026-10-09", 10, 5), extra = {}, readAgo = 60_000 } = {}) => {
     const snapshot = { ...data.snapshot, fetchedAt: new Date(now - readAgo).toISOString() };
     list[name] = { now, data: { attendanceSnapshot: snapshot, attendanceHistory: data.history, ...extra } };
   };

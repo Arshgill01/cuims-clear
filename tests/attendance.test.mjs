@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
-import { fakeCuims, memoryStorage, TIMETABLE_HTML, dutyLeavePage, medicalLeavePage } from "./fake-cuims.mjs";
+import { fakeCuims, memoryStorage, TIMETABLE_HTML, dutyLeavePage, medicalLeavePage, EMPTY_MENU_PAGE } from "./fake-cuims.mjs";
 import { contentSource } from "./content-source.mjs";
 
-const FILES = ["attendance-parse.js", "attendance-model.js", "attendance-client.js", "attendance-daemon.js", "attendance-view.js"];
+const FILES = ["attendance-parse.js", "academic-calendar.js", "attendance-model.js", "attendance-client.js", "attendance-daemon.js", "attendance-view.js"];
 
 function load() {
   const context = vm.createContext({ URL, URLSearchParams, Headers, AbortSignal, TextEncoder, Intl, Date, Math, JSON, console, setTimeout });
@@ -20,7 +20,7 @@ const A = load();
 const MONDAY_11 = Date.UTC(2026, 8, 28, 5, 30);
 const at = (hours, minutes = 0, day = 28) => Date.UTC(2026, 8, day, hours - 5, minutes - 30);
 
-function daemon(server, storage, { clock = MONDAY_11, captcha = "Ab12", solve = null } = {}) {
+function daemon(server, storage, { clock = MONDAY_11, captcha = "Ab12", solve = null, onSleep = null } = {}) {
   let time = clock;
   const sleeps = [];
   const instance = A.createDaemon({
@@ -31,12 +31,20 @@ function daemon(server, storage, { clock = MONDAY_11, captcha = "Ab12", solve = 
     sleep: async (ms) => {
       sleeps.push(ms);
       time += ms;
+      await onSleep?.(ms, time);
     },
   });
   return { ...instance, sleeps, advance: (ms) => (time += ms), setTime: (value) => (time = value) };
 }
 
 const saved = (extra = {}) => memoryStorage({ uid: "24BCS00000", password: "secret", ...extra });
+const META = { reportId: "RID+/=", sessionId: "25262" };
+const HOME = "https://students.cuchd.in/StudentHome.aspx";
+// A timetable read this morning, and leave pages read today with nothing
+// pending: a read then needs no page at all.
+const freshTimetable = (at = MONDAY_11) => ({ slots: A.parseTimetable(TIMETABLE_HTML), savedAt: at, session: "25262" });
+const leavesRead = (at = MONDAY_11) => ({ v: A.LEAVES_VERSION, apps: { dl: [], ml: [] }, pending: {}, dlAt: at, mlAt: at, checkedAt: at });
+const pagesOf = (server) => server.state.requests.filter((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`));
 
 // ---- parsing against the real page shapes ----
 
@@ -96,14 +104,14 @@ test("course tone follows the attendance percentage", () => {
   assert.equal(view.subjects[0].line, "Attend next 2 to reach 75%");
 });
 
-test("an ended class with no posted mark counts as missed until CUIMS posts it", () => {
+test("an ended class with no posted mark shows as not marked and leaves the numbers to CUIMS", () => {
   const slots = A.parseTimetable(TIMETABLE_HTML);
   const filler = { code: "24XX-100", title: "Filler", attended: 500, delivered: 505 };
   const subjects = [{ code: "24CSP-305", title: "Competitive Coding-II", attended: 26, delivered: 32, marks: [] }, filler];
   const unposted = A.buildAnalytics({ subjects, slots, marksDay: "2026-09-28" }, new Date(MONDAY_11));
   const row = unposted.subjects.find((item) => item.code === "24CSP-305");
   assert.equal(row.today[0].state, "pending");
-  assert.equal(row.skip, 1, "26 of 33 leaves one skip, not two");
+  assert.equal(row.skip, 2, "26 of 32, as CUIMS has it");
 
   const posted = A.buildAnalytics({
     subjects: [{ ...subjects[0], attended: 27, delivered: 33, marks: [{ date: "28/09/2026", time: "09:40 - 10:20 AM", present: true }] }, filler],
@@ -113,6 +121,28 @@ test("an ended class with no posted mark counts as missed until CUIMS posts it",
   const after = posted.subjects.find((item) => item.code === "24CSP-305");
   assert.equal(after.today[0].state, "present");
   assert.equal(after.skip, 3);
+});
+
+test("unmarked classes never turn a posted 91.7% into a reach-90% warning", () => {
+  // 2026-10-13: 310/338 posted and seven of the day's classes ended unmarked
+  // (CUIMS had posted nothing since 9 Oct). Counting them as missed made
+  // 310/345 and "Attend next 5 classes to reach 90%".
+  const slot = (shortCode, hour) => ({ weekday: "mon", start: hour * 60, end: hour * 60 + 50, shortCode, title: "", kind: "L" });
+  const slots = [slot("CSP-305", 9), slot("CSP-305", 10), ...[11, 12, 13, 14, 15].map((hour) => slot("XX-100", hour))];
+  const subjects = [
+    { code: "24CSP-305", title: "Competitive Coding-II", attended: 30, delivered: 36, marks: [] },
+    { code: "24XX-100", title: "Filler", attended: 280, delivered: 302, marks: [] },
+  ];
+  const view = A.buildAnalytics({ subjects, slots, marksDay: "2026-09-28" }, new Date(Date.parse("2026-09-28T21:23:00+05:30")));
+  assert.equal(A.formatPercent(view.overall.percent), "91.7%");
+  assert.equal(view.overall.pending, 7);
+  assert.equal(view.overall.recover, 0);
+  assert.equal(view.overall.skip, A.maxMisses(310, 338, 0.9));
+  assert.equal(view.overall.line, "6 misses left, shared across subjects");
+  const cc = view.subjects.find((row) => row.code === "24CSP-305");
+  assert.deepEqual(cc.today.map((item) => item.state), ["pending", "pending"]);
+  assert.equal(cc.line, "Can skip 4");
+  assert.doesNotMatch(A.renderAttendance(view, { now: new Date() }), /is-recover/);
 });
 
 test("today's later classes show as upcoming and count toward classes left", () => {
@@ -198,21 +228,6 @@ test("a tab that just started loading the login page keeps the background off th
   assert.equal(server.state.loginPageLoads + server.state.captchaReads + server.state.loginPosts, 0);
 });
 
-test("an Open CUIMS that gave up on the background sign-in cancels it before it submits", async () => {
-  const server = fakeCuims();
-  const controller = new AbortController();
-  const bg = daemon(server, saved(), {
-    solve: async () => {
-      controller.abort();
-      return { text: "Ab12", confident: true };
-    },
-  });
-  const result = await bg.ensureSession({ signal: controller.signal });
-  assert.equal(result.alive, false);
-  assert.equal(result.reason, "cancelled");
-  assert.equal(server.state.loginPosts, 0);
-});
-
 test("an unsure captcha read is re-drawn, never submitted, and costs no attempt", async () => {
   const server = fakeCuims();
   const storage = saved();
@@ -289,9 +304,9 @@ test("two refresh presses at once share a single run", async () => {
   assert.equal(server.state.loginPosts, 1);
 });
 
-test("the request budget pauses fetching instead of hammering CUIMS", async () => {
+test("the report budget stops a read before it calls CUIMS", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceRequests: Array.from({ length: 25 }, (_, index) => MONDAY_11 - index * 1000) });
+  const storage = saved({ attendanceMeta: META, attendanceRequests: Array.from({ length: 60 }, (_, index) => MONDAY_11 - index * 1000) });
   const result = await daemon(server, storage).refresh("manual");
   assert.equal(result.code, "busy");
   assert.equal(server.state.requests.length, 0);
@@ -302,7 +317,7 @@ test("a login in progress in a CUIMS tab is waited for, not raced", async () => 
   const storage = saved({ pageLoginAt: MONDAY_11 - 2000 });
   const bg = daemon(server, storage);
   const result = await bg.refresh("manual");
-  assert.equal(bg.sleeps.length, 1);
+  assert.deepEqual(bg.sleeps, [4000, 2000]);
   assert.equal(result.code, "cooldown");
   assert.equal(server.state.uidPosts, 0);
 });
@@ -435,9 +450,9 @@ test("a successful duty-leave read establishes that the CUIMS session is alive",
   const server = fakeCuims({ signedIn: true });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
   await daemon(server, storage).refresh("manual");
-  assert.equal(server.state.leavePageLoads, 1);
+  assert.equal(server.state.leavePageLoads, 2, "duty and medical leave, both due");
   assert.equal(storage.data.sessionAlive, true);
-  assert.equal(storage.data.sessionCheckedAt, MONDAY_11);
+  assert.equal(storage.data.sessionCheckedAt, MONDAY_11 + 6_000, "the medical leave page, six seconds on");
 });
 
 // ---- the CUIMS tab defers to the background ----
@@ -574,46 +589,23 @@ test("a refresh that gave way runs again once the tab lands on StudentHome", asy
 
 // ---- Open CUIMS / Open LMS reuse or create the browser's session ----
 
-test("opening CUIMS with a live session only pings StudentHome", async () => {
+test("a network failure never holds Refresh back beyond the 30-second gap", async () => {
   const server = fakeCuims({ signedIn: true });
-  const result = await daemon(server, saved()).ensureSession();
-  assert.deepEqual({ ...result }, { alive: true });
-  assert.deepEqual(server.state.requests, ["GET /StudentHome.aspx"]);
-});
-
-test("opening CUIMS with a dead session signs in once in the background", async () => {
-  const server = fakeCuims();
-  const storage = saved();
-  const result = await daemon(server, storage).ensureSession();
-  assert.equal(result.signedIn, true);
-  assert.equal(server.state.loginPosts, 1);
-  assert.equal(server.state.signedIn, true);
-  assert.equal(storage.data.sessionAlive, true);
-});
-
-test("opening CUIMS never signs in while a tab is on the login page, or when auto-login is off", async () => {
-  for (const storage of [loginTabOpen(), saved({ autoSubmitLogin: false })]) {
-    const server = fakeCuims();
-    const result = await daemon(server, storage).ensureSession();
-    assert.equal(result.alive, false);
-    assert.equal(server.state.loginPosts + server.state.uidPosts, 0);
+  let offline = true;
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), attendanceLeaves: leavesRead() });
+  const bg = daemon({ fetchImpl: async (url, options) => {
+    if (offline) throw new TypeError("Failed to fetch");
+    return server.fetchImpl(url, options);
+  } }, storage);
+  for (let press = 0; press < 5; press += 1) {
+    const result = await bg.refresh();
+    assert.equal(result.code, "network");
+    assert.equal(result.nextRefreshAt, MONDAY_11 + press * 30_000 + 30_000);
+    bg.advance(30_000);
   }
-});
-
-test("opening CUIMS respects the shared lockout", async () => {
-  const server = fakeCuims();
-  const result = await daemon(server, saved({ loginGuard: { failures: [], lockoutUntil: MONDAY_11 + 60_000 } })).ensureSession();
-  assert.equal(result.reason, "lockout");
-  assert.equal(server.state.uidPosts, 0);
-});
-
-test("an open waits for a refresh that is already talking to CUIMS", async () => {
-  const server = fakeCuims();
-  const bg = daemon(server, saved());
-  const [refresh, session] = await Promise.all([bg.refresh("manual"), bg.ensureSession()]);
-  assert.equal(refresh.snapshot.subjects.length, 3);
-  assert.deepEqual({ ...session }, { alive: true });
-  assert.equal(server.state.loginPosts, 1);
+  assert.equal(storage.data.attendanceBackoffUntil || 0, 0);
+  offline = false;
+  assert.equal((await bg.refresh()).error, undefined);
 });
 
 // ---- the login tab recovers from a captcha the background replaced ----
@@ -710,27 +702,29 @@ test("CUIMS's page limit on the attendance page is waited out: no sign-in, last 
 // redirect for a signed-out session, signed in, met the redirect again and
 // said "CUIMS accepted the login but did not keep the session", dropping
 // the attendance it had just read.
-test("a limited duty-leave page is not taken for signed out: no sign-in, fresh attendance, leave read after the pause", async () => {
+test("a duty-leave page CUIMS refuses (error.html) is never a reason to sign in or to probe Home: attendance stays fresh, pages pause", async () => {
   const server = fakeCuims({ signedIn: true, limited: true });
   const old = { fetchedAt: new Date(MONDAY_11 - 3_600_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] };
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) }, attendanceSnapshot: old });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), attendanceSnapshot: old });
   const bg = daemon(server, storage);
   const result = await bg.refresh("manual");
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.snapshot.subjects.length, 3, "the report calls answered, so the read is fresh");
-  assert.equal(server.state.limitedHits, 1);
+  assert.deepEqual(pagesOf(server), [`GET ${A.LEAVE_PAGES.dl}`], "no Home check, no sign-in, no second page");
   assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.captchaReads + server.state.loginPageLoads, 0);
-  assert.notEqual(storage.data.sessionAlive, false, "limited is not signed out");
-  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000);
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000, "a refusal, not a sign-out");
   assert.equal(storage.data.attendanceBackoffUntil || 0, 0);
   bg.advance(10 * 60_000);
   assert.equal((await bg.refresh("manual")).error, undefined);
-  assert.equal(server.state.limitedHits, 1, "no page while paused");
+  assert.equal(pagesOf(server).length, 1, "no page while paused");
+  // The student opens CUIMS and its menu loads.
   server.state.limited = false;
+  const seen = MONDAY_11 + 10 * 60_000;
+  Object.assign(storage.data, { tabPageAt: seen, tabMenuOkAt: seen, sessionAlive: true, sessionCheckedAt: seen });
   bg.advance(5 * 60_000);
   await bg.refresh("manual");
-  assert.equal(server.state.leavePageLoads, 1, "tried again once the pause is over, not three hours on");
-  assert.equal(storage.data.pagesPauseStreak, 0);
+  assert.equal(server.state.leavePageLoads, 2, "duty and medical leave, six seconds apart");
+  assert.equal(server.state.loginPosts, 0);
 });
 
 test("a CUIMS tab sent to error.html holds the background's pages and sign-ins for fifteen minutes", async () => {
@@ -741,65 +735,67 @@ test("a CUIMS tab sent to error.html holds the background's pages and sign-ins f
   assert.equal(result.code, "page-limit");
   assert.match(result.error, /Next try in 14 min\.$/);
   assert.equal(server.state.requests.length, 0);
-  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: false, reason: "page-limit" });
-  assert.deepEqual(server.state.requests, ["GET /StudentHome.aspx"], "Open CUIMS checks the session but does not sign in");
+  assert.equal(storage.data.pagesPausedUntil || 0, 0, "a local pause does not manufacture another server refusal");
   bg.advance(14 * 60_000);
   const ok = await bg.refresh("manual");
   assert.equal(ok.error, undefined, ok.error);
   assert.equal(server.state.loginPosts, 1);
 });
 
-test("the first read skips the timetable, says when it can follow, and the read a minute later loads it", async () => {
+test("the first read loads the timetable right after the attendance page, six seconds apart, and no leave page beside it", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
-  const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
-  const leaveLoads = () => server.state.requests.filter((line) => /leave/i.test(line)).length;
   const first = await bg.refresh("manual");
-  assert.equal(timetableLoads(), 0, "not in the same burst as the attendance page");
-  assert.equal(first.snapshot.timetableDueAt, MONDAY_11 + 60_000);
-  bg.advance(60_000);
-  const second = await bg.refresh("manual");
-  assert.equal(timetableLoads(), 1);
-  assert.equal(leaveLoads(), 0, "no leave page beside it");
-  assert.ok(second.snapshot.slots.length > 0);
-  assert.equal(second.snapshot.timetableDueAt, undefined);
+  assert.equal(first.error, undefined, first.error);
+  assert.deepEqual(pagesOf(server), ["GET /frmStudentCourseWiseAttendanceSummary.aspx", "GET /frmMyTimeTable.aspx"]);
+  assert.deepEqual(bg.sleeps, [6_000]);
+  assert.ok(first.snapshot.slots.length > 0);
+  assert.equal(first.snapshot.timetableDueAt, undefined);
+  assert.equal(storage.data.attendanceTimetable.session, "25262");
 });
 
-test("a saved timetable from an earlier day still waits five minutes after an inner page", async () => {
+test("the timetable is kept for a week, then read again five minutes clear of the last page", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const storage = saved({ attendanceMeta: META, attendanceLeaves: leavesRead(MONDAY_11 + 8 * 24 * 60 * 60_000), attendanceTimetable: freshTimetable(MONDAY_11 - 6 * 24 * 60 * 60_000), tabPageAt: MONDAY_11 - 60_000 });
   const bg = daemon(server, storage);
   const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
-  const first = await bg.refresh("manual");
-  assert.equal(first.snapshot.timetableDueAt, undefined, "the saved one is used meanwhile");
-  bg.advance(60_000);
-  await bg.refresh("manual");
-  assert.equal(timetableLoads(), 0, "a minute after an inner page is too soon");
+  await bg.refresh();
+  assert.equal(timetableLoads(), 0, "six days old is still this week's");
+  bg.advance(24 * 60 * 60_000);
+  storage.data.tabPageAt = MONDAY_11 + 24 * 60 * 60_000 - 60_000;
+  await bg.refresh();
+  assert.equal(timetableLoads(), 0, "a CUIMS tab was in use a minute ago");
   bg.advance(4 * 60_000);
-  await bg.refresh("manual");
+  await bg.refresh();
   assert.equal(timetableLoads(), 1);
+  bg.advance(60 * 60_000);
+  await bg.refresh();
+  assert.equal(timetableLoads(), 1, "kept for another week");
 });
 
-test("a first timetable that CUIMS limits is due again once the pause and the hourly retry are over", async () => {
+test("a new semester's report session reads the timetable again", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved();
-  const bg = daemon(server, storage);
-  await bg.refresh("manual");
-  server.state.limited = true;
-  bg.advance(60_000);
-  const limited = await bg.refresh("manual");
-  assert.equal(limited.error, undefined, limited.error);
-  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 16 * 60_000);
-  assert.equal(limited.snapshot.timetableDueAt, MONDAY_11 + 61 * 60_000, "the hourly retry is the later");
+  const storage = saved({ attendanceMeta: META, attendanceLeaves: leavesRead(), attendanceTimetable: { ...freshTimetable(), session: "25261" } });
+  await daemon(server, storage).refresh();
+  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
+  assert.equal(storage.data.attendanceTimetable.session, "25262");
 });
 
-test("a limited timetable keeps the read, holds pages for fifteen minutes and is retried after an hour", async () => {
-  const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+test("a first timetable that CUIMS refuses is due again once the pause and the hourly retry are over", async () => {
+  const server = fakeCuims({ signedIn: true, limited: "menu" });
+  const storage = saved({ attendanceMeta: META, attendanceLeaves: leavesRead() });
+  const result = await daemon(server, storage).refresh("manual");
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000);
+  assert.equal(result.snapshot.timetableDueAt, MONDAY_11 + 60 * 60_000, "the hourly retry is the later");
+});
+
+test("a refused timetable keeps the read, holds pages for fifteen minutes and is retried after an hour", async () => {
+  const server = fakeCuims({ signedIn: true, limited: "menu" });
+  const storage = saved({ attendanceMeta: META, attendanceLeaves: leavesRead() });
   const bg = daemon(server, storage);
-  server.state.limited = true;
-  const first = await bg.refresh("manual");
+  const first = await bg.refresh();
   assert.equal(first.error, undefined, first.error);
   assert.equal(first.snapshot.subjects.length, 3);
   assert.equal(storage.data.attendanceBackoffUntil || 0, 0);
@@ -807,23 +803,17 @@ test("a limited timetable keeps the read, holds pages for fifteen minutes and is
   const timetableLoads = () => server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length;
   assert.equal(timetableLoads(), 1);
   bg.advance(10 * 60_000);
-  assert.equal((await bg.refresh("manual")).error, undefined);
+  assert.equal((await bg.refresh()).error, undefined);
   assert.equal(timetableLoads(), 1);
   assert.equal(server.state.limitedHits, 1, "no page while paused");
   server.state.limited = false;
   bg.advance(60 * 60_000);
-  await bg.refresh("manual");
+  await bg.refresh();
   assert.equal(timetableLoads(), 2);
   assert.ok(storage.data.attendanceTimetable.slots.length > 0);
 });
 
-test("opening CUIMS after a background sign-in hands the tab a finished session", async () => {
-  const server = fakeCuims();
-  await daemon(server, saved()).ensureSession();
-  assert.equal(server.state.landed, true);
-});
-
-test("an expired session never signs in for leave: attendance reads, leave waits for a live session", async () => {
+test("an expired session signs in once for due leave: attendance reads first, then the leave page in a fresh session", async () => {
   const server = fakeCuims({ signedIn: false });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
   const bg = daemon(server, storage);
@@ -831,22 +821,25 @@ test("an expired session never signs in for leave: attendance reads, leave waits
   const result = await bg.refresh("manual");
   assert.equal(result.error, undefined, result.error);
   assert.equal(result.snapshot.subjects.length, 3);
-  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads + server.state.captchaReads, 0);
   assert.equal(server.state.cookiedReports, 0, "report calls remain anonymous");
-  assert.equal(dutyLeaveLoads(), 1);
-  assert.equal(storage.data.sessionAlive, false);
-  // Known signed out: no more leave pages, however long it has been.
-  bg.advance(4 * 60 * 60_000);
-  await bg.refresh("manual");
-  assert.equal(dutyLeaveLoads(), 1);
-  // A CUIMS tab lands on StudentHome: the next Refresh reads it.
-  server.state.signedIn = true;
-  Object.assign(storage.data, { sessionAlive: true, sessionCheckedAt: MONDAY_11 + 4 * 60 * 60_000 });
-  bg.advance(5 * 60_000);
-  const next = await bg.refresh("manual");
+  // The leave page met the login page, so the read signed in (one submit)
+  // and loaded it again.
+  assert.equal(server.state.loginPosts, 1);
   assert.equal(dutyLeaveLoads(), 2);
-  assert.ok(next.snapshot.leaves.checkedAt);
-  assert.equal(server.state.loginPosts, 0);
+  assert.ok(result.snapshot.leaves.checkedAt);
+  assert.equal(storage.data.sessionAlive, true, "the browser now holds a live session for Open CUIMS");
+  // Every page six seconds or more after the one before.
+  const pages = server.state.requests.filter((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`));
+  assert.ok(pages.length <= 4, pages.join(", "));
+  // Known signed out (a sign-out seen since): the next due page signs in
+  // first, without spending a request to find out.
+  Object.assign(storage.data, { sessionAlive: false, sessionCheckedAt: MONDAY_11 + 60_000 });
+  server.state.signedIn = false;
+  bg.advance(25 * 60 * 60_000);
+  const before = dutyLeaveLoads();
+  await bg.refresh("manual");
+  assert.equal(dutyLeaveLoads(), before + 1, "one leave load, after the sign-in");
+  assert.equal(server.state.loginPosts, 2);
 });
 
 // ---- nothing runs on a timer ----
@@ -949,31 +942,47 @@ test("a pending duty leave is matched to the absent class it covers, and shows w
   assert.ok(view.overall.ifApproved > view.overall.percent);
 });
 
-test("a Refresh loads at most one inner page, five minutes apart (a first timetable one), and each leave page every three hours", async () => {
+test("a read loads at most two optional pages (one beside the attendance page), five minutes clear of the last; each leave page once, then daily", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
-  const inner = () => server.state.requests.filter((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`));
   const count = (path) => server.state.requests.filter((line) => line === `GET ${path}`).length;
   const pageTimes = [];
   // A press every minute for four hours.
   for (let minute = 0; minute < 4 * 60; minute += 1) {
-    const before = inner().length;
+    const before = pagesOf(server).length;
     assert.equal((await bg.refresh("manual")).error, undefined);
-    const loaded = inner().length - before;
-    assert.ok(loaded <= 1, `minute ${minute}: ${inner().slice(before).join(", ")}`);
+    const loaded = pagesOf(server).length - before;
+    // The very first read: the attendance page, then the first timetable.
+    // Five minutes on: duty and medical leave, six seconds apart.
+    assert.ok(loaded <= 2, `minute ${minute}: ${pagesOf(server).slice(before).join(", ")}`);
     if (loaded) pageTimes.push(minute);
     bg.advance(60_000);
   }
-  // The first timetable follows the attendance page a minute later; every
-  // other page waits five minutes after the one before.
-  for (let index = 2; index < pageTimes.length; index += 1) assert.ok(pageTimes[index] - pageTimes[index - 1] >= 5, pageTimes.join(","));
-  // Attendance page, timetable, duty leave, medical leave; leave again after three hours.
-  assert.deepEqual(pageTimes.slice(0, 4), [0, 1, 6, 11]);
+  assert.deepEqual(pageTimes, [0, 5]);
   assert.equal(server.state.attendanceLoads, 1);
-  assert.equal(count(A.LEAVE_PAGES.dl), 2);
-  assert.equal(count(A.LEAVE_PAGES.ml), 2);
-  assert.equal(inner().length, 6);
+  assert.equal(count(A.LEAVE_PAGES.dl), 1);
+  assert.equal(count(A.LEAVE_PAGES.ml), 1);
+  assert.equal(pagesOf(server).length, 4);
+});
+
+test("a pending duty leave is checked every three hours; without one, daily", async () => {
+  const server = fakeCuims({ signedIn: true, dutyLeaves: [{ id: 11, dated: "25 Sep 2026", status: "Pending" }] });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), attendanceLeaves: { ...leavesRead(MONDAY_11 - 25 * 60 * 60_000), mlAt: MONDAY_11 } });
+  const bg = daemon(server, storage);
+  const dl = () => server.state.requests.filter((line) => line === `GET ${A.LEAVE_PAGES.dl}`).length;
+  await bg.refresh();
+  assert.equal(dl(), 1, "a day since the last look");
+  bg.advance(2 * 60 * 60_000);
+  await bg.refresh();
+  assert.equal(dl(), 1);
+  bg.advance(60 * 60_000);
+  await bg.refresh();
+  assert.equal(dl(), 2, "pending: three hours on");
+  server.state.summary[0].Total_Attd = String(Number(server.state.summary[0].Total_Attd) + 1);
+  bg.advance(3 * 60 * 60_000);
+  await bg.refresh();
+  assert.equal(dl(), 3);
 });
 
 test("a duty-leave approval shows on the next Refresh from the free calls, without the leave page", async () => {
@@ -997,7 +1006,7 @@ test("a duty-leave approval shows on the next Refresh from the free calls, witho
   bg.advance(60_000);
   const next = await bg.refresh("manual");
   assert.deepEqual({ ...next.snapshot.leaves.pending }, {});
-  assert.equal(server.state.leavePageLoads, 1, "the duty leave page is not reloaded");
+  assert.equal(server.state.leavePageLoads, 2, "the first read's duty and medical leave; neither reloaded");
   const view = A.buildAnalytics(next.snapshot, new Date(MONDAY_11 + 2 * 60_000));
   assert.equal(view.overall.leave.pending.dl, 0);
   assert.doesNotMatch(A.renderAttendance(view), /open Duty Leave/);
@@ -1116,13 +1125,13 @@ test("pending duty leave is sorted into VDL, IDL, or ADL by its category", () =>
 
 // ---- conservative traffic policy ----
 
-test("a refresh at 59 seconds reuses cache, including after a background restart; 60 seconds may fetch", async () => {
+test("a refresh at 29 seconds reuses cache, including after a background restart; 30 seconds may fetch", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved();
   const bg = daemon(server, storage);
   await bg.refresh();
   const count = server.state.requests.length;
-  const restarted = daemon(server, storage, { clock: MONDAY_11 + 59_000 });
+  const restarted = daemon(server, storage, { clock: MONDAY_11 + 29_000 });
   assert.equal((await restarted.refresh()).recent, true);
   assert.equal(server.state.requests.length, count);
   restarted.advance(1000);
@@ -1130,7 +1139,7 @@ test("a refresh at 59 seconds reuses cache, including after a background restart
   assert.ok(server.state.requests.length > count);
 });
 
-test("HTTP 429 is a portal throttle and stops both refreshes and session checks for five minutes", async () => {
+test("HTTP 429 is a portal throttle and holds refreshes for five minutes", async () => {
   let requests = 0;
   const storage = saved();
   const server = { fetchImpl: async (url) => {
@@ -1141,40 +1150,23 @@ test("HTTP 429 is a portal throttle and stops both refreshes and session checks 
   assert.equal((await bg.refresh()).code, "portal-busy");
   assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
   bg.advance(60_000);
-  assert.equal((await bg.ensureSession()).reason, "backoff");
+  assert.equal((await bg.refresh()).code, "backoff");
   assert.equal(requests, 1);
 });
 
-test("while CUIMS limits pages, Open CUIMS and LMS still work, and a signed-out open leaves the sign-in to the tab", async () => {
-  const server = fakeCuims({ signedIn: true, limited: true });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+test("a known page refusal holds background pages while reports still refresh", async () => {
+  const server = fakeCuims({ signedIn: true, limited: "menu" });
+  const storage = saved({ attendanceMeta: META });
   const bg = daemon(server, storage);
   assert.equal((await bg.refresh()).error, undefined);
-  const inner = server.state.requests.filter((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`));
-  assert.deepEqual(inner, ["GET /frmMyTimeTable.aspx"], "one limited page, then none");
-  assert.ok(server.state.requests.includes("GET /StudentHome.aspx"), "StudentHome told the limit from a sign-out");
-  bg.advance(60_000);
-  assert.equal((await bg.ensureSession()).alive, true);
-  const lms = await bg.withRequests((request) => request("https://students.cuchd.in/StudentHome.aspx"));
-  assert.equal(lms.status, 200);
-  server.state.signedIn = false;
-  storage.data.sessionAlive = false;
-  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: false, reason: "page-limit" });
+  assert.deepEqual(pagesOf(server), ["GET /frmMyTimeTable.aspx"], "one refused page, and no Home check to tell why");
+  bg.advance(6 * 60_000);
+  const until = storage.data.pagesPausedUntil;
+  const sent = server.state.requests.length;
+  assert.equal((await bg.refresh()).error, undefined);
+  assert.deepEqual(server.state.requests.slice(sent), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport"], "duty leave is due but waits out the pause");
+  assert.equal(storage.data.pagesPausedUntil, until, "a held page does not extend the pause");
   assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.captchaReads, 0);
-});
-
-test("an error.html home response is a throttle, not an alive session", async () => {
-  const storage = saved();
-  let requests = 0;
-  const bg = daemon({ fetchImpl: async () => {
-    requests += 1;
-    return { status: 200, url: "https://students.cuchd.in/error.html", text: async () => "<html>Error</html>" };
-  } }, storage);
-  assert.equal((await bg.ensureSession()).reason, "portal-busy");
-  assert.notEqual(storage.data.sessionAlive, true);
-  assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 5 * 60_000);
-  assert.equal((await bg.ensureSession()).reason, "backoff");
-  assert.equal(requests, 1);
 });
 
 test("Retry-After extends the portal cooldown and survives a background restart", async () => {
@@ -1187,49 +1179,54 @@ test("Retry-After extends the portal cooldown and survives a background restart"
   await daemon(server, storage).refresh();
   assert.equal(storage.data.attendanceBackoffUntil, MONDAY_11 + 10 * 60_000);
   const restarted = daemon(server, storage, { clock: MONDAY_11 + 5 * 60_000 });
-  assert.equal((await restarted.ensureSession()).reason, "backoff");
-  await assert.rejects(restarted.withRequests((request) => request("https://students.cuchd.in/StudentHome.aspx")), { code: "backoff" });
+  assert.equal((await restarted.refresh()).code, "backoff");
   assert.equal(requests, 1);
 });
 
-test("attendance and LMS share the 25-request rolling budget, including after restart", async () => {
+test("report calls and CUIMS session requests have separate local budgets that survive a restart", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceRequests: Array(24).fill(MONDAY_11) });
-  const bg = daemon(server, storage);
-  const home = await bg.withRequests((request) => request("https://students.cuchd.in/StudentHome.aspx", { redirect: "manual" }));
-  assert.equal(home.status, 200);
-  assert.equal(storage.data.attendanceRequests.length, 25);
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), attendanceSessionRequests: Array(10).fill(MONDAY_11) });
+  const read = await daemon(server, storage).refresh();
+  assert.equal(read.error, undefined, "attendance is report calls, outside the session budget");
+  assert.equal(server.state.leavePageLoads, 0, "the optional page waits for room");
+  storage.data.attendanceRequests = Array(60).fill(MONDAY_11);
+  storage.data.attendanceLastAttemptAt = 0;
   assert.equal((await daemon(server, storage).refresh()).code, "busy");
-  assert.equal(server.state.requests.length, 1);
-  const later = daemon(server, storage, { clock: MONDAY_11 + 10 * 60_000 });
+  const later = daemon(server, storage, { clock: MONDAY_11 + 10 * 60_000 + 1 });
   assert.equal((await later.refresh()).error, undefined);
-  assert.ok(storage.data.attendanceRequests.length < 25);
+  assert.ok(storage.data.attendanceRequests.length < 60);
+  assert.equal(server.state.leavePageLoads, 2, "the session budget has room again too");
 });
 
-test("leave ingestion waits for the shared request queue and cannot overwrite another caller's budget", async () => {
+test("leave ingestion waits for a read in progress and cannot overwrite its budget", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceCourses: { "24CSP305": "enc305" } });
-  const bg = daemon(server, storage);
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), attendanceLeaves: leavesRead() });
   let release;
   let entered;
-  const ready = new Promise((resolve) => entered = resolve);
-  const gate = new Promise((resolve) => release = resolve);
-  const opening = bg.withRequests(async (request) => {
-    await request("https://students.cuchd.in/StudentHome.aspx");
-    entered();
-    await gate;
-  });
+  const ready = new Promise((resolve) => (entered = resolve));
+  const gate = new Promise((resolve) => (release = resolve));
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    if (target.endsWith("/GetReport")) {
+      entered();
+      await gate;
+    }
+    return original(target, options);
+  };
+  const bg = daemon(server, storage);
+  const reading = bg.refresh();
   await ready;
   const ingest = bg.ingestLeavePage("dl", dutyLeavePage([{ id: 11, dated: "25 Sep 2026", status: "Pending" }]));
   await Promise.resolve();
-  assert.equal(server.state.requests.length, 1);
+  assert.equal(storage.data.attendanceLeaves.apps.dl.length, 0, "the ingest waits its turn");
   release();
-  await Promise.all([opening, ingest]);
-  // Ingesting makes no request; the open's one is kept, not overwritten.
-  assert.equal(storage.data.attendanceRequests.length, 1);
+  await Promise.all([reading, ingest]);
+  assert.equal(storage.data.attendanceLeaves.apps.dl.length, 1);
+  // Ingesting makes no request; the read's report calls are all kept.
+  assert.equal(storage.data.attendanceRequests.length, server.state.requests.filter((line) => /\/Get(Full)?Report$/.test(line)).length);
 });
 
-test("a marks throttle stops the refresh before leave work and preserves cached attendance", async () => {
+test("a marks throttle keeps the totals just read and stops the rest of the read", async () => {
   const server = fakeCuims({ signedIn: true });
   const base = server.fetchImpl;
   server.fetchImpl = async (url, options) => {
@@ -1240,10 +1237,11 @@ test("a marks throttle stops the refresh before leave work and preserves cached 
     return base(url, options);
   };
   const snapshot = { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [{ code: "X", title: "X", attended: 1, delivered: 1 }] };
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) }, attendanceSnapshot: snapshot });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), attendanceLeaves: leavesRead(), attendanceSnapshot: snapshot });
   const result = await daemon(server, storage).refresh();
   assert.equal(result.code, "portal-busy");
-  assert.deepEqual(result.snapshot, snapshot);
+  assert.equal(result.snapshot.subjects.length, 3, "the fresh totals stand");
+  assert.equal(result.snapshot.fetchedAt, new Date(MONDAY_11).toISOString());
   assert.equal(server.state.leavePageLoads, 0);
   assert.equal(server.state.requests.length, 2);
 });
@@ -1276,7 +1274,7 @@ test("the pause message counts down and stops telling users to wait after it exp
 });
 
 
-test("a duty-leave throttle preserves cached attendance and blocks all further work", async () => {
+test("a duty-leave throttle keeps the fresh totals and blocks all further work", async () => {
   const server = fakeCuims({ signedIn: true });
   const base = server.fetchImpl;
   server.fetchImpl = async (url, options) => {
@@ -1287,41 +1285,45 @@ test("a duty-leave throttle preserves cached attendance and blocks all further w
     return base(url, options);
   };
   const snapshot = { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [] };
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [], triedAt: MONDAY_11 }, attendanceSnapshot: snapshot });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: { day: "2026-09-28", slots: [], triedAt: MONDAY_11 }, attendanceSnapshot: snapshot });
   const bg = daemon(server, storage);
   const result = await bg.refresh();
   assert.equal(result.code, "portal-busy");
-  assert.deepEqual(result.snapshot, snapshot);
-  // The Forecast tab's optional history calls may come first; nothing
-  // follows the refused duty-leave page.
-  const required = () => server.state.requests.filter((line) => !/getfullreport/i.test(line));
-  assert.deepEqual(required(), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport", `GET ${A.LEAVE_PAGES.dl}`]);
-  assert.equal(server.state.requests.at(-1), `GET ${A.LEAVE_PAGES.dl}`);
+  assert.equal(result.snapshot.subjects.length, 3);
+  assert.deepEqual(server.state.requests, ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport", `GET ${A.LEAVE_PAGES.dl}`]);
   const sent = server.state.requests.length;
   bg.advance(60_000);
   assert.equal((await bg.refresh()).code, "backoff");
-  assert.equal((await bg.ensureSession()).reason, "backoff");
   assert.equal(server.state.requests.length, sent);
 });
 
-test("automatic duty-leave reads use the remaining shared budget and never exceed 25 requests", async () => {
+test("a spent session budget skips the optional page and still reads attendance", async () => {
   const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceRequests: Array(24).fill(MONDAY_11), attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: [], triedAt: MONDAY_11 } });
+  const storage = saved({ attendanceSessionRequests: Array(10).fill(MONDAY_11), attendanceMeta: META, attendanceTimetable: freshTimetable() });
   const result = await daemon(server, storage).refresh();
-  assert.equal(result.code, "busy");
-  assert.equal(server.state.requests.length, 1);
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(result.snapshot.subjects.length, 3);
   assert.equal(server.state.leavePageLoads, 0);
-  assert.equal(storage.data.attendanceRequests.length, 25);
+  assert.equal(storage.data.attendanceSessionRequests.length, 10);
+  assert.equal(storage.data.attendanceLeaves ?? null, null, "not marked as a failed try");
 });
 
-test("an expired session never signs in for an optional page, whatever the captcha setting", async () => {
-  for (const autoSolveCaptcha of [true, false]) {
+test("an expired session signs in for an optional page only when signing in is allowed", async () => {
+  // Captcha solving off, a recent refused login, or no saved password: no sign-in.
+  const refused = { failures: [{ at: MONDAY_11 - 60_000, by: "tab" }], lockoutUntil: 0, rejectedUid: "" };
+  for (const extra of [{ autoSolveCaptcha: false }, { loginGuard: refused }, { password: "" }]) {
     const server = fakeCuims({ signedIn: false });
-    const storage = saved({ autoSolveCaptcha, attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+    const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, ...extra });
     const result = await daemon(server, storage).refresh();
     assert.equal(result.error, undefined, result.error);
-    assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.loginPageLoads, 0);
+    assert.equal(result.snapshot.subjects.length, 3, "attendance still reads");
+    assert.equal(server.state.uidPosts + server.state.loginPosts, 0, JSON.stringify(extra));
   }
+  // A CUIMS tab on the login page: the background keeps off the login flow.
+  const server = fakeCuims({ signedIn: false });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, loginTabAt: MONDAY_11 - 5_000 });
+  assert.equal((await daemon(server, storage).refresh()).snapshot.subjects.length, 3);
+  assert.equal(server.state.uidPosts + server.state.loginPosts + server.state.captchaReads, 0);
 });
 
 test("an unchecked leave card asks for an attendance refresh instead of opening CUIMS", () => {
@@ -1332,7 +1334,7 @@ test("an unchecked leave card asks for an attendance refresh instead of opening 
 });
 
 
-test("a failed medical-leave read waits three hours, and a successful retry resets that cadence", async () => {
+test("a failed medical-leave read waits three hours, and a successful retry starts its daily cadence", async () => {
   const server = fakeCuims({ signedIn: true });
   const base = server.fetchImpl;
   let medicalReads = 0;
@@ -1340,89 +1342,379 @@ test("a failed medical-leave read waits three hours, and a successful retry rese
     if (url.endsWith(A.LEAVE_PAGES.ml) && ++medicalReads === 1) return { status: 500, url };
     return base(url, options);
   };
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
+  const dl = () => server.state.requests.filter((line) => line === `GET ${A.LEAVE_PAGES.dl}`).length;
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable() });
   const bg = daemon(server, storage);
-  assert.equal((await bg.refresh()).error, undefined); // duty leave
-  bg.advance(5 * 60_000);
-  await bg.refresh(); // medical leave fails
+  // Duty leave, then medical leave six seconds on, which fails.
+  assert.equal((await bg.refresh()).error, undefined);
+  assert.equal(dl(), 1);
   assert.equal(medicalReads, 1);
   bg.advance(5 * 60_000);
   await bg.refresh();
   assert.equal(medicalReads, 1);
   bg.advance(3 * 60 * 60_000);
-  await bg.refresh(); // duty leave is due again first
-  assert.equal(medicalReads, 1);
+  await bg.refresh(); // medical leave again; duty leave is not due for a day
+  assert.equal(medicalReads, 2);
+  assert.equal(dl(), 1);
   bg.advance(5 * 60_000);
   await bg.refresh();
   assert.equal(medicalReads, 2);
-  bg.advance(5 * 60_000);
-  await bg.refresh();
-  assert.equal(medicalReads, 2);
+  bg.advance(24 * 60 * 60_000);
+  await bg.refresh(); // both due again: duty leave, the more overdue, then medical
+  assert.equal(dl(), 2);
+  assert.equal(medicalReads, 3);
 });
 
-// ---- inner pages: what CUIMS's throttle counts ----
+// ---- portal pages: the local pacing policy ----
 
-test("inner pages are the .aspx pages and the landing step, not StudentHome, login or report calls", () => {
+test("portal page pacing includes Home and the landing step, excluding login and reports", () => {
   const page = (path) => A.isInnerPage(`https://students.cuchd.in${path}`);
-  for (const path of ["/frmStudentCourseWiseAttendanceSummary.aspx?type=x", "/frmMyTimeTable.aspx", A.LEAVE_PAGES.dl, A.LEAVE_PAGES.ml, "/LandingPage.aspx/ShowLandingPage"]) assert.equal(page(path), true, path);
-  for (const path of ["/StudentHome.aspx", "/", "/Login.aspx", "/GenerateCaptcha.aspx?1", "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport", "/frmStudentCourseWiseAttendanceSummary.aspx/GetFullReport"]) assert.equal(page(path), false, path);
-});
-
-test("Refresh then Open CUIMS: the open skips its StudentHome check while a read just saw the session", async () => {
-  const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) } });
-  const bg = daemon(server, storage);
-  await bg.refresh("manual"); // reads duty leave, which proves the session
-  const sent = server.state.requests.length;
-  bg.advance(30_000);
-  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: true });
-  assert.equal(server.state.requests.length, sent);
-  bg.advance(2 * 60_000);
-  assert.deepEqual({ ...(await bg.ensureSession()) }, { alive: true });
-  assert.deepEqual(server.state.requests.slice(sent), ["GET /StudentHome.aspx"]);
-});
-
-test("a background sign-in for Open CUIMS holds optional pages back for five minutes", async () => {
-  const server = fakeCuims();
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML) } });
-  const bg = daemon(server, storage);
-  assert.equal((await bg.ensureSession()).signedIn, true);
-  const sent = server.state.requests.length;
-  bg.advance(60_000);
-  assert.equal((await bg.refresh("manual")).error, undefined);
-  assert.deepEqual(server.state.requests.slice(sent).filter((line) => !/getfullreport/i.test(line)), ["POST /frmStudentCourseWiseAttendanceSummary.aspx/GetReport"]);
-  bg.advance(5 * 60_000);
-  await bg.refresh("manual");
-  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
+  for (const path of ["/StudentHome.aspx", "/frmStudentCourseWiseAttendanceSummary.aspx?type=x", "/frmMyTimeTable.aspx", A.LEAVE_PAGES.dl, A.LEAVE_PAGES.ml, "/LandingPage.aspx/ShowLandingPage"]) assert.equal(page(path), true, path);
+  for (const path of ["/", "/Login.aspx", "/GenerateCaptcha.aspx?1", "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport", "/frmStudentCourseWiseAttendanceSummary.aspx/GetFullReport"]) assert.equal(page(path), false, path);
 });
 
 test("the inner-page clock survives a background restart", async () => {
   const server = fakeCuims({ signedIn: true });
   const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
-  await daemon(server, storage).refresh("manual"); // timetable
-  assert.equal(storage.data.attendancePageAt, MONDAY_11);
+  await daemon(server, storage).refresh("manual"); // timetable, then duty leave
+  assert.equal(storage.data.attendancePageAt, MONDAY_11 + 6_000);
   const restarted = daemon(server, storage, { clock: MONDAY_11 + 2 * 60_000 });
   const sent = server.state.requests.length;
   await restarted.refresh("manual");
   assert.equal(server.state.requests.slice(sent).some((line) => /DutyLeave|Medical/i.test(line)), false);
 });
 
-test("a CUIMS tab's own inner page holds the background's optional pages back for five minutes", async () => {
-  const server = fakeCuims({ signedIn: true });
-  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML) }, tabPageAt: MONDAY_11 - 60_000 });
-  const bg = daemon(server, storage);
-  await bg.refresh("manual");
-  assert.equal(server.state.requests.some((line) => A.isInnerPage(`https://students.cuchd.in${line.split(" ")[1]}`)), false, server.state.requests.join(", "));
-  bg.advance(4 * 60_000);
-  await bg.refresh("manual");
-  assert.equal(server.state.requests.filter((line) => /frmmytimetable/i.test(line)).length, 1);
+const EMPTY_PORTAL_MENU = '<div id="uims_sidebar"><ul class="nav" id="menu-content">\n</ul></div>';
+
+test("individual inner-page requests are paced through a cold login and attendance read", async () => {
+  const server = fakeCuims();
+  let time = MONDAY_11;
+  const pages = [];
+  const bg = A.createDaemon({
+    storage: saved(), solveCaptcha: async () => "Ab12", now: () => time,
+    sleep: async (ms) => { time += ms; },
+    fetchImpl: async (target, options) => {
+      if (A.isInnerPage(target)) {
+        pages.push(time);
+        if (pages.filter((at) => time - at < 5_000).length >= 3) return { url: target, status: 200, text: async () => EMPTY_PORTAL_MENU };
+      }
+      return server.fetchImpl(target, options);
+    },
+  });
+  const result = await bg.refresh();
+  assert.equal(result.error, undefined);
+  assert.equal(result.snapshot.subjects.length, 3);
+  // Attendance (signed out), the landing step, attendance, the first timetable.
+  assert.equal(pages.length, 4);
+  assert.ok(pages.slice(1).every((at, i) => at - pages[i] >= 6_000));
 });
 
-test("a CUIMS tab stamps its inner page loads, but not StudentHome, login or landing, and says when it met the limit", () => {
-  for (const [pathname, stamped] of [["/frmStudentCourseWiseAttendanceSummary.aspx", true], ["/frmStudentApplyDutyLeave.aspx", true], ["/StudentHome.aspx", false], ["/Login.aspx", false], ["/", false], ["/error.html", false]]) {
+test("individual inner-page requests pace the legacy timetable GET and postback", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  let time = MONDAY_11;
+  const pages = [];
+  const bg = A.createDaemon({
+    storage, solveCaptcha: async () => "Ab12", now: () => time,
+    sleep: async (ms) => { time += ms; },
+    fetchImpl: async (target, options) => {
+      if (A.isInnerPage(target)) pages.push(time);
+      if (/frmMyTimeTable/.test(target) && options.method === "GET") return { url: target, status: 200, text: async () => '<form><input type="hidden" name="__VIEWSTATE" value="tt" /></form>' };
+      return server.fetchImpl(target, options);
+    },
+  });
+  assert.equal((await bg.refresh()).error, undefined);
+  // The GET, its postback, then duty leave; the three-page ceiling holds
+  // medical leave back.
+  assert.deepEqual(pages, [MONDAY_11, MONDAY_11 + 6_000, MONDAY_11 + 12_000]);
+});
+
+test("a login tab that appears during page pacing keeps its captcha", async () => {
+  const server = fakeCuims();
+  const storage = saved({ attendancePageAt: MONDAY_11 - 1_000 });
+  const bg = daemon(server, storage, { onSleep: async (_ms, time) => storage.set({ tabLoginTouchAt: time }) });
+  const result = await bg.refresh();
+  assert.equal(result.code, "tab-login");
+  assert.equal(server.state.loginPageLoads + server.state.loginPosts + server.state.captchaReads, 0);
+  assert.deepEqual(bg.sleeps, [5_000]);
+});
+
+test("a tab refusal during page pacing cancels the pending page request", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendancePageAt: MONDAY_11 - 1_000 });
+  const bg = daemon(server, storage, { onSleep: async (_ms, time) => storage.set({ tabLimitedAt: time }) });
+  const result = await bg.refresh();
+  assert.equal(result.code, "page-limit");
+  assert.equal(server.state.requests.length, 0);
+  assert.equal(result.nextRefreshAt, MONDAY_11 + 5_000 + 15 * 60_000);
+});
+
+test("page pacing follows tab activity that arrives during its wait", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendancePageAt: MONDAY_11 - 1_000 });
+  let waits = 0;
+  const bg = daemon(server, storage, { onSleep: async (_ms, time) => {
+    if (++waits === 1) await storage.set({ tabPageAt: time });
+  } });
+  const result = await bg.refresh();
+  assert.equal(result.error, undefined);
+  assert.deepEqual(bg.sleeps, [5_000, 6_000]);
+  assert.equal(result.snapshot.fetchedAt, new Date(MONDAY_11 + 11_000).toISOString());
+});
+
+test("an initial login landing may have no menu before ShowLandingPage initializes it", async () => {
+  const server = fakeCuims();
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    const response = await original(target, options);
+    if (new URL(target).pathname === "/Login.aspx" && options.method === "POST") return { ...response, text: async () => EMPTY_PORTAL_MENU };
+    return response;
+  };
+  const result = await daemon(server, saved()).refresh();
+  assert.equal(result.error, undefined);
+  assert.equal(server.state.landingCalls, 1);
+  assert.equal(result.snapshot.subjects.length, 3);
+});
+
+test("an HTTP 200 empty portal menu pauses pages and preserves leave data and fresh attendance", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const applications = A.parseDutyLeaves(dutyLeavePage([{ id: 11, dated: "25 Sep 2026", status: "Recommend and Approved" }]));
+  assert.equal(applications.length, 1);
+  const leaves = { v: A.LEAVES_VERSION, apps: { dl: applications, ml: [] }, pending: {}, mlAt: MONDAY_11 };
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" }, attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) }, attendanceLeaves: leaves });
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => target.endsWith(A.LEAVE_PAGES.dl)
+    ? { url: target, status: 200, text: async () => EMPTY_PORTAL_MENU }
+    : original(target, options);
+  const bg = daemon(server, storage);
+  const result = await bg.refresh();
+  assert.equal(result.error, undefined);
+  assert.equal(result.snapshot.subjects.length, 3);
+  assert.deepEqual(storage.data.attendanceLeaves.apps, structuredClone(leaves.apps));
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000);
+  assert.equal(server.state.loginPosts + server.state.landingCalls, 0);
+  bg.advance(60_000);
+  assert.equal((await bg.refresh()).error, undefined, "cached report ids still read attendance during the page pause");
+});
+
+test("an HTTP 200 empty timetable menu stops before its postback", async () => {
+  const requests = [];
+  const request = A.createRequest({ fetchImpl: async (target, options) => {
+    requests.push(options.method);
+    return { url: target, status: 200, text: async () => EMPTY_PORTAL_MENU };
+  } });
+  await assert.rejects(A.readTimetable(request), { code: "page-limit" });
+  assert.equal(requests.length, 1);
+});
+
+test("a populated portal menu still allows a genuinely empty leave list", async () => {
+  const html = EMPTY_PORTAL_MENU.replace("\n", '<li><a href="frmMyTimeTable.aspx">Timetable</a></li>') + medicalLeavePage();
+  const request = A.createRequest({ fetchImpl: async (target) => ({ url: target, status: 200, text: async () => html }) });
+  assert.equal((await A.readLeavePage(request, "ml")).length, 0);
+});
+
+test("a CUIMS tab's own page holds the background's optional pages back for five minutes", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable(), tabPageAt: MONDAY_11 - 60_000 });
+  const bg = daemon(server, storage);
+  await bg.refresh("manual");
+  assert.deepEqual(pagesOf(server), []);
+  bg.advance(4 * 60_000);
+  await bg.refresh("manual");
+  assert.deepEqual(pagesOf(server), [`GET ${A.LEAVE_PAGES.dl}`, `GET ${A.LEAVE_PAGES.ml}`]);
+});
+
+test("a tab page loaded during a summary read holds back optional leave pages", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({
+    attendanceMeta: { reportId: "RID+/=", sessionId: "25262" },
+    attendanceTimetable: { day: "2026-09-28", slots: A.parseTimetable(TIMETABLE_HTML) },
+  });
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    if (target.endsWith("/GetReport")) await storage.set({ tabPageAt: MONDAY_11 });
+    return original(target, options);
+  };
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.error, undefined);
+  assert.equal(server.state.leavePageLoads, 0, "the tab's current page clock wins over the run's initial state");
+});
+
+test("a tab refusal recorded during a summary read holds back timetable and leave pages", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "RID+/=", sessionId: "25262" } });
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    if (target.endsWith("/GetReport")) await storage.set({ tabLimitedAt: MONDAY_11 });
+    return original(target, options);
+  };
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.error, undefined);
+  assert.equal(server.state.leavePageLoads, 0);
+  assert.equal(server.state.requests.some((line) => /frmMyTimeTable/.test(line)), false);
+  assert.equal(result.snapshot.timetableDueAt, MONDAY_11 + 15 * 60_000);
+});
+
+test("a tab refusal during an invalid summary stops the attendance-page fallback", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: { reportId: "invalid", sessionId: "25262" } });
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    if (target.endsWith("/GetReport")) await storage.set({ tabLimitedAt: MONDAY_11 });
+    return original(target, options);
+  };
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.code, "page-limit");
+  assert.equal(server.state.attendanceLoads + server.state.loginPosts, 0);
+  assert.equal(result.nextRefreshAt, MONDAY_11 + 15 * 60_000);
+});
+
+test("a CUIMS tab reports its menu once the document has loaded: empty is a refusal, loaded is CUIMS serving pages", () => {
+  const empty = `document.getElementById = (id) => id === "uims_sidebar" ? {} : id === "menu-content" ? { querySelector: () => null } : null`;
+  const full = `document.getElementById = (id) => id === "uims_sidebar" ? {} : id === "menu-content" ? { querySelector: () => ({}) } : null`;
+  const page = contentRuntime("/StudentHome.aspx");
+  page.call(`globalThis.sent = []; chrome.runtime.sendMessage = (message) => sent.push(message)`);
+  page.call(`document.readyState = "loading"; ${empty}`);
+  page.call("reportTabPage()");
+  assert.equal(page.writes.length, 0, "an unfinished document is not a refusal");
+  page.call(`document.readyState = "interactive"`);
+  page.call("reportTabPage()");
+  assert.ok(page.writes[0].tabLimitedAt > 0);
+  assert.deepEqual(JSON.parse(page.call("JSON.stringify(sent)")), [{ type: "cuims-clear:tab-page", path: "/StudentHome.aspx", result: "empty-menu" }]);
+  page.call("reportTabPage()");
+  assert.equal(page.writes.length, 1, "once per page");
+  page.writes.length = 0;
+  page.call("scanPage()");
+  assert.equal(page.writes.length, 0, "an empty home menu does not announce a successful session");
+  for (const pathname of ["/LandingPage.aspx", "/Login.aspx", "/"]) {
+    page.call(`tabPageReported = false; location.pathname = ${JSON.stringify(pathname)}`);
+    page.call("reportTabPage()");
+    assert.equal(page.writes.length, 0, "the login flow initializes its menu later");
+  }
+  page.call(`tabPageReported = false; location.pathname = "/frmStudentCourseWiseAttendanceSummary.aspx"; ${full}`);
+  page.call("reportTabPage()");
+  assert.ok(page.writes[0].tabMenuOkAt > 0, "a loaded menu says CUIMS is serving pages");
+  assert.equal(page.writes[0].sessionAlive, true);
+});
+
+test("a CUIMS tab stamps portal pages including Home, excluding login and landing, and reports refusal", () => {
+  for (const [pathname, stamped] of [["/frmStudentCourseWiseAttendanceSummary.aspx", true], ["/frmStudentApplyDutyLeave.aspx", true], ["/StudentHome.aspx", true], ["/Login.aspx", false], ["/", false], ["/error.html", false]]) {
     const page = contentRuntime(pathname);
     page.call("stampTabPage()");
     assert.equal(page.writes.some((values) => "tabPageAt" in values), stamped, pathname);
     assert.equal(page.writes.some((values) => "tabLimitedAt" in values), pathname === "/error.html", pathname);
   }
+});
+
+// ---- 0.10.4: one student's data, free hand-overs, the local log ----
+
+test("a different saved UID drops the last student's reads before the next read", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({
+    uid: "24BCS99999",
+    attendanceOwner: "24BCS00000",
+    attendanceMeta: { reportId: "OTHER", sessionId: "25262" },
+    attendanceSnapshot: { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), subjects: [{ code: "X", title: "Someone else's", attended: 1, delivered: 1 }] },
+    attendanceTimetable: freshTimetable(),
+    attendanceLeaves: leavesRead(),
+  });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh();
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(server.state.requests[0], "GET /frmStudentCourseWiseAttendanceSummary.aspx", "the old report ids are never sent");
+  assert.equal(storage.data.attendanceOwner, "24BCS99999");
+  assert.ok(result.snapshot.subjects.every((subject) => subject.title !== "Someone else's"));
+  // Saving a UID clears at once, before any read.
+  storage.data.uid = "24BCS11111";
+  await bg.checkStudent();
+  assert.equal(storage.data.attendanceSnapshot, null);
+  assert.equal(storage.data.attendanceMeta, null);
+});
+
+test("after an update from 0.10.3, the first read is the report calls alone: timetable, leave and ids carry over", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({
+    attendanceMeta: META,
+    attendanceTimetable: { day: "2026-09-27", slots: A.parseTimetable(TIMETABLE_HTML), triedAt: MONDAY_11 - 20 * 60 * 60_000 },
+    attendanceLeaves: { v: A.LEAVES_VERSION, apps: { dl: [], ml: [] }, pending: {}, dlAt: MONDAY_11 - 2 * 60 * 60_000, mlAt: MONDAY_11 - 60 * 60_000, checkedAt: MONDAY_11 - 60 * 60_000, triedAt: MONDAY_11 - 60 * 60_000 },
+    attendanceRequests: [MONDAY_11 - 60 * 60_000],
+    attendancePageAt: MONDAY_11 - 60 * 60_000,
+  });
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.error, undefined, result.error);
+  assert.deepEqual(pagesOf(server), []);
+  assert.equal(storage.data.attendanceOwner, "24BCS00000");
+  assert.ok(result.snapshot.slots.length > 0);
+});
+
+test("fresh totals are saved before any optional page, so a slow or refused page never hides them", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable() });
+  let seenAtPage = null;
+  const original = server.fetchImpl;
+  server.fetchImpl = async (target, options) => {
+    if (target.includes(A.LEAVE_PAGES.dl)) seenAtPage = structuredClone(storage.data.attendanceSnapshot);
+    return original(target, options);
+  };
+  await daemon(server, storage).refresh();
+  assert.equal(seenAtPage?.subjects?.length, 3);
+  assert.equal(seenAtPage.fetchedAt, new Date(MONDAY_11).toISOString());
+});
+
+test("a CUIMS tab that loads its menu again ends the background's page pause early", async () => {
+  const server = fakeCuims({ signedIn: true, limited: "menu" });
+  const storage = saved({ attendanceMeta: META, attendanceTimetable: freshTimetable() });
+  const bg = daemon(server, storage);
+  await bg.refresh(); // duty leave, refused
+  assert.equal(storage.data.pagesPausedUntil, MONDAY_11 + 15 * 60_000);
+  server.state.limited = false;
+  // Four minutes on, the student's own CUIMS tab loads with its menu.
+  Object.assign(storage.data, { tabPageAt: MONDAY_11 + 4 * 60_000, tabMenuOkAt: MONDAY_11 + 4 * 60_000 });
+  bg.advance(10 * 60_000);
+  await bg.refresh();
+  assert.equal(server.state.leavePageLoads, 2, "read at ten minutes, five after the tab, not at fifteen");
+});
+
+test("opening My Time Table on CUIMS hands the timetable over with no request", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = saved({ attendanceMeta: META, attendanceLeaves: leavesRead(), attendanceSnapshot: { fetchedAt: new Date(MONDAY_11 - 60_000).toISOString(), slots: [], timetableDueAt: MONDAY_11 + 60_000, subjects: [] } });
+  const bg = daemon(server, storage);
+  const slots = await bg.ingestTimetablePage(TIMETABLE_HTML);
+  assert.ok(slots.length > 0);
+  assert.equal(server.state.requests.length, 0);
+  assert.equal(storage.data.attendanceTimetable.savedAt, MONDAY_11);
+  assert.equal(storage.data.attendanceSnapshot.timetableDueAt, undefined);
+  assert.equal(storage.data.attendanceSnapshot.slots.length, slots.length);
+  await bg.refresh();
+  assert.deepEqual(pagesOf(server), [], "nothing left to load");
+  assert.equal(await bg.ingestTimetablePage("<html>no grid</html>"), null);
+});
+
+test("an open My Time Table page hands its grid to the background once", () => {
+  const page = contentRuntime("/frmMyTimeTable.aspx");
+  page.call(`globalThis.sent = []; chrome.runtime.sendMessage = (message) => sent.push(message)`);
+  page.call(`document.getElementById = (id) => id === "ContentPlaceHolder1_gvMyTimeTable" ? { textContent: "Mon 9:40", outerHTML: "<table id='ContentPlaceHolder1_gvMyTimeTable'></table>" } : id === "ContentPlaceHolder1_gvMyTimeTableDetails" ? { outerHTML: "<table id='details'></table>" } : null`);
+  page.call("shareTimetablePage()");
+  page.call("shareTimetablePage()");
+  const sent = JSON.parse(page.call("JSON.stringify(sent)"));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, "cuims-clear:timetable-page");
+  assert.match(sent[0].html, /gvMyTimeTable.*<table id='details'>/);
+});
+
+test("the local request log keeps paths, statuses and results only, newest 150", async () => {
+  const server = fakeCuims({ signedIn: false, limited: "menu" });
+  const storage = saved();
+  const bg = daemon(server, storage);
+  await bg.refresh();
+  const log = storage.data.cuimsJournal;
+  assert.ok(log.some((entry) => entry.by === "bg" && entry.path === "/frmStudentCourseWiseAttendanceSummary.aspx" && entry.to === "/Login.aspx"), "the signed-out redirect");
+  assert.ok(log.some((entry) => entry.path === "/LandingPage.aspx/ShowLandingPage" && entry.result === "ok"));
+  assert.ok(log.some((entry) => entry.result === "empty-menu"), "the refusal");
+  const text = JSON.stringify(log);
+  for (const secret of ["secret", "24BCS00000", "etgkYfqBdH1fSfc255iYGw", "RID", "Ab12"]) assert.ok(!text.includes(secret), secret);
+  await bg.noteTabPage({ path: "/StudentHome.aspx?x=1", result: "empty-menu" });
+  assert.deepEqual({ ...storage.data.cuimsJournal.at(-1), at: 0 }, { at: 0, by: "tab", path: "/StudentHome.aspx", result: "empty-menu" });
+  for (let index = 0; index < 200; index += 1) await bg.noteTabPage({ path: "/frmMyTimeTable.aspx", result: "ok" });
+  assert.equal(storage.data.cuimsJournal.length, 150);
 });

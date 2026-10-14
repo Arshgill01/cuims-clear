@@ -197,7 +197,7 @@
         cells.push(`<div${budget < 0 ? ' class="is-bad"' : budget === 0 ? ' class="is-tight"' : ""}><dt>${budget < 0 ? "Short by" : "Least room"}</dt><dd>${Math.abs(budget)}</dd><p>${esc(tightest.title)}</p></div>`);
       }
     } else if (!result.reachable) cells.push(`<div class="is-bad"><dt>Short by</dt><dd>${result.need - result.free}</dd><p>even attending all</p></div>`);
-    else cells.push(`<div${result.budget === 0 ? ' class="is-tight"' : ""}><dt>Can miss</dt><dd>${result.budget}</dd><p>${result.budget ? `keeps ${whole(ratio)}` : "not one more"}</p></div>`);
+    else cells.push(`<div${result.budget === 0 ? ' class="is-tight"' : ""}><dt>Can miss</dt><dd>${result.budget}</dd><p>${result.budget ? `keeps ${whole(ratio)}` : result.left ? "not one more" : "classes over"}</p></div>`);
     if (forecast.goal.overall) cells.push(`<div><dt>Need of rest</dt><dd>${result.required == null ? "—" : whole(result.required)}</dd><p>your pace ${whole(overall.pace)}</p></div>`);
     else cells.push(`<div><dt>Your pace</dt><dd>${whole(overall.pace)}</dd><p>lately, all subjects</p></div>`);
     return `<dl class="fc-stats">${cells.join("")}</dl>`;
@@ -213,7 +213,7 @@
         <button type="button" class="fc-end-date" data-cal-toggle aria-expanded="${open}" aria-controls="fc-cal" aria-label="Last day of classes, ${esc(end.label)}. Pick a date">${esc(end.label)}</button>
         <button type="button" class="fc-step" data-end-step="7" aria-label="A week later">›</button>
       </span>
-      ${end.estimated ? `<span class="fc-end-tag">Estimated</span>` : `<button type="button" class="fc-end-reset" data-end-reset>Use estimate</button>`}
+      ${end.estimated ? `<span class="fc-end-tag">${end.fromCalendar ? "CU calendar" : "Estimated"}</span>` : `<button type="button" class="fc-end-reset" data-end-reset>${end.fromCalendar ? "Use CU's date" : "Use estimate"}</button>`}
     </div>
     ${open ? calendar(forecast, calendarState) : ""}`;
   }
@@ -255,7 +255,7 @@
       <div class="fc-cal-week" aria-hidden="true"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
       <div class="fc-cal-grid">${cells.join("")}</div>
       <div class="fc-cal-foot">
-        <button type="button" class="fc-cal-estimate" data-end-reset${forecast.end.estimated ? " disabled" : ""}>Estimate: ${esc(estimate)}</button>
+        <button type="button" class="fc-cal-estimate" data-end-reset${forecast.end.estimated ? " disabled" : ""}>${forecast.end.fromCalendar ? "CU calendar" : "Estimate"}: ${esc(estimate)}</button>
         <button type="button" class="fc-cal-done" data-cal-close>Done</button>
       </div>
     </div>`;

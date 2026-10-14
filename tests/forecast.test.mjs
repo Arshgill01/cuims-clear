@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { TIMETABLE_HTML, fakeCuims, memoryStorage } from "./fake-cuims.mjs";
 import { semester, campusTime } from "./forecast-fixture.mjs";
 
-const FILES = ["attendance-parse.js", "attendance-model.js", "attendance-client.js", "attendance-daemon.js", "attendance-view.js", "forecast-model.js", "forecast-view.js"];
+const FILES = ["attendance-parse.js", "academic-calendar.js", "attendance-model.js", "attendance-client.js", "attendance-daemon.js", "attendance-view.js", "forecast-model.js", "forecast-view.js"];
 
 function load(browser = "firefox") {
   const context = vm.createContext({ URL, URLSearchParams, Headers, AbortSignal, TextEncoder, Intl, Date, Math, JSON, console, setTimeout });
@@ -37,16 +37,25 @@ test("the beta-binomial sums to one and centres on the pace", () => {
   assert.deepEqual(plain(A.betaBinomial(0, 2, 2)), [1]);
 });
 
-test("the last day of classes is the student's, else 13 November or 30 April", () => {
+test("the last day of classes is the student's, else CU's calendar, else 13 November or 30 April", () => {
   const today = A.dayNumber("2026-10-09");
   assert.equal(A.dayKeyOf(A.semesterEnd("2026-12-04", today).day), "2026-12-04");
   assert.equal(A.semesterEnd("2026-12-04", today).estimated, false);
   const estimate = A.semesterEnd("", today);
   assert.equal(A.dayKeyOf(estimate.day), "2026-11-13");
   assert.equal(estimate.estimated, true);
-  assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2027-02-10")).day), "2027-04-30");
-  // Past the estimate, classes are over.
-  assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2026-12-02")).day), "2026-12-02");
+  assert.equal(estimate.fromCalendar, true);
+  // CU's even-semester calendar: 23 April, a week later for UID.
+  assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2027-02-10")).day), "2027-04-23");
+  assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2027-02-10"), { calendar: "uid" }).day), "2027-04-30");
+  // Past the years the calendar covers, the guess.
+  const later = A.semesterEnd("", A.dayNumber("2027-08-10"));
+  assert.equal(A.dayKeyOf(later.day), "2027-11-13");
+  assert.equal(Boolean(later.fromCalendar), false);
+  // Past CU's last day, classes are over and the date stays CU's.
+  assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2026-12-02")).day), "2026-11-13");
+  // Past a guessed date, it is today.
+  assert.equal(A.dayKeyOf(A.semesterEnd("", A.dayNumber("2027-12-02")).day), "2027-12-02");
 });
 
 test("mark lists are kept small and come back in the marks shape", () => {
@@ -86,14 +95,19 @@ test("each subject's finish is consistent: range inside attend-all, budget is wh
 test("classes left are counted from the timetable up to the last day", () => {
   const view = forecast();
   const aptitude = view.subjects.find((subject) => subject.title === "Aptitude-III");
-  // Wed and Sat slots from Sat 10 Oct to Fri 20 Nov: 6 Wednesdays and 6 Saturdays.
-  assert.equal(aptitude.result.left, 12);
+  // Wed and Sat slots from Sat 10 Oct to Fri 20 Nov: 6 Wednesdays and 6
+  // Saturdays, less CU's days without classes: Wed 14 and Sat 17 Oct
+  // (IST-2) and Wed 11 Nov (Diwali break).
+  assert.equal(aptitude.result.left, 12 - 3);
   const os = view.subjects.find((subject) => subject.title === "Operating Systems");
-  // Today's 9:40 is in progress and still counts; Mon, Wed, Thu, Fri after.
+  // Today's 9:40 is in progress and still counts; Mon, Wed, Thu, Fri after,
+  // less IST-2 (Mon 12, Wed 14, Thu 15, Fri 16), Valmiki Jayanti (Mon 26)
+  // and the Diwali break (Mon 9, Wed 11 Nov).
   assert.equal(os.classes[0].day, A.dayNumber("2026-10-09"));
-  assert.equal(os.result.left, 1 + 6 * 4);
+  assert.equal(os.result.left, 1 + 6 * 4 - 7);
+  // A last day the student sets past CU's still counts its classes.
   const later = forecast({ end: "2026-11-27" });
-  assert.equal(later.subjects.find((subject) => subject.title === "Aptitude-III").result.left, 14);
+  assert.equal(later.subjects.find((subject) => subject.title === "Aptitude-III").result.left, 9 + 2);
 });
 
 test("subjects are ordered by their chance, most at risk first", () => {
@@ -345,7 +359,7 @@ test("a long report fills its history four subjects a refresh", async () => {
   assert.equal(calls(), 9, "all in, nothing more to read");
 });
 
-test("history never spends the budget's last twelve requests", async () => {
+test("history never spends the report budget's last twenty calls", async () => {
   const server = fakeCuims({ signedIn: true });
   const calls = () => server.state.requests.filter((line) => /getfullreport/i.test(line)).length;
   const start = Date.UTC(2026, 8, 28, 5, 30);
@@ -363,11 +377,12 @@ test("history never spends the budget's last twelve requests", async () => {
     const result = await bg.refresh("manual");
     return { history: calls() - before, result, storage };
   };
-  // 25 allowed: GetReport leaves 24, so 12 spare means no history at all.
-  const tight = await run(12);
+  // 60 report calls allowed: GetReport leaves 59 - used, and history keeps
+  // the last 20 for reads that matter.
+  const tight = await run(39);
   assert.equal(tight.history, 0);
   assert.ok(tight.result.snapshot?.subjects?.length, "the refresh itself still succeeds");
   // Two to spare: two subjects.
-  assert.equal((await run(10)).history, 2);
+  assert.equal((await run(37)).history, 2);
   assert.equal((await run(0)).history, 3);
 });

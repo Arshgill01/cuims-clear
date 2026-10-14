@@ -127,6 +127,11 @@
     </section>`;
   }
 
+  // "No classes today: Dussehra", "No classes today: IST-2 (mid-semester tests)".
+  function dayOffLine(dayOff) {
+    return dayOff.kind === "over" ? dayOff.label : `No classes today: ${dayOff.label}`;
+  }
+
   function toolbar(analytics, state, now) {
     const note = state.working
       ? state.phase || "Refreshing…"
@@ -207,10 +212,11 @@
         </div>
         ${meter(overall.percent, overallMark)}
         <p class="course-line"><span class="counts">${escapeHtml(`${overall.attended}/${overall.delivered}`)}</span><span class="line is-${overallStance(analytics)}">${escapeHtml(overall.line)}</span></p>
+        ${analytics.dayOff ? `<p class="course-line day-off">${escapeHtml(dayOffLine(analytics.dayOff))}</p>` : ""}
       </section>
       ${leaveCard(analytics, now)}
       <ul class="course-list" aria-label="Subjects">${analytics.subjects.map((subject) => subjectRow(subject, subjectMark)).join("")}</ul>
-      <p class="attendance-foot">Goal: ${escapeHtml(rule)}. Skips assume you attend the rest, and a class without a posted mark counts as missed. Approved leave drops a class from the count; pending leave counts as absent until approved. Forecast plans skips and projects your semester.</p>`;
+      <p class="attendance-foot">Goal: ${escapeHtml(rule)}. Every figure is what CUIMS has posted; skips assume you attend the rest. Approved leave drops a class from the count; pending leave counts as absent until approved. Forecast plans skips and projects your semester.</p>`;
   }
 
   api.escapeHtml = escapeHtml;

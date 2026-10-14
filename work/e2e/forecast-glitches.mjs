@@ -398,7 +398,7 @@ for (const scenario of only) {
       await geometry(`${where}: ${view} tab`);
     }
     // Opening the popup reads CUIMS by itself only when the last read is
-    // over ten minutes old, or when a first timetable is due within ten
+    // over two minutes old, or when a first timetable is due within ten
     // minutes, and then once, however many tabs are shown. Each Refresh
     // press is one more.
     const reads = () => page.evaluate(() => __sent.filter((type) => type === "cuims-clear:attendance-refresh").length);

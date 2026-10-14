@@ -3,8 +3,8 @@
 // Markup mirrors the live login forms and the saved attendance page.
 
 const ORIGIN = "https://students.cuchd.in";
-// The pages CUIMS's per-account limit applies to (lower-cased paths).
-const INNER_PAGES = new Set(["/frmstudentcoursewiseattendancesummary.aspx", "/frmmytimetable.aspx", "/frmstudentapplydutyleave.aspx", "/frmstudentmedicalleaveapply.aspx"]);
+// Selected pages refused by this fixture, not a measured CUIMS quota.
+const INNER_PAGES = new Set(["/frmstudentcoursewiseattendancesummary.aspx", "/frmmytimetable.aspx", "/frmstudentapplydutyleave.aspx", "/frmstudentmedicalleaveapply.aspx", "/frmstudentdatesheet.aspx"]);
 
 export const SUMMARY = [
   { Code: "24CSP-305", Title: "Competitive Coding-II", Total_Delv: "32", Total_Attd: "26", EligibilityDelivered: "32", EligibilityAttended: "26", EncryptCode: "enc305" },
@@ -16,6 +16,21 @@ export const SUMMARY = [
 export function dutyLeavePage(rows = []) {
   const body = rows.map((row) => `<tr><td>${row.id}</td><td>${row.timing || ""}</td><td>Departmental Society Activities</td><td></td><td>${row.type || "Lecture Bases"}</td><td>${row.dated}</td><td>${row.status}</td><td>event</td></tr>`).join("");
   return `<table id="gvHistory"><tr><th>DL_No</th><th>Timing</th><th>Category</th><th>File Name</th><th>Leave_Type</th><th>Dated</th><th>Status</th><th>Remarks</th></tr>${body}</table>`;
+}
+
+// The Date Sheet grid, as on the live page (13 Oct 2026): each row's values
+// in hidden fields, the visible cells beside them.
+export function dateSheetPage(exams = []) {
+  const prefix = "ContentPlaceHolder1_wucStudentDateSheet_gvStudentDateSheet";
+  const body = exams
+    .map((exam, i) => {
+      const hidden = (name, value) => `<input type="hidden" name="ctl00$x$ctl0${i + 2}$${name}" id="${prefix}_${name}_${i}" value="${value}" />`;
+      return `<tr><td>${exam.type}</td><td>${hidden("hdndatesheettype", exam.type)}${hidden("hdnsubcode", exam.code)}${hidden("hdnslotdate", exam.date)}${hidden("hdnslottime", exam.time || "12:30")}</td><td>${exam.code}</td><td>${exam.date}</td></tr>`;
+    })
+    .join("");
+  return `<div id="uims_sidebar"><ul class="nav" id="menu-content"><li><a href="StudentHome.aspx">Home</a></li></ul></div>
+<select name="ctl00$ContentPlaceHolder1$wucStudentDateSheet$ddlDateSheetType" id="ContentPlaceHolder1_wucStudentDateSheet_ddlDateSheetType"><option selected="selected" value="Select DateSheetType">Select DateSheetType</option></select>
+<table class="table" id="${prefix}"><tr><th>Exam Type</th><th>datesheettype</th><th>Course code</th><th>Exam Date</th></tr>${body}</table>`;
 }
 
 export function medicalLeavePage(rows = []) {
@@ -59,6 +74,8 @@ function passwordPage(message = "") {
 </form>${message ? `<script>swal('Error','${message}','error');</script>` : ""}`;
 }
 
+export const EMPTY_MENU_PAGE = '<html><body><div id="uims_sidebar"><ul class="nav" id="menu-content">\n</ul></div></body></html>';
+
 const ATTENDANCE_PAGE = `<div id="SortTable"></div><select id="ddlSession"><option selected="selected" value="25262">CurrentSession (25262)</option></select>
 <script>setTimeout(function () {getReport('RID+/=','25262');}, 200);</script>`;
 
@@ -66,6 +83,9 @@ function response(url, status, body) {
   return {
     url,
     status,
+    clone() {
+      return response(url, status, body);
+    },
     async text() {
       return typeof body === "string" ? body : JSON.stringify(body);
     },
@@ -88,13 +108,14 @@ export function fakeCuims({
   limited = false,
   dutyLeaves = [],
   medicalLeaves = [],
+  dateSheet = [],
 } = {}) {
   // `landed`: CUIMS gives a session menu rights only once the browser's
   // LandingPage step has called ShowLandingPage. Before that, every inner page
   // redirects to error.html.
   // `summary` is GetReport's answer; tests move its counts the way CUIMS
   // does when a mark is posted or a leave is decided.
-  const state = { landed, limited, limitedHits: 0, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
+  const state = { landed, limited, limitedHits: 0, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, dateSheetLoads: 0, dateSheet, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -154,13 +175,19 @@ export function fakeCuims({
       return response(url.href, 200, { d: { Result: rows.length ? JSON.stringify(rows) : "No Data Found" } });
     }
     if (!state.signedIn) return login();
+    // The refusal live CUIMS gives most (`limited: "menu"`): the page itself,
+    // HTTP 200, with an empty sidebar. Home too.
+    if (state.limited === "menu" && (path === "/studenthome.aspx" || INNER_PAGES.has(path))) {
+      state.limitedHits += 1;
+      return response(url.href, 200, EMPTY_MENU_PAGE);
+    }
     if (path === "/studenthome.aspx") return response(url.href, 200, "<html>home</html>");
     // Before the landing step, and while CUIMS limits the account's page
     // loads (`limited`), an inner page redirects to error.html. With
     // redirect: "manual" that is the same opaque redirect a signed-out page
     // gives, as it is in a browser.
     const unlanded = !state.landed && (path === "/frmstudentcoursewiseattendancesummary.aspx" || path === "/frmmytimetable.aspx");
-    if (unlanded || (state.limited && INNER_PAGES.has(path))) {
+    if (unlanded || (state.limited === true && INNER_PAGES.has(path))) {
       state.limitedHits += 1;
       if (options.redirect === "manual") return { ...response(url.href, 0, ""), type: "opaqueredirect" };
       return response(`${ORIGIN}/error.html`, 200, "<html><head><title>UIMS Error</title></head></html>");
@@ -181,6 +208,10 @@ export function fakeCuims({
     if (path === "/frmstudentmedicalleaveapply.aspx") {
       state.leavePageLoads += 1;
       return response(url.href, 200, medicalLeavePage(medicalLeaves));
+    }
+    if (path === "/frmstudentdatesheet.aspx") {
+      state.dateSheetLoads += 1;
+      return response(url.href, 200, dateSheetPage(state.dateSheet));
     }
     return response(url.href, 404, "not found");
   }

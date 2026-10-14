@@ -48,6 +48,7 @@ function startAttendanceBackground(solveCaptcha) {
     let work = null;
     if (message?.type === "cuims-clear:leave-page") work = () => attendance.ingestLeavePage(message.which, String(message.html || ""));
     if (message?.type === "cuims-clear:timetable-page") work = () => attendance.ingestTimetablePage(String(message.html || ""));
+    if (message?.type === "cuims-clear:datesheet-page") work = () => attendance.ingestDateSheetPage(String(message.html || ""));
     if (message?.type === "cuims-clear:tab-page") work = () => attendance.noteTabPage({ path: message.path, result: message.result });
     if (work) cuimsKeepAwake(() => settled.then(work)).catch(() => {});
   });

@@ -6,6 +6,7 @@ importScripts(
   "captcha-glyphs.js",
   "captcha-solver.js",
   "attendance-parse.js",
+  "academic-calendar.js",
   "attendance-model.js",
   "attendance-client.js",
   "attendance-daemon.js",
