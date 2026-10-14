@@ -1,5 +1,5 @@
-// Connects the attendance daemon to the browser: popup refreshes and the
-// shared login guard. There is no timer: CUIMS only hears from the extension
+// Connects the attendance daemon to the browser: popup refreshes, what CUIMS
+// tabs hand over, and the shared login guard. There is no timer: CUIMS only hears from the extension
 // when the student uses the popup. Runs in the Firefox background page and in
 // Chrome's service worker.
 
@@ -39,35 +39,34 @@ function startAttendanceBackground(solveCaptcha) {
     return true;
   });
 
-  // The student opened a leave page on CUIMS; its content script sends it.
+  // What a CUIMS tab's content script hands over: a leave page or the
+  // timetable the student opened, and each page load for the local log.
+  const fromCuimsTab = (sender) =>
+    /^https:\/\/students\.cuchd\.in\//i.test(String(sender?.url || sender?.tab?.url || "")) && (!sender?.id || sender.id === chrome.runtime.id);
   chrome.runtime.onMessage.addListener((message, sender) => {
-    if (message?.type !== "cuims-clear:leave-page" || !/^https:\/\/students\.cuchd\.in\//i.test(String(sender?.url || sender?.tab?.url || ""))) return;
-    if (sender?.id && sender.id !== chrome.runtime.id) return;
-    cuimsKeepAwake(() => settled.then(() => attendance.ingestLeavePage(message.which, String(message.html || "")))).catch(() => {});
+    if (!fromCuimsTab(sender)) return;
+    let work = null;
+    if (message?.type === "cuims-clear:leave-page") work = () => attendance.ingestLeavePage(message.which, String(message.html || ""));
+    if (message?.type === "cuims-clear:timetable-page") work = () => attendance.ingestTimetablePage(String(message.html || ""));
+    if (message?.type === "cuims-clear:tab-page") work = () => attendance.noteTabPage({ path: message.path, result: message.result });
+    if (work) cuimsKeepAwake(() => settled.then(work)).catch(() => {});
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
-    // A changed UID or password lifts the "rejected login" pause.
+    // A changed UID or password lifts the "rejected login" pause, and a
+    // different student's UID drops the last student's reads.
     if (changes.uid || changes.password) {
       chrome.storage.local.get({ loginGuard: null }, ({ loginGuard }) => {
         if (loginGuard?.rejectedUid) chrome.storage.local.set({ loginGuard: { ...loginGuard, rejectedUid: "" } });
       });
     }
+    if (changes.uid) cuimsKeepAwake(() => settled.then(() => attendance.checkStudent())).catch(() => {});
     // A CUIMS tab finished signing in after a refresh gave way to it.
     if (changes.sessionAlive?.newValue === true) {
       cuimsKeepAwake(() => hasAccess().then((granted) => (granted ? attendance.afterTabSignIn() : null))).catch(() => {});
     }
   });
-
-  // lms-open.js asks for a signed-in session before it opens a tab.
-  globalThis.cuimsEnsureSession = (options) =>
-    hasAccess().then((granted) => (granted ? attendance.ensureSession(options) : { alive: false, reason: "no-access" }));
-
-  globalThis.cuimsWithRequests = async (task) => {
-    if (!(await hasAccess())) throw CuimsAttendance.coded("no-access", "Allow access to CUIMS first.");
-    return attendance.withRequests(task);
-  };
 
   return attendance;
 }

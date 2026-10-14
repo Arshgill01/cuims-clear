@@ -39,7 +39,7 @@ for (const build of ["firefox", "chrome"]) {
   test(`${build}: every background script loads and wires up`, () => {
     const { context, listeners, names, chrome } = loadBackground(build);
     assert.equal(typeof context.CuimsCaptcha?.readBytes, "function", "the sign-in's solver is loaded");
-    assert.equal(typeof context.cuimsEnsureSession, "function", "attendance-bg started");
+    assert.equal(context.cuimsWithRequests ?? context.cuimsEnsureSession, undefined, "Open CUIMS and Open LMS make no request of their own");
     assert.ok(listeners.message.length >= 3, `message listeners: ${listeners.message.length}`);
     assert.equal(chrome.alarms, undefined);
     assert.ok(names.indexOf("captcha-glyphs.js") < names.indexOf("captcha-solver.js"));

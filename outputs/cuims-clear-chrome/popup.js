@@ -27,10 +27,15 @@ const ATTENDANCE_KEYS = [
   "attendanceCourses",
   "attendancePlan",
   "attendanceHistory",
+  "attendanceOwner",
 ];
 // Opening Attendance or Forecast reads CUIMS by itself, once per popup, when
-// the last read is this old.
-const STALE_MS = 10 * 60 * 1000;
+// the last read is this old. A read is the cookie-less report calls, which
+// CUIMS answers freely; any page it needs is spaced by the background.
+const STALE_MS = 2 * 60 * 1000;
+// Refresh comes back this long after the last read (the background's
+// MANUAL_GAP_MS), or when CUIMS's own pushback ends.
+const REFRESH_GAP_MS = 30 * 1000;
 let autoRead = false;
 // With no timetable saved, the background says when it can read one
 // (snapshot.timetableDueAt, a minute after the attendance page); the popup
@@ -336,6 +341,52 @@ function bindOpenLink(link, type, busyLabel) {
 bindOpenLink(document.querySelector(".cuims-open-link"), "cuims-clear:open-cuims", "Opening…");
 bindOpenLink(document.querySelector(".lms-open-link"), "cuims-clear:launch-lms", "Opening LMS…");
 
+// ---- diagnostics ----
+
+// The local request log (attendance-daemon.js, content.js) and the clocks
+// that decide when the background may load a CUIMS page, as text the student
+// can paste into a report. Paths and times only: no UID, password, report ids
+// or attendance.
+const copyDiagnostics = document.querySelector("#copy-diagnostics");
+let diagTimer;
+copyDiagnostics?.addEventListener("click", () => {
+  const clocks = ["pagesPausedUntil", "pagesPausedAt", "tabLimitedAt", "tabMenuOkAt", "tabPageAt", "attendancePageAt", "sessionCheckedAt", "attendanceBackoffUntil", "attendanceLastAttemptAt", "bgSignInOkAt"];
+  chrome.storage.local.get({ cuimsJournal: [], pagesPauseStreak: 0, sessionAlive: false, attendanceFailStreak: 0, attendanceStatus: null, ...Object.fromEntries(clocks.map((key) => [key, 0])) }, async (stored) => {
+    const time = (value) => (Number(value) > 0 ? new Date(Number(value)).toISOString() : "");
+    const report = {
+      version: chrome.runtime.getManifest().version,
+      browser: navigator.userAgent,
+      copiedAt: new Date().toISOString(),
+      state: {
+        ...Object.fromEntries(clocks.map((key) => [key, time(stored[key])])),
+        pagesPauseStreak: stored.pagesPauseStreak,
+        sessionAlive: stored.sessionAlive,
+        failStreak: stored.attendanceFailStreak,
+        status: stored.attendanceStatus?.code || "",
+      },
+      log: (Array.isArray(stored.cuimsJournal) ? stored.cuimsJournal : []).map((entry) => ({ ...entry, at: time(entry.at) })),
+    };
+    const text = JSON.stringify(report, null, 1);
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = text;
+      document.body.append(area);
+      area.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {}
+      area.remove();
+    }
+    copyDiagnostics.textContent = copied ? "Copied" : "Could not copy";
+    window.clearTimeout(diagTimer);
+    diagTimer = window.setTimeout(() => (copyDiagnostics.textContent = "Copy"), 2500);
+  });
+});
+
 // ---- attendance ----
 
 // The attendance view is redrawn from scratch (every 30 s, and on every
@@ -377,6 +428,10 @@ function scheduleTimetableRead() {
     timetableRead = true;
     fetchAttendance();
   }, Math.max(0, wait));
+}
+
+function refreshAt(lastAttemptAt, backoffUntil) {
+  return Math.max(Number(lastAttemptAt || 0) + REFRESH_GAP_MS, Number(backoffUntil || 0));
 }
 
 function readWorking() {
@@ -762,13 +817,9 @@ views.forecast.addEventListener("keydown", (event) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  // Opening CUIMS or LMS may sign in first; say so on the button.
-  const phase = changes.attendanceStatus?.newValue?.working && changes.attendanceStatus.newValue.phase;
-  const busy = document.querySelector(".open-link[aria-busy='true'] span");
-  if (phase && busy) busy.textContent = phase;
   if (changes.attendanceLastAttemptAt) attendance.lastAttemptAt = changes.attendanceLastAttemptAt.newValue || 0;
   if (changes.attendanceBackoffUntil) attendance.backoffUntil = changes.attendanceBackoffUntil.newValue || 0;
-  attendance.nextRefreshAt = Math.max(Number(attendance.lastAttemptAt || 0) + 60_000, Number(attendance.backoffUntil || 0));
+  if (changes.attendanceLastAttemptAt || changes.attendanceBackoffUntil) attendance.nextRefreshAt = refreshAt(attendance.lastAttemptAt, attendance.backoffUntil);
   if (changes.attendanceSnapshot) attendance.snapshot = changes.attendanceSnapshot.newValue || null;
   if (changes.attendanceStatus) {
     attendance.status = changes.attendanceStatus.newValue || null;
@@ -1039,7 +1090,7 @@ chrome.storage.local.get(
     attendance.history = stored.attendanceHistory;
     attendance.lastAttemptAt = stored.attendanceLastAttemptAt;
     attendance.backoffUntil = stored.attendanceBackoffUntil;
-    attendance.nextRefreshAt = Math.max(Number(stored.attendanceLastAttemptAt || 0) + 60_000, Number(stored.attendanceBackoffUntil || 0));
+    attendance.nextRefreshAt = refreshAt(stored.attendanceLastAttemptAt, stored.attendanceBackoffUntil);
     prefs = { goal: stored.attendanceGoal || "standard", plan: readPlan(stored.attendancePlan), end: String(stored.forecastEnd || "") };
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";

@@ -45,6 +45,7 @@
     "portal-busy": "CUIMS is limiting requests right now.",
     "page-limit": "CUIMS is limiting page loads for your account right now.",
     cancelled: "Sign-in was stopped before it submitted.",
+    yield: "A CUIMS tab is in use, so this page waits.",
   };
 
   function coded(code, message, detail) {
@@ -89,14 +90,13 @@
     }
   }
 
-  // The pages CUIMS's per-account throttle counts: inner .aspx pages
-  // (attendance, timetable, leave) and the landing step of a sign-in. Not
-  // StudentHome, the login flow, or the report calls (".aspx/GetReport").
+  // Pages we space locally: portal .aspx pages and the landing step of a
+  // sign-in. This classification is not a measured server quota.
   function isInnerPage(value) {
     try {
       const path = new URL(value).pathname.toLowerCase();
       if (path === LANDING_INIT.toLowerCase()) return true;
-      return /\.aspx$/.test(path) && path !== HOME.toLowerCase() && !isLoginFlow(value);
+      return /\.aspx$/.test(path) && !isLoginFlow(value);
     } catch {
       return false;
     }
@@ -107,20 +107,29 @@
   }
 
   // One request with cookies from the shared jar. `budget` meters requests,
-  // and is told each target so it can tell inner pages apart.
+  // and is told each target and its options, so it can tell report calls,
+  // pages and optional pages apart. `observe` hears how each one went.
   // CUIMS keeps one captcha per session and a CUIMS tab shares this session,
   // so while `yieldToTab` says a tab is on the login page, nothing here may
   // reach the login flow: login URLs are refused and redirects are not
   // followed, because a signed-out redirect lands on Login.aspx. Every request
   // that does reach the login flow is reported through `onLoginTouch`.
-  function createRequest({ fetchImpl = root.fetch?.bind(root), timeoutMs = 20_000, budget, yieldToTab, onLoginTouch } = {}) {
+  function createRequest({ fetchImpl = root.fetch?.bind(root), timeoutMs = 20_000, budget, yieldToTab, onLoginTouch, observe } = {}) {
     return async function request(target, options = {}) {
-      const yielding = Boolean(await yieldToTab?.());
+      let yielding = Boolean(await yieldToTab?.());
       if (yielding && isLoginFlow(target)) throw coded("tab-login");
-      budget?.(target);
+      await budget?.(target, options);
+      // Page admission can wait; a login tab that appeared meanwhile wins.
+      yielding = Boolean(await yieldToTab?.());
+      if (yielding && isLoginFlow(target)) throw coded("tab-login");
       const manual = yielding || options.manual || options.redirect === "manual";
       const headers = new Headers(options.headers || {});
       let response;
+      const seen = (result, status = response?.status || 0, finalUrl = response?.url || target) => {
+        try {
+          observe?.({ target, url: finalUrl, status, result });
+        } catch {}
+      };
       try {
         response = await fetchImpl(target, {
           method: options.method || "GET",
@@ -132,24 +141,53 @@
           signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(options.timeoutMs ?? timeoutMs) : undefined,
         });
       } catch {
+        seen("network", 0);
         throw coded("network");
       } finally {
         if (isLoginFlow(target)) await onLoginTouch?.();
       }
-      if (manual && isRedirect(response)) throw coded(yielding ? "tab-login" : "signed-out");
+      if (manual && isRedirect(response)) {
+        seen("redirect");
+        throw coded(yielding ? "tab-login" : "signed-out");
+      }
       const finalUrl = response.url || target;
       if (!isLoginFlow(target) && isLoginUrl(finalUrl)) await onLoginTouch?.();
       if (response.status === 429 || response.status === 503) {
+        seen("portal-busy");
         throw coded("portal-busy", null, { retryAfter: response.headers?.get?.("retry-after") || "" });
       }
-      // error.html after an inner page is CUIMS limiting this account's page
-      // loads; anywhere else it is CUIMS itself pushing back.
-      if (isErrorPage(finalUrl)) throw coded(isInnerPage(target) ? "page-limit" : "portal-busy");
-      if (response.status >= 500) throw coded("server");
-      if (options.response) return response;
-      if (options.raw) return { url: finalUrl, status: response.status, bytes: await response.arrayBuffer() };
-      return { url: finalUrl, status: response.status, html: await response.text() };
+      // An inner page sent to error.html is unusable, whether the cause is a
+      // throttle or missing session rights.
+      if (isErrorPage(finalUrl)) {
+        const code = isInnerPage(target) ? "page-limit" : "portal-busy";
+        seen(code);
+        throw coded(code);
+      }
+      if (response.status >= 500) {
+        seen("server");
+        throw coded("server");
+      }
+      if (options.raw) {
+        seen("ok");
+        return { url: finalUrl, status: response.status, bytes: await response.arrayBuffer() };
+      }
+      const html = await response.text();
+      // CUIMS also refuses pages with HTTP 200 and an empty rendered menu.
+      // The login's landing response precedes menu initialization.
+      if (isInnerPage(target) && hasEmptyMenu(html)) {
+        seen("empty-menu");
+        throw coded("page-limit");
+      }
+      seen(isLoginUrl(finalUrl) ? "login-page" : "ok");
+      return { url: finalUrl, status: response.status, html };
     };
+  }
+
+  // A CUIMS page whose sidebar came back with no links: the refusal live
+  // tests saw most, HTTP 200 and all.
+  function hasEmptyMenu(html) {
+    const menu = String(html).match(/<ul\b[^>]*\bid\s*=\s*["']menu-content["'][^>]*>([\s\S]*?)<\/ul>/i);
+    return Boolean(menu && /\bid\s*=\s*["']uims_sidebar["']/i.test(html) && !/<a\b/i.test(menu[1]));
   }
 
   function formBody(fields) {
@@ -213,8 +251,7 @@
   async function openAttendance(request) {
     const page = await request(url(`${ATTENDANCE}${ATTENDANCE_QUERY}`));
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
-    // CUIMS throttles a session that opens inner pages quickly: it answers
-    // with error.html (no 429) for several minutes. Never a reason to sign in.
+    // An error page is not evidence of a signed-out session.
     if (isErrorPage(page.url)) throw coded("page-limit");
     const meta = api.extractReportMeta(page.html);
     if (meta.reportId && meta.sessionId) return meta;
@@ -238,19 +275,13 @@
     return api.normalizeMarks(rows);
   }
 
-  // An optional page (timetable, leave) never follows a redirect, so it never
-  // loads a login page. But CUIMS's page limit is a redirect too (to
-  // error.html), and unfollowed it looks just like being signed out (a
-  // redirect to Login.aspx). StudentHome is outside the limit, so it tells
-  // the two apart: still signed in there means the page was limited.
+  // Optional pages never follow redirects: a signed-out answer redirects to
+  // the login page, and loading it would replace a tab's captcha. CUIMS's
+  // error.html redirect looks the same from here, and nothing else is loaded
+  // to tell them apart: either way the page waits until a CUIMS tab shows the
+  // session serving pages again.
   async function optionalPage(request, target) {
-    let page;
-    try {
-      page = await request(target, { manual: true });
-    } catch (error) {
-      if (error.code === "signed-out" && (await pingHome(request))) throw coded("page-limit");
-      throw error;
-    }
+    const page = await request(target, { manual: true });
     if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
     if (isErrorPage(page.url)) throw coded("page-limit");
     return page;
@@ -274,18 +305,6 @@
   async function readLeavePage(request, which) {
     const page = await optionalPage(request, url(LEAVE_PAGES[which]));
     return which === "dl" ? api.parseDutyLeaves(page.html) : api.parseMedicalLeaves(page.html);
-  }
-
-  // Redirects are not followed: a signed-out answer is a redirect to the
-  // login page, and loading that page would replace a tab's captcha.
-  async function pingHome(request) {
-    try {
-      const page = await request(url(HOME), { manual: true });
-      return !(isLoginUrl(page.url) || api.isLoginDocument(page.html));
-    } catch (error) {
-      if (error.code === "signed-out") return false;
-      throw error;
-    }
   }
 
   function loginOutcome(page) {
@@ -374,7 +393,7 @@
   api.readTimetable = readTimetable;
   api.readLeavePage = readLeavePage;
   api.LEAVE_PAGES = LEAVE_PAGES;
-  api.pingHome = pingHome;
+  api.hasEmptyMenu = hasEmptyMenu;
   api.loginOutcome = loginOutcome;
   api.signIn = signIn;
   api.validCaptcha = validCaptcha;

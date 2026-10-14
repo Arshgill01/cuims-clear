@@ -266,7 +266,7 @@
     if (state.working) return "reading it now";
     const left = Number(state.timetableDueAt || 0) - Date.now();
     if (state.timetableDueAt && left <= 10 * 60_000) return left > 30_000 ? `read by itself in about ${Math.ceil(left / 60_000)} min` : "read by itself in a moment";
-    return "read by itself on a later visit";
+    return state.timetableDueAt ? "read by itself on a later visit" : "read once you next open CUIMS";
   }
 
   // Before the timetable is read there is nothing to count ahead: the card
@@ -287,8 +287,8 @@
           <span>${esc(timetableWhen(state))}</span>
         </div>
       </div>
-      ${figure("overall", { past: overall.series.past }, label, { height: 120 })}
-      <p class="fc-hero-note">The forecast counts the classes left from your timetable. It is read on its own, a minute apart from the attendance page, because CUIMS limits accounts that load several pages at once.</p>
+      ${figure("overall", { past: overall.series.past, future: { points: [], goal: (forecast.goal.overall || forecast.goal.subject) * 100 } }, label, { height: 120 })}
+      <p class="fc-hero-note">The forecast counts the classes left from your timetable. It is read once and kept for the semester; opening My Time Table on CUIMS also hands it over.</p>
       ${endControl(forecast, state.calendar)}
     </section>`;
   }

@@ -30,7 +30,8 @@
 
   // "just now", "8 min ago", "2 h ago", "yesterday", "3 days ago".
   function ago(iso, now = new Date()) {
-    const then = Date.parse(iso || "");
+    // ISO text (fetchedAt) or epoch ms (a leave read's checkedAt).
+    const then = typeof iso === "number" ? iso : Date.parse(iso || "");
     if (!then) return "";
     const minutes = Math.max(0, Math.floor((now.getTime() - then) / 60000));
     if (minutes < 1) return "just now";

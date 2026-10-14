@@ -181,19 +181,47 @@ function stampTabLogin() {
   shareLocalStorageWrite({ tabLoginTouchAt: Date.now() });
 }
 
-// This tab loaded an inner CUIMS page (attendance, marks, leave…), which
-// CUIMS's throttle counts like the background's own. The background keeps
-// its optional page reads five minutes clear of it (attendance-daemon.js).
-// A tab sent to error.html has met CUIMS's page limit, so the background
-// holds its own page loads and sign-ins for a while.
+// This tab loaded a CUIMS page (home, attendance, marks, leave…). Background
+// pages stay six seconds clear of it, and optional ones five minutes
+// (attendance-daemon.js). A tab sent to error.html cannot use the page, so the
+// background holds its own page loads and sign-ins for a while.
 function stampTabPage() {
   if (!isTopFrame()) return;
   if (/^\/error\.html$/i.test(location.pathname)) {
     shareLocalStorageWrite({ tabLimitedAt: Date.now() });
     return;
   }
-  if (!/\.aspx$/i.test(location.pathname) || /^\/(studenthome|login|generatecaptcha|landingpage)\.aspx$/i.test(location.pathname)) return;
+  if (!/\.aspx$/i.test(location.pathname) || /^\/(login|generatecaptcha|landingpage)\.aspx$/i.test(location.pathname)) return;
   shareLocalStorageWrite({ tabPageAt: Date.now() });
+}
+
+function portalMenu() {
+  if (!isTopFrame() || !["interactive", "complete"].includes(document.readyState)) return "";
+  if (isLoginPath() || /^\/landingpage\.aspx$/i.test(location.pathname)) return "";
+  const menu = document.getElementById("menu-content");
+  if (!document.getElementById("uims_sidebar") || !menu) return "";
+  return menu.querySelector("a") ? "ok" : "empty";
+}
+
+function hasEmptyPortalMenu() {
+  return portalMenu() === "empty";
+}
+
+// CUIMS's refusal: the page loads with an empty sidebar. Said once the
+// document is in, and so is a menu that did load, which tells the background
+// CUIMS is serving pages again. Each page also goes to the extension's local
+// request log ("Copy diagnostics").
+let tabPageReported = false;
+function reportTabPage() {
+  if (tabPageReported || !isTopFrame() || !["interactive", "complete"].includes(document.readyState)) return;
+  tabPageReported = true;
+  const menu = portalMenu();
+  if (menu === "empty") shareLocalStorageWrite({ tabLimitedAt: Date.now() });
+  if (menu === "ok") shareLocalStorageWrite({ tabMenuOkAt: Date.now(), sessionAlive: true, sessionCheckedAt: Date.now() });
+  const result = /^\/error\.html$/i.test(location.pathname) ? "error-page" : isLoginPath() ? "login" : menu === "empty" ? "empty-menu" : menu || "page";
+  try {
+    chrome.runtime.sendMessage({ type: "cuims-clear:tab-page", path: location.pathname, result });
+  } catch {}
 }
 
 function backgroundTouchedSince(at) {
@@ -994,9 +1022,12 @@ function scanPage() {
   scanQueued = false;
   const promptRoots = pendingPromptRoots;
   pendingPromptRoots = null;
+  // A page CUIMS refused (empty sidebar) proves nothing about the session or
+  // the leave and timetable it would show.
+  const refused = hasEmptyPortalMenu();
 
   // Successful landing clears the login circuit so the next session starts fresh.
-  if (/studenthome\.aspx$/i.test(location.pathname)) {
+  if (!refused && /studenthome\.aspx$/i.test(location.pathname)) {
     resetFailureState();
     clearLoginStatus();
     // Tells the background the session is alive, so a refresh that gave way
@@ -1008,7 +1039,10 @@ function scanPage() {
   }
 
   prepareLogin();
-  shareLeavePage();
+  if (!refused) {
+    shareLeavePage();
+    shareTimetablePage();
+  }
 
   if (TEST_PAGE_RE.test(location.pathname)) return;
 
@@ -1049,6 +1083,21 @@ function shareLeavePage() {
   leavePageShared = grid.textContent;
   try {
     chrome.runtime.sendMessage({ type: "cuims-clear:leave-page", which, html: grid.outerHTML });
+  } catch {}
+}
+
+// Opening My Time Table on CUIMS hands the week to the Forecast, so the
+// background never needs to load it again this semester. The tidy layer keeps
+// CUIMS's own grid in the page (hidden), so it is read from there.
+let timetableShared = null;
+function shareTimetablePage() {
+  if (!isTopFrame() || !/frmMyTimeTable\.aspx$/i.test(location.pathname)) return;
+  const grid = document.getElementById("ContentPlaceHolder1_gvMyTimeTable") || document.getElementById("grdMain");
+  if (!grid || grid.textContent === timetableShared) return;
+  timetableShared = grid.textContent;
+  const details = document.getElementById("ContentPlaceHolder1_gvMyTimeTableDetails") || document.getElementById("ContentPlaceHolder1_grdCourseDetail");
+  try {
+    chrome.runtime.sendMessage({ type: "cuims-clear:timetable-page", html: grid.outerHTML + (details ? details.outerHTML : "") });
   } catch {}
 }
 
@@ -1201,6 +1250,9 @@ if (typeof addEventListener === "function") {
     if (event.persisted && hasLoginControls()) restartLogin();
   });
 }
+
+document.addEventListener("DOMContentLoaded", reportTabPage, { once: true });
+reportTabPage();
 
 if (location.pathname.toLowerCase().endsWith("/landingpage.aspx")) {
   location.replace(HOME_URL);

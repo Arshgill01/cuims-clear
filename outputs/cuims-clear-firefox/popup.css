@@ -559,6 +559,10 @@ input[type="password"]:focus-visible {
   cursor: pointer;
 }
 
+.diag-row {
+  cursor: default;
+}
+
 .switch-row + .switch-row {
   border-top: 1px solid var(--line);
 }

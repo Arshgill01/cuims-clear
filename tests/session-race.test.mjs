@@ -220,3 +220,4 @@ for (const browser of ["chrome", "firefox"]) {
     assert.match(pages[3].status, /paused after 3 tries/);
   });
 }
+

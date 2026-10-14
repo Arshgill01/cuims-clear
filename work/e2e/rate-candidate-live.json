@@ -1,0 +1,83 @@
+{
+  "at": "2026-10-10T06:52:39.570Z",
+  "hasSixSecondGate": true,
+  "rows": [
+    {
+      "at": "2026-10-10T06:55:02.502Z",
+      "method": "POST",
+      "path": "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport",
+      "status": 200,
+      "redirected": false,
+      "finalPath": "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport"
+    },
+    {
+      "at": "2026-10-10T07:00:12.887Z",
+      "method": "POST",
+      "path": "/frmStudentCourseWiseAttendanceSummary.aspx/GetFullReport",
+      "status": 200,
+      "redirected": false,
+      "finalPath": "/frmStudentCourseWiseAttendanceSummary.aspx/GetFullReport"
+    },
+    {
+      "at": "2026-10-10T07:02:47.846Z",
+      "method": "POST",
+      "path": "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport",
+      "status": 200,
+      "redirected": false,
+      "finalPath": "/frmStudentCourseWiseAttendanceSummary.aspx/GetReport"
+    },
+    {
+      "at": "2026-10-10T07:02:47.919Z",
+      "method": "GET",
+      "path": "/frmMyTimeTable.aspx",
+      "status": 200,
+      "redirected": false,
+      "finalPath": "/frmMyTimeTable.aspx",
+      "menuLinks": 3
+    },
+    {
+      "at": "2026-10-10T07:02:51.804Z",
+      "method": "GET",
+      "path": "/StudentHome.aspx",
+      "status": 200,
+      "redirected": false,
+      "finalPath": "/StudentHome.aspx",
+      "menuLinks": 3
+    }
+  ],
+  "initial": {
+    "subjects": 10,
+    "timetableSlots": 36,
+    "hasLeaves": true,
+    "hasHistory": true,
+    "hasMeta": true,
+    "code": "",
+    "pauseUntil": 0,
+    "tabLimitedAt": 1791614863341
+  },
+  "diagnosticErrors": [
+    {
+      "code": "TypeError",
+      "reason": "The diagnostic looked for encrypted course codes in the snapshot; they are stored separately.",
+      "requestsSent": 0
+    }
+  ],
+  "historyRead": {
+    "ok": true,
+    "markCount": 46
+  },
+  "failureObservation": {
+    "at": "2026-10-10T07:04:01.068Z",
+    "nativePath": "/StudentHome.aspx",
+    "nativeMenuEmpty": true,
+    "statusCode": "",
+    "lastAttempt": 1791615767834,
+    "pageAt": 1791615767918,
+    "tabPageAt": 1791615052880,
+    "tabLimitedAt": 1791615772985,
+    "pagesPausedUntil": 0,
+    "sessionAlive": true,
+    "sessionCheckedAt": 1791615772338
+  },
+  "stoppedAt": "2026-10-10T07:07:04.082Z"
+}
