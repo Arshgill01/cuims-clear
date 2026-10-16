@@ -25,3 +25,6 @@ store/screenshots/src/.*.png
 store/screenshots/src/.captcha.jpg
 # Local test credentials for the live e2e runs
 .env
+# Local audit snapshots and a separate investigation worktree
+/work/audit-0.10.3/
+/work/rate-investigation/

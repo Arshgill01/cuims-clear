@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LMS design pitches</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #f2f3ee;
+        --surface: #ffffff;
+        --ink: #181a17;
+        --muted: #63685f;
+        --line: #d6dad1;
+        --line-strong: #aeb4aa;
+        --accent: #b7f34a;
+        --accent-ink: #18200d;
+        --focus: #527f17;
+        font-family: Inter, Arial, Helvetica, sans-serif;
+        color: var(--ink);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #c9cec4; }
+      .deck { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
+      .intro h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.03em; }
+      .intro p { margin: 0 0 32px; max-width: 64ch; color: #3d4238; line-height: 1.5; }
+      .pitch { margin: 0 0 56px; }
+      .pitch > h2 { margin: 0 0 6px; font-size: 20px; }
+      .pitch > p { margin: 0 0 16px; color: #4a4f46; font-size: 15px; max-width: 70ch; line-height: 1.45; }
+      .frame {
+        background: var(--bg);
+        border: 1px solid #b7bdb2;
+        min-height: 680px;
+      }
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 14px 24px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+        font-size: 14px;
+      }
+      .bar b { margin-right: auto; }
+      .bar button {
+        margin-left: auto;
+        border: 1px solid var(--line);
+        background: transparent;
+        padding: 8px 12px;
+        min-height: 40px;
+        font: inherit;
+      }
+      .page { max-width: 1120px; margin: 0 auto; padding: 24px; }
+      .head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+      .head h3 { margin: 0; font-size: 28px; font-weight: 650; letter-spacing: -0.025em; }
+      .count { color: var(--muted); font-size: 14px; }
+      input[type="search"] {
+        width: min(380px, 100%);
+        height: 44px;
+        margin-bottom: 20px;
+        padding: 0 12px;
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        background: var(--surface);
+        font: inherit;
+        font-size: 14px;
+      }
+      a { color: inherit; text-decoration: none; }
+      .code { color: var(--muted); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+      /* D: Stack */
+      .d-list { display: grid; gap: 0; }
+      .d-item {
+        padding: 20px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .d-item h4 { margin: 0 0 4px; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
+      .d-item .code { display: block; margin-bottom: 12px; }
+      .d-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+      .d-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 40px;
+        padding: 0 14px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .d-link.work { background: var(--accent); border-color: #92c62f; color: var(--accent-ink); }
+      .d-miss { color: var(--muted); font-size: 13px; align-self: center; }
+
+      /* E: Chooser */
+      .e-wrap {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: 560px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+      }
+      .e-list { border-right: 1px solid var(--line); padding: 8px 0; }
+      .e-sub {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 12px 16px;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        cursor: default;
+      }
+      .e-sub strong { display: block; font-size: 14px; font-weight: 650; }
+      .e-sub[aria-current="true"] { background: #18200d; color: var(--accent); }
+      .e-sub[aria-current="true"] .code { color: #c6d6a4; }
+      .e-pane { padding: 28px 32px; }
+      .e-pane .code { display: block; margin: 8px 0 28px; }
+      .e-pane h4 { margin: 0; font-size: 32px; font-weight: 650; letter-spacing: -0.03em; }
+      .e-dest {
+        display: grid;
+        gap: 10px;
+        max-width: 360px;
+      }
+      .e-dest a {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 52px;
+        padding: 0 16px;
+        border: 1px solid var(--line-strong);
+        font-size: 15px;
+        font-weight: 650;
+      }
+      .e-dest a.work { background: var(--accent); border-color: #92c62f; color: var(--accent-ink); }
+
+      /* F: Work first */
+      .f-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 168px 220px;
+        gap: 16px;
+        align-items: center;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .f-row h4 { margin: 0 0 3px; font-size: 16px; font-weight: 650; }
+      .f-syllabus {
+        font-size: 13px;
+        font-weight: 650;
+        border-bottom: 1px solid var(--ink);
+        justify-self: start;
+      }
+      .f-work {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 14px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-size: 14px;
+        font-weight: 750;
+      }
+      .f-miss { color: var(--muted); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="deck">
+      <div class="intro">
+        <h1>Three new LMS directions</h1>
+        <p>Same graphite and lime. Same pairing: one subject, Syllabus &amp; Materials, Semester Work. These are new layouts, not the roster / two-door / dense-index set from before.</p>
+      </div>
+
+      <section class="pitch" id="pitch-d">
+        <h2>D. Stack</h2>
+        <p>Forget the table. Each subject is a short block: name, code, then the two destinations under it. Easier on a laptop between classes, and it collapses cleanly on a phone.</p>
+        <div class="frame">
+          <div class="bar"><b>CUIMS Clear</b><a href="#">Courses</a><a href="#">CUIMS ↗</a><button>Original view</button></div>
+          <div class="page">
+            <div class="head"><h3>Courses</h3><span class="count">6 subjects</span></div>
+            <input type="search" placeholder="Subject name or code" readonly />
+            <div class="d-list">
+              <div class="d-item">
+                <h4>Computer Networks</h4>
+                <span class="code">24CST-302</span>
+                <div class="d-actions">
+                  <a class="d-link" href="#">Syllabus &amp; Materials →</a>
+                  <a class="d-link work" href="#">Semester Work →</a>
+                </div>
+              </div>
+              <div class="d-item">
+                <h4>Full Stack Development - II</h4>
+                <span class="code">24CSP-314</span>
+                <div class="d-actions">
+                  <a class="d-link" href="#">Syllabus &amp; Materials →</a>
+                  <a class="d-link work" href="#">Semester Work →</a>
+                </div>
+              </div>
+              <div class="d-item">
+                <h4>Soft Skills - III</h4>
+                <span class="code">24TDP-311</span>
+                <div class="d-actions">
+                  <a class="d-link" href="#">Syllabus &amp; Materials →</a>
+                  <span class="d-miss">Semester Work not listed</span>
+                </div>
+              </div>
+              <div class="d-item">
+                <h4>Aptitude - III</h4>
+                <span class="code">24TDT-312</span>
+                <div class="d-actions">
+                  <a class="d-link" href="#">Syllabus &amp; Materials →</a>
+                  <a class="d-link work" href="#">Semester Work →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pitch" id="pitch-e">
+        <h2>E. Chooser</h2>
+        <p>Pick a subject on the left. The right side only shows that subject’s two doors. One decision at a time. Best if you open LMS to go somewhere specific, not to scan every course.</p>
+        <div class="frame">
+          <div class="bar"><b>CUIMS Clear</b><a href="#">Courses</a><a href="#">CUIMS ↗</a><button>Original view</button></div>
+          <div class="page">
+            <div class="head"><h3>Courses</h3><span class="count">6 subjects</span></div>
+            <input type="search" placeholder="Subject name or code" readonly />
+            <div class="e-wrap">
+              <div class="e-list">
+                <button class="e-sub" type="button" aria-current="true"><strong>Computer Networks</strong><span class="code">24CST-302</span></button>
+                <button class="e-sub" type="button"><strong>Full Stack Development - II</strong><span class="code">24CSP-314</span></button>
+                <button class="e-sub" type="button"><strong>Soft Skills - III</strong><span class="code">24TDP-311</span></button>
+                <button class="e-sub" type="button"><strong>Aptitude - III</strong><span class="code">24TDT-312</span></button>
+                <button class="e-sub" type="button"><strong>Probability And Statistics</strong><span class="code">24SMT-341</span></button>
+                <button class="e-sub" type="button"><strong>Project Based Learning In Java</strong><span class="code">24CSH-301</span></button>
+              </div>
+              <div class="e-pane">
+                <h4>Computer Networks</h4>
+                <span class="code">24CST-302</span>
+                <div class="e-dest">
+                  <a href="#">Syllabus &amp; Materials <span>→</span></a>
+                  <a class="work" href="#">Semester Work <span>→</span></a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pitch" id="pitch-f">
+        <h2>F. Work first</h2>
+        <p>Most opens are “I need to submit something.” Semester Work is the lime action on every row. Syllabus stays a quiet text link. The weekly path is the one that pops.</p>
+        <div class="frame">
+          <div class="bar"><b>CUIMS Clear</b><a href="#">Courses</a><a href="#">CUIMS ↗</a><button>Original view</button></div>
+          <div class="page">
+            <div class="head"><h3>Courses</h3><span class="count">6 subjects</span></div>
+            <input type="search" placeholder="Subject name or code" readonly />
+            <div class="f-row">
+              <div><h4>Computer Networks</h4><span class="code">24CST-302</span></div>
+              <a class="f-syllabus" href="#">Syllabus &amp; Materials</a>
+              <a class="f-work" href="#">Semester Work <span>→</span></a>
+            </div>
+            <div class="f-row">
+              <div><h4>Full Stack Development - II</h4><span class="code">24CSP-314</span></div>
+              <a class="f-syllabus" href="#">Syllabus &amp; Materials</a>
+              <a class="f-work" href="#">Semester Work <span>→</span></a>
+            </div>
+            <div class="f-row">
+              <div><h4>Soft Skills - III</h4><span class="code">24TDP-311</span></div>
+              <a class="f-syllabus" href="#">Syllabus &amp; Materials</a>
+              <span class="f-miss">Semester Work not listed</span>
+            </div>
+            <div class="f-row">
+              <div><h4>Aptitude - III</h4><span class="code">24TDT-312</span></div>
+              <a class="f-syllabus" href="#">Syllabus &amp; Materials</a>
+              <a class="f-work" href="#">Semester Work <span>→</span></a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>
