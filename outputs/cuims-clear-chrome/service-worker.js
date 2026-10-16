@@ -11,6 +11,8 @@ importScripts(
   "attendance-client.js",
   "attendance-daemon.js",
   "attendance-bg.js",
+  "update-check.js",
+  "update-bg.js",
 );
 
 // The captcha solver is plain JavaScript and decodes the captcha with

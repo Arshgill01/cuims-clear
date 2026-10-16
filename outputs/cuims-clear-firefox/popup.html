@@ -60,6 +60,19 @@
           <button id="grant-access" type="button">Allow access</button>
         </div>
 
+        <aside id="update-banner" class="update-banner" aria-label="Update CUIMS Clear" hidden>
+          <p><strong id="update-title"></strong> <span id="update-note"></span></p>
+          <button id="update-now" type="button">Update now</button>
+        </aside>
+
+        <aside id="update-news" class="update-news" aria-labelledby="update-news-title" hidden>
+          <div class="update-news-head">
+            <strong id="update-news-title"></strong>
+            <button id="update-news-done" type="button" class="text-button">Got it</button>
+          </div>
+          <ul id="update-news-list"></ul>
+        </aside>
+
         <div class="views" id="views">
           <section id="view-attendance" class="view attendance" role="tabpanel" aria-labelledby="tab-attendance" tabindex="-1" hidden></section>
 
@@ -217,6 +230,17 @@
             </fieldset>
 
             <fieldset class="settings-group">
+              <legend>Updates</legend>
+              <div class="switch-row diag-row">
+                <span>
+                  <strong id="update-version">Version</strong>
+                  <small id="update-state">Not checked yet.</small>
+                </span>
+                <button id="update-check" class="clear-button" type="button" aria-describedby="update-state">Check now</button>
+              </div>
+            </fieldset>
+
+            <fieldset class="settings-group">
               <legend>Troubleshooting</legend>
               <div class="switch-row diag-row">
                 <span>
@@ -265,6 +289,7 @@
     <script src="forecast-model.js"></script>
     <script src="forecast-view.js"></script>
     <script src="rate-nudge.js"></script>
+    <script src="update-check.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

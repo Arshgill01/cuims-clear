@@ -18,10 +18,21 @@ function backgroundScripts(build) {
 
 function loadBackground(build) {
   const { root, names } = backgroundScripts(build);
-  const listeners = { message: [], storage: [] };
+  const listeners = { message: [], storage: [], installed: [], updateAvailable: [] };
   const event = (list) => ({ addListener: (fn) => list.push(fn) });
   const chrome = {
-    runtime: { id: "cuims-clear@arshgill01", getURL: (path) => `moz-extension://uuid/${path}`, onMessage: event(listeners.message), sendMessage() {} },
+    runtime: {
+      id: "cuims-clear@arshgill01",
+      getURL: (path) => `${build === "firefox" ? "moz-extension" : "chrome-extension"}://uuid/${path}`,
+      getManifest: () => ({ version: "0.10.6" }),
+      onMessage: event(listeners.message),
+      onInstalled: event(listeners.installed),
+      // Firefox has the event too; listening to it would hold every update
+      // until the browser restarts.
+      onUpdateAvailable: event(listeners.updateAvailable),
+      ...(build === "chrome" ? { requestUpdateCheck: async () => ({ status: "no_update" }) } : {}),
+      sendMessage() {},
+    },
     storage: { local: { get: async (defaults) => defaults, set: async () => {}, remove() {} }, onChanged: event(listeners.storage) },
     permissions: { contains: async () => true },
     tabs: { query: async () => [], get: async () => ({}), update: async () => {}, create: async () => ({}) },
@@ -44,6 +55,9 @@ for (const build of ["firefox", "chrome"]) {
     assert.equal(chrome.alarms, undefined);
     assert.ok(names.indexOf("captcha-glyphs.js") < names.indexOf("captcha-solver.js"));
     assert.ok(names.indexOf("captcha-solver.js") < names.indexOf("attendance-bg.js"));
+    assert.ok(names.indexOf("update-check.js") < names.indexOf("update-bg.js"));
+    assert.equal(listeners.installed.length, 1, "the update notice clears itself when an update lands");
+    assert.equal(listeners.updateAvailable.length, build === "chrome" ? 1 : 0, "Firefox must not hold its updates");
   });
 
   test(`${build}: no OCR engine, offscreen page or WASM is shipped any more`, () => {
@@ -106,7 +120,9 @@ test("a fresh background clears the locks a stopped one left behind, before any 
       runtime: {
         id: "cuims-clear@arshgill01",
         getURL: (path) => `moz-extension://uuid/${path}`,
+        getManifest: () => ({ version: "0.10.6" }),
         onMessage: { addListener: (fn) => listeners.push(fn) },
+        onInstalled: { addListener() {} },
         getPlatformInfo: (done) => done({}),
       },
       storage: {

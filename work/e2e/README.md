@@ -44,8 +44,9 @@ policy, not measured CUIMS limits.
 Offline (mocked CUIMS, no account needed):
 
 - From the repository root, `node work/e2e/conservative-smoke.mjs`: real packaged
-  Chrome worker and popup; validates the 60-second UI pause, cached attendance,
-  HTTP 429/Retry-After, zero LMS requests or fallback tabs during cooldown,
+  Chrome worker and popup; validates the 30-second UI pause, cached attendance,
+  HTTP 429/Retry-After, zero background LMS requests during cooldown (the LMS
+  tab intent is recorded without loading the portal),
   and duty-leave fetching/approval updates without opening a portal tab.
   Writes ignored artifacts under `work/e2e/results/conservative/`.
 

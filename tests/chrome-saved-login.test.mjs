@@ -220,7 +220,8 @@ test("Open CUIMS and Open LMS still open their tab when the background cannot be
     });
     await element(selector).click({ preventDefault() {} });
     for (let i = 0; i < 10 && !closed; i += 1) await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(sent.length, 2, `${selector}: one retry before giving up on the background`);
+    // The popup also asks the background about updates when it opens.
+    assert.equal(sent.filter((type) => type !== "cuims-clear:update-status").length, 2, `${selector}: one retry before giving up on the background`);
     assert.deepEqual(JSON.parse(JSON.stringify(created)), [{ url, active: true, index: 3 }], selector);
     assert.equal(closed, true, selector);
   }

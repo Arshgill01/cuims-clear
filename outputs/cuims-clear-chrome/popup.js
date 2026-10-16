@@ -893,7 +893,8 @@ function readFailed() {
 // Only beside the attendance it is asking about, and never under an error.
 function paintRate() {
   if (!rateNudge) return;
-  rateNudge.hidden = !(rateShow && currentView === "attendance" && attendance.snapshot?.subjects?.length && !readFailed());
+  // One notice at a time: an update or its news comes first.
+  rateNudge.hidden = !(rateShow && currentView === "attendance" && attendance.snapshot?.subjects?.length && !readFailed() && !updateShowing());
   if (rateAsk) rateAsk.hidden = rateShow !== "ask";
   if (rateConfirm) rateConfirm.hidden = rateShow !== "confirm";
   if (rateNudge.hidden) settleRate();
@@ -977,6 +978,138 @@ function updateRate() {
   rateState = state;
   rateShow = show;
   if (top) liftRate();
+}
+
+// ---- updates ----
+
+// A newer version at the top; after an update, what changed. Chrome installs
+// it from here; Firefox installs add-ons only from a page the student clicks
+// on, so Update now opens CUIMS, where update-bar.js has the link.
+const updateBanner = document.querySelector("#update-banner");
+const updateNews = document.querySelector("#update-news");
+const updateNow = document.querySelector("#update-now");
+const updateCheckButton = document.querySelector("#update-check");
+const currentVersion = chrome.runtime.getManifest().version;
+const onFirefox = globalThis.location?.protocol === "moz-extension:";
+let updateInfo = null;
+let updateDone = null;
+
+function updateShowing() {
+  return Boolean(updateBanner && !updateBanner.hidden) || Boolean(updateNews && !updateNews.hidden);
+}
+
+function paintUpdate() {
+  const U = globalThis.CuimsUpdate;
+  if (!U) return;
+  const info = U.normalize(updateInfo);
+  const out = U.available(info, currentVersion);
+  if (updateBanner) {
+    updateBanner.hidden = !out;
+    document.querySelector("#update-title").textContent = `Version ${info.latest} is out.`;
+    document.querySelector("#update-note").textContent = onFirefox ? "Opens CUIMS, where Firefox asks twice: Allow, then Add." : info.ready ? "Downloaded. It takes a second." : "";
+  }
+  const news = out ? null : U.news(updateDone, currentVersion, Date.now());
+  if (updateNews) {
+    updateNews.hidden = !news;
+    if (news) {
+      document.querySelector("#update-news-title").textContent = `Updated to ${news.to}`;
+      document.querySelector("#update-news-list").innerHTML = news.notes.map((line) => `<li>${CuimsAttendance.escapeHtml(line)}</li>`).join("");
+    }
+  }
+  document.querySelector("#update-version").textContent = `Version ${currentVersion}`;
+  const state = document.querySelector("#update-state");
+  if (state) {
+    const when = U.ago(info.checkedAt, Date.now());
+    state.textContent = out
+      ? `${info.latest} is out.`
+      : info.error
+        ? "Couldn't reach the store. Try again later."
+        : when
+          ? `Up to date. Checked ${when}.`
+          : "Not checked yet.";
+  }
+  paintRate();
+}
+
+function askUpdate(message, done) {
+  askBackground(message, (answer) => {
+    if (answer && !answer.error && "latest" in answer) updateInfo = answer;
+    paintUpdate();
+    done?.(answer);
+  });
+}
+
+updateNow?.addEventListener("click", async () => {
+  if (updateNow.disabled) return;
+  if (onFirefox) {
+    const U = globalThis.CuimsUpdate;
+    try {
+      // The bar shows on CUIMS even if × hid it today.
+      await chrome.storage.local.set({ updateSnoozeUntil: 0 });
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await chrome.tabs.create({ url: U.UPDATE_PAGE, active: true, ...(tab?.index >= 0 ? { index: tab.index + 1 } : {}) });
+      window.close();
+    } catch {
+      showStatus("Could not open CUIMS. Try again.");
+    }
+    return;
+  }
+  updateNow.disabled = true;
+  updateNow.textContent = "Updating…";
+  askBackground({ type: "cuims-clear:update-apply" }, (answer) => {
+    // On "restarting" the extension reloads and this popup closes.
+    if (answer?.status === "restarting") {
+      updateNow.textContent = "Restarting…";
+      return;
+    }
+    updateNow.disabled = false;
+    updateNow.textContent = "Update now";
+    const status = answer?.status;
+    showStatus(
+      status === "no_update" ? "Chrome hasn't got it yet. It updates by itself soon."
+      : status === "downloading" ? "Still downloading. Try again in a minute."
+      : status === "throttled" ? "Chrome asked to wait. Try again in a few minutes."
+      : "Couldn't update. Try again in a minute.",
+    );
+    chrome.storage.local.get({ updateInfo: null }, (stored) => {
+      updateInfo = stored.updateInfo;
+      paintUpdate();
+    });
+  });
+});
+
+updateCheckButton?.addEventListener("click", () => {
+  if (updateCheckButton.disabled) return;
+  updateCheckButton.disabled = true;
+  updateCheckButton.textContent = "Checking…";
+  askUpdate({ type: "cuims-clear:update-status", check: true, manual: true }, (answer) => {
+    updateCheckButton.disabled = false;
+    updateCheckButton.textContent = "Check now";
+    if (!answer || answer.error) showStatus("Couldn't reach the store.");
+    else if (answer.available) showStatus(`Version ${answer.latest} is out.`);
+    else showStatus("You're on the latest version.");
+  });
+});
+
+document.querySelector("#update-news-done")?.addEventListener("click", () => {
+  updateDone = { ...(updateDone || {}), seen: true };
+  chrome.storage.local.set({ updateDone });
+  paintUpdate();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !(changes.updateInfo || changes.updateDone)) return;
+  if (changes.updateInfo) updateInfo = changes.updateInfo.newValue || null;
+  if (changes.updateDone) updateDone = changes.updateDone.newValue || null;
+  paintUpdate();
+});
+
+function setupUpdate(stored) {
+  updateInfo = stored.updateInfo;
+  updateDone = stored.updateDone;
+  paintUpdate();
+  // At most every six hours on its own (update-check.js).
+  askUpdate({ type: "cuims-clear:update-status", check: true });
 }
 
 // ---- themes ----
@@ -1098,6 +1231,8 @@ chrome.storage.local.get(
     forecastEnd: "",
     academicCalendar: "auto",
     rateNudge: null,
+    updateInfo: null,
+    updateDone: null,
   },
   (stored) => {
     for (const key of Object.keys(SWITCH_DEFAULTS)) settings[key] = stored[key] !== false;
@@ -1118,6 +1253,7 @@ chrome.storage.local.get(
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";
     showView(start, { remember: false });
     setupRate(stored);
+    setupUpdate(stored);
     paintRate();
   },
 );

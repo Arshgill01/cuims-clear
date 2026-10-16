@@ -28,6 +28,12 @@ opening the popup or a tab never starts a read, and nothing runs on a timer. The
 only in local extension storage, and the Forecast tab's projections are worked out on the
 device from them. Nothing is sent anywhere else.
 
+To tell the student when a newer version is out, the extension asks
+`addons.mozilla.org` for CUIMS Clear's current version number, at most every six hours,
+when the popup opens or a CUIMS page loads. The request carries no cookies and nothing
+about the student; it is the same public listing anyone can read. The answer is kept in
+local extension storage. Updating still goes through Firefox and addons.mozilla.org.
+
 The user can delete the stored UID, password, and attendance at any time with **Clear login** in the
 extension popup, or remove all stored settings by uninstalling the extension.
 
@@ -37,4 +43,4 @@ The extension has access only to pages under `https://students.cuchd.in/*` and
 Firefox extension storage is not encrypted. Anyone with access to the user's Firefox
 profile may be able to read locally stored values.
 
-Last updated: 30 September 2026.
+Last updated: 14 October 2026.

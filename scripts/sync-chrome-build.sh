@@ -16,7 +16,8 @@ fi
 # the solver and the attendance scripts.
 if ! grep -q '"captcha-solver.js"' "$CH/manifest.json" \
   || ! grep -q 'captcha-solver.js' "$CH/service-worker.js" \
-  || ! grep -q 'attendance-bg.js' "$CH/service-worker.js"; then
+  || ! grep -q 'attendance-bg.js' "$CH/service-worker.js" \
+  || ! grep -q 'update-bg.js' "$CH/service-worker.js"; then
   echo "Chrome manifest or service-worker.js is missing a shared script." >&2
   exit 1
 fi
@@ -24,7 +25,8 @@ fi
 for f in captcha-glyphs.js captcha-solver.js content.js popup.html popup.js popup.css \
   attendance-parse.js academic-calendar.js attendance-model.js attendance-client.js attendance-daemon.js attendance-view.js attendance-bg.js keep-awake.js \
   lms-model.js lms.js lms.css lms-launch.js lms-boot.js lms-open.js lms-open-wrap.js themes.js theme-boot.js theme-bg.js cuims-theme.js \
-  cuims-tidy.js cuims-tidy.css rate-nudge.js forecast-model.js forecast-view.js; do
+  cuims-tidy.js cuims-tidy.css rate-nudge.js forecast-model.js forecast-view.js \
+  update-check.js update-bg.js update-bar.js; do
   cp "$FF/$f" "$CH/$f"
 done
 

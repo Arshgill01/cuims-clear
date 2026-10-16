@@ -24,7 +24,7 @@ try {
     };
     await chrome.storage.local.set({
       uid: "fixture", password: "fixture", popupView: "attendance",
-      attendanceLastAttemptAt: Date.now() - 59_000,
+      attendanceLastAttemptAt: Date.now() - 30_000,
       attendanceSnapshot: { fetchedAt: new Date().toISOString(), subjects: [{ code: "TEST", title: "Test subject", attended: 9, delivered: 10 }] },
     });
   });
@@ -33,6 +33,9 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.setViewport({ width: 440, height: 600 });
   await page.goto(`${base}/popup.html`);
+  await page.waitForSelector("#fetch-attendance");
+  // Start the short pause after the popup loads, so browser startup cannot consume it.
+  await worker.evaluate(() => chrome.storage.local.set({ attendanceLastAttemptAt: Date.now() - 28_000 }));
   await page.waitForSelector("#fetch-attendance[disabled]");
   assert.match(await page.$eval("#fetch-attendance", (node) => node.textContent), /Refresh in 1 min/);
   await page.waitForFunction(() => !document.querySelector("#fetch-attendance")?.disabled, { timeout: 3000 });
@@ -43,10 +46,20 @@ try {
   assert.match(await page.$eval("#view-attendance", (node) => node.textContent), /Test subject/);
   assert.match(await page.$eval("#fetch-attendance", (node) => node.textContent), /Refresh in 10 min/);
   await page.screenshot({ path: new URL("cooldown.png", results).pathname });
+  // Open LMS uses the browser's tab session even during a background pause.
+  // Record the tab intent without loading the live portal or closing this test page.
+  await worker.evaluate(() => {
+    globalThis.__openedTabs = [];
+    chrome.tabs.create = async (options) => { globalThis.__openedTabs.push(options); return { id: 999 }; };
+  });
+  await page.evaluate(() => { window.close = () => {}; });
   await page.click(".lms-open-link");
-  await page.waitForFunction(() => document.querySelector("#status")?.textContent.includes("10 min"));
-  assert.equal(await worker.evaluate(() => globalThis.__conservativeFetches), 1, "LMS obeys the same pause");
-  assert.equal((await browser.pages()).filter((item) => item.url().startsWith("https://students.cuchd.in")).length, 0, "no CUIMS fallback tab during throttle");
+  await page.waitForFunction(() => document.querySelector(".lms-open-link").getAttribute("aria-busy") === "true");
+  await worker.evaluate(async () => {
+    for (let i = 0; i < 100 && !globalThis.__openedTabs.length; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  assert.equal(await worker.evaluate(() => globalThis.__openedTabs[0]?.url), "https://students.cuchd.in/StudentHome.aspx#cuims-clear-lms");
+  assert.equal(await worker.evaluate(() => globalThis.__conservativeFetches), 1, "LMS adds no background request during the pause");
   await worker.evaluate(() => chrome.storage.local.set({ attendanceLastAttemptAt: Date.now() - 60_000, attendanceBackoffUntil: Date.now() - 1 }));
   await page.waitForFunction(() => !document.querySelector("#fetch-attendance")?.disabled && document.querySelector(".attendance-info")?.textContent.includes("You can refresh now"));
   assert.equal(await worker.evaluate(() => globalThis.__conservativeFetches), 1, "cooldown expiry never fetches automatically");
@@ -102,7 +115,7 @@ try {
   await page.waitForFunction(() => document.querySelector(".leave-pending")?.textContent.includes("No pending leave"));
   assert.equal(await worker.evaluate(() => globalThis.__dutyReads), 1, "the approval needs no second leave page read");
   assert.deepEqual(errors, []);
-  const report = { refreshReenabledWithoutNetwork: true, cachedAttendanceKept: true, retryAfterMinutes: 10, lmsRequestsDuringPause: 0, dutyLeaveFetchedWithoutPortalTab: true, dutyApprovalUpdatedOnRefresh: true, dutyLeavePageReads: 1, errors };
+  const report = { refreshReenabledWithoutNetwork: true, cachedAttendanceKept: true, retryAfterMinutes: 10, lmsBackgroundRequestsDuringPause: 0, lmsTabIntentDuringPause: true, dutyLeaveFetchedWithoutPortalTab: true, dutyApprovalUpdatedOnRefresh: true, dutyLeavePageReads: 1, errors };
   writeFileSync(new URL("smoke.json", results), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report));
 } finally {

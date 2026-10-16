@@ -1377,6 +1377,91 @@ input[role="switch"]:disabled {
   font-size: 11px;
 }
 
+/* ---- a newer version is out, and what changed after an update ---- */
+
+.update-banner,
+.update-news {
+  flex: 0 0 auto;
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  background: var(--surface);
+  animation: rate-drop 220ms ease-out;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-banner[hidden],
+.update-news[hidden] {
+  display: none;
+}
+
+.update-banner p {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.update-banner strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.update-banner button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-size: 11.5px;
+  font-weight: 750;
+}
+
+.update-banner button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.update-banner button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.update-news-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.update-news-head strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.update-news ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.update-news li + li {
+  margin-top: 2px;
+}
+
 /* ---- theme picker: each card is drawn in its own theme ---- */
 
 .theme-cuims {

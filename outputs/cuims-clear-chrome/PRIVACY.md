@@ -53,6 +53,14 @@ Clear login. The Forecast tab's projections are calculated on the device from th
 Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
 The extension does not maintain a browsing-history record.
 
+## Updates
+
+To tell you when a newer version is out, the extension uses Chrome's own update check
+(chrome.runtime.requestUpdateCheck), at most every six hours, when the popup opens or a
+CUIMS page loads, and when you press Check now or Update. Chrome asks the Chrome Web Store
+itself; the extension sends nothing anywhere. Update installs the version Chrome has
+downloaded and restarts the extension.
+
 ## Limited use
 
 Data is used only to provide the portal features described above, in accordance
