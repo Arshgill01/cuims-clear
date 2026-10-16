@@ -8,111 +8,45 @@
   gap: 12px;
 }
 
-/* ---- hero ---- */
+/* ---- the founders' stamp, pressed onto the receipt over TOTAL ---- */
 
-.club-hero {
+.r-total {
   position: relative;
-  min-height: 168px;
-  margin: 0;
-  padding: 14px 14px 14px;
-  overflow: hidden;
-  border-radius: 12px;
-  color: var(--hero-ink);
-  background: var(--brand-bg);
-  box-shadow: inset 0 0 0 1px var(--hero-line);
-  isolation: isolate;
 }
 
-.club-hero::before {
+.r-stamp {
   position: absolute;
-  z-index: -1;
-  right: -14px;
-  bottom: -58px;
-  color: var(--brand-ink);
-  content: "//";
-  font: 800 220px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: -58px;
-  opacity: 0.06;
-  pointer-events: none;
-}
-
-.club-kicker {
-  margin: 0;
-  color: var(--hero-muted);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.club-big {
-  margin: 2px 0 0 -4px;
-  color: var(--hero-ink);
-  font-size: 92px;
-  font-weight: 800;
-  letter-spacing: -0.07em;
-  line-height: 0.92;
-}
-
-.club-big span {
-  margin: 0 0.035em 0 0.02em;
-  color: var(--brand-ink);
-}
-
-.club-line {
-  max-width: 206px;
-  margin: 10px 0 0;
-  color: var(--hero-muted);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.club-founder-note {
-  margin: 10px 0 0;
-  padding-top: 9px;
-  border-top: 1px dashed var(--hero-line);
-  color: var(--hero-faint);
-  font: 700 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.02em;
-}
-
-.club-stamp {
-  position: absolute;
-  top: 18px;
-  right: 10px;
-  width: 124px;
-  height: 124px;
-  color: var(--brand-ink);
-  opacity: 0.94;
+  top: 50%;
+  left: 50%;
+  width: 104px;
+  height: 104px;
+  margin: -34px 0 0 -46px;
+  color: #b4322a;
+  opacity: 0.86;
   transform: rotate(-13deg);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  text-shadow: none;
 }
 
-.club-stamp svg {
+.r-stamp svg {
   display: block;
   width: 100%;
   height: 100%;
   font-family: "Avenir Next", Avenir, Inter, -apple-system, "Segoe UI", sans-serif;
 }
 
-.club-stamp.is-new {
-  animation: stamp-press 620ms cubic-bezier(0.2, 0.9, 0.25, 1) 260ms both;
-}
-
-.club-hero.is-founder:has(.club-stamp.is-new) {
-  animation: stamp-thud 260ms ease-out 520ms both;
+/* After the paper has printed: the stamp comes down. */
+.receipt.is-printing .r-stamp {
+  animation: stamp-press 560ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+  animation-delay: calc(var(--lines) * 75ms + 250ms);
 }
 
 @keyframes stamp-press {
   0% { opacity: 0; transform: rotate(-4deg) scale(1.9); }
-  55% { opacity: 1; transform: rotate(-14deg) scale(0.94); }
+  55% { opacity: 0.95; transform: rotate(-14deg) scale(0.94); }
   75% { transform: rotate(-12.5deg) scale(1.02); }
-  100% { opacity: 0.94; transform: rotate(-13deg) scale(1); }
-}
-
-@keyframes stamp-thud {
-  0%, 100% { transform: none; }
-  35% { transform: translateY(1.5px) scale(0.995); }
+  100% { opacity: 0.86; transform: rotate(-13deg) scale(1); }
 }
 
 /* ---- cards ---- */
@@ -640,8 +574,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .club-stamp.is-new,
-  .club-hero.is-founder:has(.club-stamp.is-new),
+  .receipt.is-printing .r-stamp,
   .receipt.is-printing,
   .receipt.is-printing .r-line,
   .envelope.is-sealing .envelope-seal {

@@ -63,15 +63,17 @@ test("the receipt reads the semester from the saved attendance and history", () 
 
 test("an empty ledger prints a note instead of zeros; founders get their line", () => {
   const C = club();
-  const lines = C.receiptLines({ ledger: null, semester: null, version: "1.0.0", founder: true, best: 0 });
+  const lines = C.receiptLines({ ledger: null, semester: null, version: "1.0.0", founder: true, from: "0.10.6", best: 0 });
   assert.ok(lines.some((line) => line.t === "note"));
   assert.ok(!lines.some((line) => line.l === "CAPTCHAS READ"));
-  assert.ok(lines.some((line) => /FOUNDING 100/.test(line.text || "")));
+  assert.ok(lines.some((line) => line.l === "FOUNDING MEMBER" && line.r === "SINCE v0.10.6"));
+  assert.ok(lines.some((line) => line.l === "TOTAL" && line.stamp === true));
   const plain = C.receiptLines({ ledger: { since: 1, captchas: 3, codes: ["K7mX"] }, semester: null, version: "1.0.0", founder: false, best: 12 });
   assert.ok(plain.some((line) => line.l === "CAPTCHAS READ" && line.r === "3"));
   assert.ok(plain.some((line) => line.t === "codes"));
   assert.ok(plain.some((line) => line.l === "PROXY RUN BEST"));
-  assert.ok(!plain.some((line) => /FOUNDING/.test(line.text || "")));
+  assert.ok(!plain.some((line) => /FOUNDING/.test(line.l || "")));
+  assert.ok(!plain.some((line) => line.stamp));
 });
 
 test("the time capsule opens on the semester's last day of classes, or the next one's", () => {

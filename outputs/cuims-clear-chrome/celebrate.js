@@ -119,6 +119,7 @@
     lines.push({ t: "row", l: `ORDER #${data.version}`, r: `${stampDate(dayKeyOf(now))} ${pad(now.getHours())}:${pad(now.getMinutes())}` });
     lines.push({ t: "row", l: "SERVED BY", r: "YOUR OWN BROWSER" });
     lines.push({ t: "row", l: "SENT TO SERVERS", r: "NOTHING" });
+    if (data.founder) lines.push({ t: "row", l: "FOUNDING MEMBER", r: data.from ? `SINCE v${data.from}` : "BEFORE 1.0" });
 
     const s = data.semester;
     if (s) {
@@ -150,11 +151,11 @@
     if (data.best > 0) lines.push({ t: "row", l: "PROXY RUN BEST", r: `${data.best} CLASSES` });
 
     lines.push({ t: "double" });
-    lines.push({ t: "row", l: "TOTAL", r: "₹0.00", cls: "r-total" });
+    // Founders' stamp lands here, like a PAID stamp.
+    lines.push({ t: "row", l: "TOTAL", r: "₹0.00", cls: "r-total", stamp: Boolean(data.founder) });
     lines.push({ t: "row", l: "PAID WITH", r: "ATTENDANCE" });
     lines.push({ t: "double" });
     lines.push({ t: "barcode", seed: `${data.version}${ledger.codes.join("")}${ledger.captchas}` });
-    if (data.founder) lines.push({ t: "center", text: "★ FOUNDING 100 ★", cls: "r-founder" });
     lines.push({ t: "center", text: "THANK YOU. COME AGAIN.", cls: "r-thanks" });
     lines.push({ t: "center", text: "(you will. it's CUIMS.)", cls: "r-small" });
     return lines;
@@ -196,7 +197,7 @@
           case "gap":
             return `<div class="r-line r-gap"${style}></div>`;
           case "row":
-            return `<p class="r-line r-row ${line.cls || ""}"${style}><span>${esc(line.l)}</span><span>${esc(line.r)}</span></p>`;
+            return `<p class="r-line r-row ${line.cls || ""}"${style}><span>${esc(line.l)}</span><span>${esc(line.r)}</span>${line.stamp ? `<span class="r-stamp" role="img" aria-label="Founding 100 stamp: you used CUIMS Clear before 1.0">${stampSvg()}</span>` : ""}</p>`;
           case "indent":
             return `<p class="r-line r-indent"${style}>${esc(line.text)}</p>`;
           case "head":
@@ -220,7 +221,7 @@
 
   // The same receipt as a 1080×1920 picture: a phone story, receipt in the
   // middle of the mark's graphite.
-  function receiptImage(lines, colours) {
+  function receiptImage(lines, colours, stamp) {
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1920;
@@ -249,7 +250,7 @@
 
     // The paper on its own canvas, then scaled into the space between the
     // header and the footer.
-    const paper = paperCanvas(lines, colours);
+    const paper = paperCanvas(lines, colours, stamp);
     const room = { top: 200, bottom: 1780 };
     const fit = Math.min(1, (room.bottom - room.top) / paper.height, 820 / paper.width);
     const w = paper.width * fit;
@@ -269,7 +270,7 @@
     return canvas;
   }
 
-  function paperCanvas(lines, colours) {
+  function paperCanvas(lines, colours, stamp) {
     const mono = (size, weight = 700) => `${weight} ${size}px "Courier New", Courier, "Nimbus Mono PS", monospace`;
     const width = 760;
     const left = 0;
@@ -298,6 +299,7 @@
     ctx.restore();
 
     let y = top + pad;
+    let stampAt = null;
     const inner = { l: left + pad, r: left + width - pad, c: left + width / 2 };
     ctx.fillStyle = colours.paperInk;
     ctx.strokeStyle = colours.paperInk;
@@ -318,6 +320,7 @@
         ctx.textAlign = "center";
         ctx.fillText(line.text, inner.c, mid);
       } else if (line.t === "row") {
+        if (line.stamp) stampAt = { x: inner.c + 10, y: mid + 20 };
         const size = line.cls === "r-total" ? 40 : 28;
         ctx.font = mono(size);
         ctx.textAlign = "left";
@@ -376,7 +379,29 @@
       }
       y += h;
     }
+    if (stamp && stampAt) {
+      const size = 250;
+      ctx.save();
+      ctx.globalAlpha = 0.88;
+      ctx.globalCompositeOperation = "multiply";
+      ctx.translate(stampAt.x, stampAt.y);
+      ctx.rotate((-13 * Math.PI) / 180);
+      ctx.drawImage(stamp, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    }
     return canvas;
+  }
+
+  // The stamp as a picture for the saved image, in the receipt's ink.
+  function loadStamp(colour) {
+    const svg = stampSvg()
+      .replace("<svg ", `<svg xmlns="http://www.w3.org/2000/svg" width="264" height="264" style="color:${colour}" font-family="Avenir Next, Avenir, Inter, Segoe UI, sans-serif" `);
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    });
   }
 
   function imageColours() {
@@ -389,6 +414,7 @@
       accent: v("--brand-ink", "#b7f34a"),
       paper: "#f6f3ea",
       paperInk: "#23221f",
+      stamp: "#b4322a",
     };
   }
 
@@ -503,6 +529,7 @@
         data = {
           founding,
           founder: founding.founder === true,
+          from: founding.founder === true ? String(founding.from || "") : "",
           ledger: stored.cuimsLedger,
           capsule: stored.timeCapsule && typeof stored.timeCapsule === "object" ? stored.timeCapsule : null,
           seen: stored.clubSeen && typeof stored.clubSeen === "object" ? stored.clubSeen : {},
@@ -517,27 +544,12 @@
       });
     }
 
-    function heroHtml() {
-      const f = data.founding;
-      return `
-        <section class="club-hero${data.founder ? " is-founder" : ""}" aria-labelledby="club-title">
-          <p class="club-kicker">CUIMS Clear</p>
-          <h2 id="club-title" class="club-big">1<span>.</span>0</h2>
-          <p class="club-line">${data.founder
-            ? "100 students on the Chrome Web Store. You were one of them before it was 1.0."
-            : "100 students on the Chrome Web Store, so it's 1.0 now. Welcome in."}</p>
-          ${data.founder ? `
-            <div class="club-stamp${data.seen.stamped ? "" : " is-new"}" role="img" aria-label="Founding 100 stamp: you used CUIMS Clear before 1.0">${stampSvg()}</div>
-            <p class="club-founder-note">Founding 100${f.from ? ` · from v${esc(f.from)}` : ""}. The stamp stays on this page.</p>` : ""}
-        </section>`;
-    }
-
     function receiptCard(printing) {
       const lines = receiptLines(data);
       return `
         <section class="club-card receipt-card" aria-labelledby="receipt-title">
           <div class="section-head">
-            <h2 class="section-label" id="receipt-title">Your receipt</h2>
+            <h2 class="section-label" id="receipt-title">CUIMS Clear 1.0 · your receipt</h2>
             <button type="button" class="text-button" data-receipt="print">Print again</button>
           </div>
           <div class="printer" aria-hidden="true"><span class="printer-light"></span><span class="printer-slot"></span></div>
@@ -577,7 +589,7 @@
 
     function render({ printing = false } = {}) {
       game?.pause();
-      view.innerHTML = `<div class="club">${heroHtml()}${receiptCard(printing)}${gameCard()}${capsuleCard()}</div>`;
+      view.innerHTML = `<div class="club">${receiptCard(printing)}${gameCard()}${capsuleCard()}</div>`;
       const canvas = view.querySelector(".proxy-canvas");
       game = root.CuimsProxyRun?.create(canvas, {
         storage: chrome.storage.local,
@@ -621,8 +633,10 @@
 
     // ---- receipt actions ----
 
-    function receiptBlob() {
-      const canvas = receiptImage(receiptLines(data), imageColours());
+    async function receiptBlob() {
+      const colours = imageColours();
+      const stamp = data.founder ? await loadStamp(colours.stamp) : null;
+      const canvas = receiptImage(receiptLines(data), colours, stamp);
       return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     }
 
