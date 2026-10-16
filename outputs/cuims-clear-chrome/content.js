@@ -114,6 +114,13 @@ function writeSharedGuard(change) {
   } catch {}
 }
 
+// The 1.0 page's receipt (ledger.js). Never in the way of the page.
+function countForReceipt(delta) {
+  try {
+    globalThis.CuimsLedger?.bump(chrome.storage.local, delta);
+  } catch {}
+}
+
 function shareLocalStorageWrite(values) {
   try {
     chrome.storage.local.set(values);
@@ -699,6 +706,7 @@ function solveCaptchaImage(captchaImage, captchaField, passwordField) {
     captchaField.value = text;
     dispatchFieldEvents(captchaField);
     captchaImage.dataset.cuimsClearSolved = captchaImage.src;
+    countForReceipt({ captchas: 1, code: text });
     captchaField.placeholder = CAPTCHA_PLACEHOLDER;
 
     const pwField =
@@ -1028,6 +1036,9 @@ function scanPage() {
 
   // Successful landing clears the login circuit so the next session starts fresh.
   if (!refused && /studenthome\.aspx$/i.test(location.pathname)) {
+    // Landed home within a minute of pressing Login for the student.
+    const pressedAt = Number(failureStore().getItem(LAST_SUBMIT_AT_KEY) || 0);
+    if (pressedAt > 0 && Date.now() - pressedAt < 60_000) countForReceipt({ logins: 1 });
     resetFailureState();
     clearLoginStatus();
     // Tells the background the session is alive, so a refresh that gave way
@@ -1063,6 +1074,7 @@ function scanPage() {
         allow(element);
         return;
       }
+      if (shown && !suppressedElements.has(element)) countForReceipt({ hidden: 1 });
       suppress(element, category);
     });
   }

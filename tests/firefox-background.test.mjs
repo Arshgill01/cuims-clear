@@ -56,7 +56,8 @@ for (const build of ["firefox", "chrome"]) {
     assert.ok(names.indexOf("captcha-glyphs.js") < names.indexOf("captcha-solver.js"));
     assert.ok(names.indexOf("captcha-solver.js") < names.indexOf("attendance-bg.js"));
     assert.ok(names.indexOf("update-check.js") < names.indexOf("update-bg.js"));
-    assert.equal(listeners.installed.length, 1, "the update notice clears itself when an update lands");
+    // update-bg.js clears the update notice; celebrate-bg.js decides the Founding 100 stamp.
+    assert.equal(listeners.installed.length, 2, "two install listeners: the update notice and the founding stamp");
     assert.equal(listeners.updateAvailable.length, build === "chrome" ? 1 : 0, "Firefox must not hold its updates");
   });
 

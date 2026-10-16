@@ -9,10 +9,12 @@ importScripts(
   "academic-calendar.js",
   "attendance-model.js",
   "attendance-client.js",
+  "ledger.js",
   "attendance-daemon.js",
   "attendance-bg.js",
   "update-check.js",
   "update-bg.js",
+  "celebrate-bg.js",
 );
 
 // The captcha solver is plain JavaScript and decodes the captcha with

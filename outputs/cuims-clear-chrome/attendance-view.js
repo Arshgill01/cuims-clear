@@ -148,12 +148,15 @@
   // Problems the student fixes on the Login tab carry a button that goes there.
   const LOGIN_CODES = new Set(["needs-login", "bad-password", "bad-uid"]);
   const GOTO_LOGIN = ` <button type="button" class="text-button" data-goto="login">Open Login</button>`;
+  // CUIMS is making the student wait: Proxy Run on the 1.0 tab passes the time.
+  const WAIT_CODES = new Set(["portal-busy", "page-limit", "backoff", "busy", "cooldown", "lockout", "server", "network"]);
+  const PLAY_WHILE_WAITING = ` <button type="button" class="text-button" data-goto="club" data-play="1">Play Proxy Run while you wait</button>`;
 
   function message(state) {
     if (!state.error) return "";
     const calm = new Set(["tab-login", "portal-busy", "page-limit", "backoff", "busy", "cooldown"]);
     const kind = calm.has(state.code) ? "attendance-info" : "attendance-error";
-    const jump = LOGIN_CODES.has(state.code) ? GOTO_LOGIN : "";
+    const jump = LOGIN_CODES.has(state.code) ? GOTO_LOGIN : WAIT_CODES.has(state.code) ? PLAY_WHILE_WAITING : "";
     const remaining = Math.ceil((Number(state.nextRefreshAt || 0) - (state.now || new Date()).getTime()) / 60000);
     const text = state.nextRefreshAt
       ? state.error.replace(/\s*Next try in \d+ min\.\s*$/, remaining > 0 ? ` Next try in ${remaining} min.` : " You can refresh now.")

@@ -53,6 +53,17 @@ Clear login. The Forecast tab's projections are calculated on the device from th
 Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
 The extension does not maintain a browsing-history record.
 
+## The 1.0 page
+
+From version 1.0 the extension keeps a few counts in storage.local for the receipt on
+its 1.0 tab: how many captchas it read (with the last 24 four-character codes, which
+are already used up and cannot sign anyone in), how many logins it pressed, how many
+event and feedback dialogs it hid, and how many attendance reads it made. It also keeps
+whether you used it before 1.0 (the Founding 100 stamp, decided by the browser's own
+install event), your best Proxy Run score, and, if you write one, your time-capsule note.
+None of this is sent anywhere. Saving or copying the receipt makes an image on your device;
+sharing it is up to you. Uninstalling the extension removes all of it.
+
 ## Updates
 
 To tell you when a newer version is out, the extension uses Chrome's own update check

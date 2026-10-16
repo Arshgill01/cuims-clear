@@ -33,6 +33,11 @@
   // What the What's new card lists, by version. A version with no entry
   // shows no card.
   const NOTES = {
+    "1.0.0": [
+      "CUIMS Clear is 1.0: 100 students on the Chrome Web Store. Thank you.",
+      "A new 1.0 tab: your receipt, Proxy Run, and a time capsule for the end of the semester.",
+      "Had it before today? There's a Founding 100 stamp waiting for you.",
+    ],
     "0.10.6": [
       "Tells you when a new version is out, in the popup, on the toolbar icon and on CUIMS, with an Update button.",
       "Settings shows your version and can check for updates.",

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CUIMS Clear",
-  "version": "0.10.6",
+  "version": "1.0.0",
   "description": "Faster CUIMS login, attendance and safe-skip counts without opening the portal, and a cleaner LMS.",
   "icons": {
     "48": "icons/icon.svg",
@@ -27,10 +27,12 @@
       "academic-calendar.js",
       "attendance-model.js",
       "attendance-client.js",
+      "ledger.js",
       "attendance-daemon.js",
       "attendance-bg.js",
       "update-check.js",
-      "update-bg.js"
+      "update-bg.js",
+      "celebrate-bg.js"
     ]
   },
   "content_security_policy": {
@@ -51,6 +53,7 @@
         "captcha-solver.js",
         "themes.js",
         "cuims-theme.js",
+        "ledger.js",
         "content.js"
       ],
       "run_at": "document_start",

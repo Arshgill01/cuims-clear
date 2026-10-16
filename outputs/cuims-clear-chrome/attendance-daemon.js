@@ -466,6 +466,7 @@
               loginGuard: { ...guard, failures: [] },
               bgSignInOkAt: now(),
             });
+            if (result.submitted !== false) await globalThis.CuimsLedger?.bump(storage, { captchas: 1, logins: 1 }, now());
             return null;
           }
           submitted += 1;
@@ -1073,6 +1074,7 @@
         leaves = await countPending(request, meta, subjects, history, leaves);
         const snapshot = buildSnapshot(subjects, campus, slots, leaves, slots.length ? 0 : await firstTimetableDue(budget), optional.exams || savedExams(state));
         await storage.set({ attendanceSnapshot: snapshot, attendanceFailStreak: 0, attendanceBackoffUntil: 0 });
+        await globalThis.CuimsLedger?.bump(storage, { reads: 1 }, now());
         await setStatus({ working: false, phase: "", error: "", code: "" });
         return { snapshot, nextRefreshAt: started + MANUAL_GAP_MS };
       } catch (error) {

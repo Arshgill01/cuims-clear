@@ -67,6 +67,7 @@ const tabs = {
   login: document.querySelector("#tab-login"),
   theme: document.querySelector("#tab-theme"),
   settings: document.querySelector("#tab-settings"),
+  club: document.querySelector("#tab-club"),
 };
 const views = {
   attendance: document.querySelector("#view-attendance"),
@@ -74,6 +75,7 @@ const views = {
   login: document.querySelector("#view-login"),
   theme: document.querySelector("#view-theme"),
   settings: document.querySelector("#view-settings"),
+  club: document.querySelector("#view-club"),
 };
 
 const themeGroups = document.querySelector("#theme-groups");
@@ -596,6 +598,10 @@ function showView(name, { remember = true } = {}) {
   window.clearTimeout(refreshReadyTimer);
   window.clearTimeout(timetableTimer);
   paintRate();
+  if (name === "club") {
+    club.show();
+    clubDot.hidden = true;
+  } else club.hide();
   if (name === "theme") renderThemes();
   if (name !== "attendance" && name !== "forecast") return;
   // A normal read is the report calls alone, outside CUIMS's page limit; the
@@ -635,6 +641,7 @@ for (const [name, tab] of Object.entries(tabs)) {
 document.addEventListener?.("click", (event) => {
   const jump = event.target.closest?.("[data-goto]");
   if (!jump || !views[jump.dataset.goto]) return;
+  if (jump.dataset.play) club.play();
   showView(jump.dataset.goto);
   tabs[jump.dataset.goto].focus();
 });
@@ -1014,6 +1021,8 @@ function paintUpdate() {
     if (news) {
       document.querySelector("#update-news-title").textContent = `Updated to ${news.to}`;
       document.querySelector("#update-news-list").innerHTML = news.notes.map((line) => `<li>${CuimsAttendance.escapeHtml(line)}</li>`).join("");
+      const toClub = document.querySelector("#update-news-club");
+      if (toClub) toClub.hidden = news.to !== "1.0.0";
     }
   }
   document.querySelector("#update-version").textContent = `Version ${currentVersion}`;
@@ -1091,6 +1100,13 @@ updateCheckButton?.addEventListener("click", () => {
   });
 });
 
+// Going to the 1.0 page is as good as Got it.
+document.querySelector("#update-news-club")?.addEventListener("click", () => {
+  updateDone = { ...(updateDone || {}), seen: true };
+  chrome.storage.local.set({ updateDone });
+  paintUpdate();
+});
+
 document.querySelector("#update-news-done")?.addEventListener("click", () => {
   updateDone = { ...(updateDone || {}), seen: true };
   chrome.storage.local.set({ updateDone });
@@ -1111,6 +1127,12 @@ function setupUpdate(stored) {
   // At most every six hours on its own (update-check.js).
   askUpdate({ type: "cuims-clear:update-status", check: true });
 }
+
+// ---- 1.0 ----
+
+const clubDot = document.querySelector("#club-dot");
+// The 1.0 page (celebrate.js); a page without it still works.
+const club = (views.club && globalThis.CuimsClub?.mount(views.club, { announce: showStatus })) || { show() {}, hide() {}, play() {}, repaint() {} };
 
 // ---- themes ----
 
@@ -1162,6 +1184,7 @@ function themeCards() {
 function useTheme(id) {
   currentTheme = CuimsThemes.valid(id);
   CuimsThemes.applyToPopup(document.documentElement, currentTheme);
+  club.repaint();
   if (views.theme.hidden) return;
   for (const card of themeCards()) {
     const on = card.dataset.themeId === currentTheme;
@@ -1233,6 +1256,8 @@ chrome.storage.local.get(
     rateNudge: null,
     updateInfo: null,
     updateDone: null,
+    clubSeen: null,
+    timeCapsule: null,
   },
   (stored) => {
     for (const key of Object.keys(SWITCH_DEFAULTS)) settings[key] = stored[key] !== false;
@@ -1252,6 +1277,7 @@ chrome.storage.local.get(
     // First run starts at Login; after that, wherever the student left off.
     const start = views[stored.popupView] ? stored.popupView : hasLogin() ? "attendance" : "login";
     showView(start, { remember: false });
+    if (clubDot) clubDot.hidden = currentView === "club" || !globalThis.CuimsClub?.hasNews(stored, todayKey());
     setupRate(stored);
     setupUpdate(stored);
     paintRate();
