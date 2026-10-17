@@ -612,7 +612,7 @@
         <div class="capsule-sealed">
           <div class="envelope" role="img" aria-label="A sealed envelope">
             <span class="envelope-flap"></span>
-            <span class="envelope-seal"><span>//</span></span>
+            <span class="envelope-seal" aria-hidden="true"><span>//</span></span>
           </div>
           <div>
             <p class="capsule-when">Opens ${esc(shortDate(capsule.opensOn))}</p>

@@ -122,11 +122,11 @@
       accent: "#e2b84b", good: "#4d7c2a", warn: "#b5651d", bad: "#b4322a", brandBg: "#23221f", brandInk: "#f0c75e",
     },
     {
-      // Founding 100, after dark: the plans CUIMS Clear was drawn from. A
-      // cyanotype sheet, white linework, red-pencil corrections.
-      id: "founders-blueprint", name: "Blueprint", scheme: "dark", founders: true, signature: "blueprint",
-      canvas: "#0d2846", surface: "#123358", ink: "#eaf1f8", muted: "#a3bad2", line: "#2b5480", lineStrong: "#5a83ad",
-      accent: "#eaf1f8", good: "#8fe0b0", warn: "#ffd27a", bad: "#ff7f6e", brandBg: "#0a2240", brandInk: "#eaf1f8",
+      // Founding 100 on black card stock: the same receipt, letterpress and
+      // notebook, printed in cream and gold foil on warm black.
+      id: "founders-black", name: "Black Card", scheme: "dark", founders: true, signature: "black",
+      canvas: "#161411", surface: "#201d19", ink: "#efe6d2", muted: "#b6ac97", line: "#38332b", lineStrong: "#5d5547",
+      accent: "#d9b25a", good: "#9cc27a", warn: "#e3a857", bad: "#e0614c", brandBg: "#0e0c0a", brandInk: "#e8c56a",
     },
     {
       id: "catppuccin-latte", name: "Catppuccin Latte", scheme: "light",
@@ -378,7 +378,7 @@ html[data-cc-theme].cc-lms-pending{background:${t.canvas} !important}`;
   function drawIcon(size, id, Canvas = root.OffscreenCanvas) {
     const t = tokens(id);
     if (t.signature === "founders") return drawStamp(size, t, Canvas);
-    if (t.signature === "blueprint") return drawStamp(size, t, Canvas, { paper: "#0f2f52", ink: "#eaf1f8" });
+    if (t.signature === "black") return drawStamp(size, t, Canvas, { paper: "#1a1714", ink: "#e2bd62" });
     const canvas = new Canvas(size, size);
     const ctx = canvas.getContext("2d");
     const s = size / 96;

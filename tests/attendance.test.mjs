@@ -1718,3 +1718,31 @@ test("the local request log keeps paths, statuses and results only, newest 150",
   for (let index = 0; index < 200; index += 1) await bg.noteTabPage({ path: "/frmMyTimeTable.aspx", result: "ok" });
   assert.equal(storage.data.cuimsJournal.length, 150);
 });
+
+test("the redesigned Duty Leave page: history is read from its External tab, one postback away", async () => {
+  // October 2026: the page opens on Internal (events); applications live on External.
+  const menu = EMPTY_PORTAL_MENU.replace("\n", '<li><a href="frmMyTimeTable.aspx">Timetable</a></li>');
+  const internal = `${menu}<form action="./frmStudentApplyDutyLeave.aspx" id="form1"><input type="hidden" name="__VIEWSTATE" value="vs1" />
+    <input id="ContentPlaceHolder1_rblType_0" type="radio" name="ctl00$ContentPlaceHolder1$rblType" value="Internal" checked="checked" />
+    <input id="ContentPlaceHolder1_rblType_1" type="radio" name="ctl00$ContentPlaceHolder1$rblType" value="External" /><div id="ContentPlaceHolder1_pnlInternal">No activities here yet</div></form>`;
+  const external = `${menu}<table id="gvHistory"><tr><th>DL_No</th><th>Timing</th><th>Category</th><th>File Name</th><th>Leave_Type</th><th>Dated</th><th>Status</th><th>Remarks</th></tr>
+    <tr><td>3190001</td><td>9:30 - 10:20 AM</td><td>Departmental Society Activities</td><td></td><td>Lecture Bases</td><td>19 Oct 2026</td><td>Pending</td><td>Workshop</td></tr></table>`;
+  const calls = [];
+  const request = A.createRequest({ fetchImpl: async (target, options = {}) => {
+    calls.push({ method: options.method || "GET", body: String(options.body || "") });
+    return { url: target, status: 200, text: async () => (options.method === "POST" ? external : internal) };
+  } });
+  const apps = await A.readLeavePage(request, "dl");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].method, "POST");
+  assert.match(calls[1].body, /__EVENTTARGET=ctl00%24ContentPlaceHolder1%24rblType%241/);
+  assert.match(calls[1].body, /rblType=External/);
+  assert.match(calls[1].body, /__VIEWSTATE=vs1/);
+  assert.equal(apps.length, 1);
+  assert.equal(A.leaveState(apps[0].status), "pending");
+  // The old page, with its history on the first load, still costs one request.
+  calls.length = 0;
+  const old = A.createRequest({ fetchImpl: async (target, options = {}) => (calls.push(options.method || "GET"), { url: target, status: 200, text: async () => external }) });
+  assert.equal((await A.readLeavePage(old, "dl")).length, 1);
+  assert.equal(calls.length, 1);
+});

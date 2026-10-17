@@ -4,14 +4,14 @@
      pressed on as ink stamps;
    - letterpress: titles in a book serif, gold foil on the figures that matter;
    - a notebook: highlighter over what needs you, washi tape in subject colours.
-   Everything is scoped to html[data-signature="founders"] (themes.js sets it),
+   Everything is scoped to html:is([data-signature="founders"], [data-signature="black"]) (themes.js sets it),
    so every other theme is untouched. */
 
-html[data-signature="founders"] {
+html:is([data-signature="founders"], [data-signature="black"]) {
   --f-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --f-mono: "Courier New", Courier, "Nimbus Mono PS", monospace;
   --f-red: #b4322a;
-  --f-foil: linear-gradient(100deg, #6f4f10 0%, #a87d24 18%, #dcbb62 34%, #9c721c 50%, #caa449 68%, #7a5913 100%);
+  --f-foil: linear-gradient(100deg, #5e420c 0%, #8f6a1b 24%, #a17a22 38%, #7d5a14 56%, #9c721c 74%, #5e420c 100%);
   --f-foil-dark: linear-gradient(100deg, #b98c2e 0%, #f3d98a 30%, #c99a3a 52%, #f0d07a 74%, #b48628 100%);
   --f-mark: rgb(240 199 94 / 55%);
   --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32  0 0 0 0 .26  0 0 0 0 .16  0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -19,7 +19,7 @@ html[data-signature="founders"] {
 }
 
 /* Paper grain over everything, as on the receipt. */
-html[data-signature="founders"] body::after {
+html:is([data-signature="founders"], [data-signature="black"]) body::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -31,7 +31,7 @@ html[data-signature="founders"] body::after {
 
 /* ---- letterpress ---- */
 
-html[data-signature="founders"] h1 {
+html:is([data-signature="founders"], [data-signature="black"]) h1 {
   font-family: var(--f-serif);
   font-size: 21px;
   font-weight: 700;
@@ -42,37 +42,37 @@ html[data-signature="founders"] h1 {
   background-clip: text;
 }
 
-html[data-signature="founders"] .course-title,
-html[data-signature="founders"] .overall-label,
-html[data-signature="founders"] .fc-subject-head strong,
-html[data-signature="founders"] .wrapped-headline,
-html[data-signature="founders"] .capsule-when,
-html[data-signature="founders"] .update-news-head h2 {
+html:is([data-signature="founders"], [data-signature="black"]) .course-title,
+html:is([data-signature="founders"], [data-signature="black"]) .overall-label,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-subject-head strong,
+html:is([data-signature="founders"], [data-signature="black"]) .wrapped-headline,
+html:is([data-signature="founders"], [data-signature="black"]) .capsule-when,
+html:is([data-signature="founders"], [data-signature="black"]) .update-news-head h2 {
   font-family: var(--f-serif);
   font-weight: 700;
   letter-spacing: 0;
 }
 
-html[data-signature="founders"] .course-title {
+html:is([data-signature="founders"], [data-signature="black"]) .course-title {
   font-size: 13.5px;
 }
 
-html[data-signature="founders"] .overall-label {
+html:is([data-signature="founders"], [data-signature="black"]) .overall-label {
   font-size: 15px;
 }
 
-html[data-signature="founders"] .course-pct,
-html[data-signature="founders"] .overall-pct {
+html:is([data-signature="founders"], [data-signature="black"]) .course-pct,
+html:is([data-signature="founders"], [data-signature="black"]) .overall-pct {
   font-family: var(--f-serif);
   font-weight: 700;
 }
 
-html[data-signature="founders"] .overall-pct {
+html:is([data-signature="founders"], [data-signature="black"]) .overall-pct {
   font-size: 19px;
 }
 
 /* Gold foil on the figures that matter, on the dark hero cards. */
-html[data-signature="founders"] .fc-big {
+html:is([data-signature="founders"], [data-signature="black"]) .fc-big {
   font-family: var(--f-serif);
   color: transparent;
   background: var(--f-foil-dark);
@@ -80,37 +80,42 @@ html[data-signature="founders"] .fc-big {
   background-clip: text;
 }
 
-html[data-signature="founders"] .fc-big .fc-unit,
-html[data-signature="founders"] .fc-big .fc-approx {
+html:is([data-signature="founders"], [data-signature="black"]) .fc-big .fc-unit,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-big .fc-approx {
   color: transparent;
 }
 
 /* ---- receipt print ---- */
 
-html[data-signature="founders"] .eyebrow,
-html[data-signature="founders"] .section-label,
-html[data-signature="founders"] .fc-eyebrow,
-html[data-signature="founders"] .rail-tabs button,
-html[data-signature="founders"] .counts,
-html[data-signature="founders"] .chip,
-html[data-signature="founders"] .goal button,
-html[data-signature="founders"] .version {
+html:is([data-signature="founders"], [data-signature="black"]) .eyebrow,
+html:is([data-signature="founders"], [data-signature="black"]) .section-label,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-eyebrow,
+html:is([data-signature="founders"], [data-signature="black"]) .rail-tabs button,
+html:is([data-signature="founders"], [data-signature="black"]) .counts,
+html:is([data-signature="founders"], [data-signature="black"]) .chip,
+html:is([data-signature="founders"], [data-signature="black"]) .goal button,
+html:is([data-signature="founders"], [data-signature="black"]) .version {
   font-family: var(--f-mono);
   font-weight: 700;
 }
 
-html[data-signature="founders"] .eyebrow,
-html[data-signature="founders"] .section-label,
-html[data-signature="founders"] .fc-eyebrow {
+html:is([data-signature="founders"], [data-signature="black"]) .eyebrow,
+html:is([data-signature="founders"], [data-signature="black"]) .section-label,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-eyebrow {
   letter-spacing: 0.08em;
 }
 
-html[data-signature="founders"] .rail-tabs button {
-  font-size: 10.5px;
+html:is([data-signature="founders"], [data-signature="black"]) .rail-tabs button {
+  font-size: 11px;
   letter-spacing: 0;
 }
 
-html[data-signature="founders"] .open-link {
+/* Courier is light at small sizes: nothing of it under 11px. */
+html:is([data-signature="founders"], [data-signature="black"]) :is(.eyebrow, .section-label, .fc-eyebrow, .chip, .counts, .version, .goal button) {
+  font-size: 11px;
+}
+
+html:is([data-signature="founders"], [data-signature="black"]) .open-link {
   font-family: var(--f-mono);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -121,36 +126,36 @@ html[data-signature="founders"] .open-link {
 
 /* Cards are slips of the same paper: square-ish corners, a tear line
    between rows instead of a box round each. */
-html[data-signature="founders"] .course,
-html[data-signature="founders"] .summary,
-html[data-signature="founders"] .fc-card,
-html[data-signature="founders"] .club-card,
-html[data-signature="founders"] .goal,
-html[data-signature="founders"] .overall {
+html:is([data-signature="founders"], [data-signature="black"]) .course,
+html:is([data-signature="founders"], [data-signature="black"]) .summary,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-card,
+html:is([data-signature="founders"], [data-signature="black"]) .club-card,
+html:is([data-signature="founders"], [data-signature="black"]) .goal,
+html:is([data-signature="founders"], [data-signature="black"]) .overall {
   border-radius: 4px;
 }
 
-html[data-signature="founders"] .course-list {
+html:is([data-signature="founders"], [data-signature="black"]) .course-list {
   gap: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--surface);
 }
 
-html[data-signature="founders"] .course {
+html:is([data-signature="founders"], [data-signature="black"]) .course {
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
-html[data-signature="founders"] .course + .course {
+html:is([data-signature="founders"], [data-signature="black"]) .course + .course {
   border-top: 2px dashed var(--line);
 }
 
 /* ---- ink stamps ---- */
 
 /* The tab you are on is stamped, not filled. */
-html[data-signature="founders"] .rail-tabs button[aria-selected="true"] svg {
+html:is([data-signature="founders"], [data-signature="black"]) .rail-tabs button[aria-selected="true"] svg {
   color: var(--f-red);
   background: transparent;
   border-radius: 50%;
@@ -160,15 +165,15 @@ html[data-signature="founders"] .rail-tabs button[aria-selected="true"] svg {
   mask: var(--f-ink-edge);
 }
 
-html[data-signature="founders"] .rail-tabs button[aria-selected="true"] {
+html:is([data-signature="founders"], [data-signature="black"]) .rail-tabs button[aria-selected="true"] {
   color: var(--f-red);
 }
 
 /* Small states are pressed on: Courier caps in an inked box, a little crooked. */
-html[data-signature="founders"] .chip,
-html[data-signature="founders"] .tag-vdl,
-html[data-signature="founders"] .fc-pill,
-html[data-signature="founders"] .fc-class-now {
+html:is([data-signature="founders"], [data-signature="black"]) .chip,
+html:is([data-signature="founders"], [data-signature="black"]) .tag-vdl,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-pill,
+html:is([data-signature="founders"], [data-signature="black"]) .fc-class-now {
   border: 1.5px solid currentColor;
   border-radius: 3px;
   background: transparent;
@@ -183,9 +188,9 @@ html[data-signature="founders"] .fc-class-now {
 /* ---- notebook ---- */
 
 /* Highlighter over what needs you. */
-html[data-signature="founders"] .line.is-low,
-html[data-signature="founders"] .line.is-risk,
-html[data-signature="founders"] .tone-low .course-title {
+html:is([data-signature="founders"], [data-signature="black"]) .line.is-low,
+html:is([data-signature="founders"], [data-signature="black"]) .line.is-risk,
+html:is([data-signature="founders"], [data-signature="black"]) .tone-low .course-title {
   padding: 0 2px;
   background: linear-gradient(transparent 52%, var(--f-mark) 52%, var(--f-mark) 92%, transparent 92%);
   -webkit-box-decoration-break: clone;
@@ -193,7 +198,7 @@ html[data-signature="founders"] .tone-low .course-title {
 }
 
 /* Washi tape on the overall card. */
-html[data-signature="founders"] .overall::before {
+html:is([data-signature="founders"], [data-signature="black"]) .overall::before {
   content: "";
   position: absolute;
   top: -6px;
@@ -206,13 +211,13 @@ html[data-signature="founders"] .overall::before {
   box-shadow: 0 1px 1px rgb(0 0 0 / 6%);
 }
 
-html[data-signature="founders"] .overall {
+html:is([data-signature="founders"], [data-signature="black"]) .overall {
   position: relative;
 }
 
 /* The mark itself is the founders' stamp, as on the toolbar. */
-html[data-signature="founders"] .rail .mark,
-html[data-signature="founders"] .mark {
+html:is([data-signature="founders"], [data-signature="black"]) .rail .mark,
+html:is([data-signature="founders"], [data-signature="black"]) .mark {
   border-radius: 50%;
   color: var(--f-red);
   background: #f6f0e2;
@@ -222,192 +227,60 @@ html[data-signature="founders"] .mark {
   mask: var(--f-ink-edge);
 }
 
-/* ---- Founding 100 · Blueprint ----
-   The founders' theme after dark: the plans CUIMS Clear was drawn from.
-   A cyanotype sheet on a drafting grid, white linework with crop marks,
-   technical lettering, hollow drafting numerals, and red-pencil
-   corrections: revision clouds round what is happening now, wavy red
-   underlines under what needs you, masking tape holding the sheet down. */
+/* ---- Black Card: Founding 100 on black card stock ----
+   Everything above, printed in cream and gold foil on warm black. What
+   changes is only what has to on a dark card: brighter stamp ink, foil that
+   catches the light, grain that lightens, and crop marks round the cards. */
 
-html[data-signature="blueprint"] {
-  --b-tech: "DIN Condensed", "DIN Alternate", "Bahnschrift SemiCondensed", Bahnschrift, "Avenir Next Condensed", "Arial Narrow", sans-serif;
-  --b-red: #ff7f6e;
-  --b-line: rgb(234 241 248 / 50%);
-  --b-faint: rgb(234 241 248 / 22%);
-  --b-tape: rgb(226 214 184 / 72%);
-  --b-ring: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke='%23ff7f6e' stroke-width='1.6'%3E%3Cpath d='M16.00 3.80 A3.96 3.96 0 0 1 23.17 6.13 A3.96 3.96 0 0 1 27.60 12.23 A3.96 3.96 0 0 1 27.60 19.77 A3.96 3.96 0 0 1 23.17 25.87 A3.96 3.96 0 0 1 16.00 28.20 A3.96 3.96 0 0 1 8.83 25.87 A3.96 3.96 0 0 1 4.40 19.77 A3.96 3.96 0 0 1 4.40 12.23 A3.96 3.96 0 0 1 8.83 6.13 A3.96 3.96 0 0 1 16.00 3.80 Z'/%3E%3C/svg%3E");
-  --b-crop: linear-gradient(var(--b-line), var(--b-line)) left top / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) left top / 1px 9px,
-    linear-gradient(var(--b-line), var(--b-line)) right top / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) right top / 1px 9px,
-    linear-gradient(var(--b-line), var(--b-line)) left bottom / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) left bottom / 1px 9px,
-    linear-gradient(var(--b-line), var(--b-line)) right bottom / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) right bottom / 1px 9px;
+html[data-signature="black"] {
+  --f-red: #e8664f;
+  --f-foil: linear-gradient(100deg, #b98c2e 0%, #f1d27c 28%, #c99a3a 50%, #f3d98a 72%, #b48628 100%);
+  --f-mark: rgb(217 178 90 / 26%);
+  --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95  0 0 0 0 .9  0 0 0 0 .8  0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --f-crop: linear-gradient(currentColor, currentColor) left top / 9px 1px, linear-gradient(currentColor, currentColor) left top / 1px 9px,
+    linear-gradient(currentColor, currentColor) right top / 9px 1px, linear-gradient(currentColor, currentColor) right top / 1px 9px,
+    linear-gradient(currentColor, currentColor) left bottom / 9px 1px, linear-gradient(currentColor, currentColor) left bottom / 1px 9px,
+    linear-gradient(currentColor, currentColor) right bottom / 9px 1px, linear-gradient(currentColor, currentColor) right bottom / 1px 9px;
 }
 
-/* The drafting grid, over the whole sheet, with the cyanotype's uneven wash. */
-html[data-signature="blueprint"] body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  pointer-events: none;
-  background-image:
-    radial-gradient(ellipse at 20% 0%, rgb(255 255 255 / 6%), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgb(0 0 0 / 22%), transparent 60%),
-    linear-gradient(rgb(234 241 248 / 7%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(234 241 248 / 7%) 1px, transparent 1px),
-    linear-gradient(rgb(234 241 248 / 3.5%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(234 241 248 / 3.5%) 1px, transparent 1px);
-  background-size: auto, auto, 48px 48px, 48px 48px, 12px 12px, 12px 12px;
+html[data-signature="black"] body::after {
+  mix-blend-mode: screen;
 }
 
-/* Technical lettering. */
-html[data-signature="blueprint"] :is(h1, .eyebrow, .section-label, .fc-eyebrow, .rail-tabs button, .chip, .counts, .goal button, .open-link, .version, .course-title, .course-pct, .overall-label, .overall-pct, .refresh-button, .receipt-button, .wrapped-kicker, .wrapped-headline, .fc-stats dt, .fc-stats dd) {
-  font-family: var(--b-tech);
-  letter-spacing: 0.04em;
+/* The mark is the gold stamp. */
+html[data-signature="black"] .mark {
+  color: #e2bd62;
+  background: #1a1714;
+  box-shadow: inset 0 0 0 2.4px #e2bd62, inset 0 0 0 5px #1a1714, inset 0 0 0 6px rgb(226 189 98 / 60%);
 }
 
-html[data-signature="blueprint"] h1 {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+/* Tape reads as gold on black. */
+html[data-signature="black"] .overall::before {
+  background: repeating-linear-gradient(45deg, rgb(226 189 98 / 42%) 0 6px, rgb(226 189 98 / 28%) 6px 12px);
 }
 
-html[data-signature="blueprint"] :is(.eyebrow, .section-label, .fc-eyebrow, .open-link, .goal button, .rail-tabs button, .overall-label) {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-html[data-signature="blueprint"] .rail-tabs button {
-  font-size: 11px;
-}
-
-html[data-signature="blueprint"] .course-title {
-  font-size: 15.5px;
-  font-weight: 600;
-}
-
-html[data-signature="blueprint"] :is(.course-pct, .overall-pct) {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-html[data-signature="blueprint"] .overall-pct {
-  font-size: 22px;
-}
-
-/* Hollow drafting numerals for the figures that matter. */
-html[data-signature="blueprint"] .fc-big {
-  font-family: var(--b-tech);
-  font-size: 46px;
-  letter-spacing: 0.02em;
-  color: transparent;
-  -webkit-text-stroke: 1.3px var(--hero-ink);
-}
-
-html[data-signature="blueprint"] .fc-big :is(.fc-unit, .fc-approx) {
-  -webkit-text-stroke: 1px var(--hero-ink);
-}
-
-/* Linework instead of filled cards; crop marks at the corners. */
-html[data-signature="blueprint"] :is(.course-list, .fc-card, .club-card, .summary, .goal) {
-  border: 1px solid var(--b-line);
-  border-radius: 0;
+/* Linework cards with crop marks, from the draughtsman's sheet. */
+html[data-signature="black"] :is(.fc-card, .club-card:not(.receipt-card):not(.wrapped-card), .summary, .course-list) {
+  position: relative;
+  border-color: rgb(239 230 210 / 26%);
   background-color: transparent;
 }
 
-html[data-signature="blueprint"] :is(.fc-card, .club-card:not(.receipt-card):not(.wrapped-card), .summary) {
-  position: relative;
-}
-
-html[data-signature="blueprint"] :is(.fc-card, .club-card:not(.receipt-card):not(.wrapped-card), .summary)::after {
+html[data-signature="black"] :is(.fc-card, .club-card:not(.receipt-card):not(.wrapped-card), .summary, .course-list)::after {
   content: "";
   position: absolute;
   inset: -5px;
   pointer-events: none;
-  background: var(--b-crop);
+  color: rgb(239 230 210 / 45%);
+  background: var(--f-crop);
   background-repeat: no-repeat;
 }
 
-html[data-signature="blueprint"] .course-list {
-  display: grid;
-  gap: 0;
+html[data-signature="black"] .course + .course {
+  border-top-color: rgb(239 230 210 / 16%);
 }
 
-html[data-signature="blueprint"] .course {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-/* Hidden-line dashes between rows, as on a drawing. */
-html[data-signature="blueprint"] .course + .course {
-  border-top: 1px dashed var(--b-faint);
-}
-
-html[data-signature="blueprint"] .overall {
-  position: relative;
-  border-radius: 0;
-}
-
-/* Masking tape holding the sheet to the board. */
-html[data-signature="blueprint"] .overall::before {
-  content: "";
-  position: absolute;
-  top: -7px;
-  left: -10px;
-  width: 58px;
-  height: 16px;
-  background: var(--b-tape);
-  transform: rotate(-24deg);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
-}
-
-html[data-signature="blueprint"] .overall::after {
-  content: "";
-  position: absolute;
-  bottom: 2px;
-  right: -9px;
-  width: 44px;
-  height: 16px;
-  background: var(--b-tape);
-  transform: rotate(-24deg);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
-}
-
-/* The tab you are on gets a red-pencil revision cloud. */
-html[data-signature="blueprint"] .rail-tabs button[aria-selected="true"] {
-  color: var(--b-red);
-}
-
-html[data-signature="blueprint"] .rail-tabs button[aria-selected="true"] svg {
-  color: var(--b-red);
-  background: var(--b-ring) center / 100% 100% no-repeat;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-/* Small states are dimension tags: square, ruled, lettered. */
-html[data-signature="blueprint"] :is(.chip, .tag-vdl, .fc-pill) {
-  border: 1px solid currentColor;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  text-transform: uppercase;
-}
-
-/* Red pencil under what needs you. */
-html[data-signature="blueprint"] :is(.line.is-low, .line.is-risk, .tone-low .course-title) {
-  text-decoration: underline wavy var(--b-red) 1.4px;
-  text-underline-offset: 4px;
-}
-
-html[data-signature="blueprint"] .open-link {
-  border-radius: 0;
-}
-
-html[data-signature="blueprint"] .mark {
-  border-radius: 50%;
-  color: var(--ink);
-  background: #0f2f52;
-  box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 4.5px #0f2f52, inset 0 0 0 5.5px var(--b-line);
+/* On black, a mid-height highlighter reads as a strike: it sits low, as a marker underline. */
+html[data-signature="black"] :is(.line.is-low, .line.is-risk, .tone-low .course-title) {
+  background: linear-gradient(transparent 74%, rgb(226 189 98 / 45%) 74%, rgb(226 189 98 / 45%) 96%, transparent 96%);
 }

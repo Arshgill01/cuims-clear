@@ -1,15 +1,15 @@
 /* ---- Founding 100 on CUIMS ----
    The receipt, letterpress and notebook of founders.css, on the portal.
-   cuims-theme.js sets html[data-cc-signature="founders"] only while that
+   cuims-theme.js sets html:is([data-cc-signature="founders"], [data-cc-signature="black"]) only while that
    theme restyles CUIMS, so every other theme (and the switch off) is
    untouched. Our own components get the full treatment; CUIMS's pages get
    the paper, the serif titles and Courier table heads. */
 
-html[data-cc-signature="founders"] {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) {
   --f-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --f-mono: "Courier New", Courier, "Nimbus Mono PS", monospace;
   --f-red: #b4322a;
-  --f-foil: linear-gradient(100deg, #6f4f10 0%, #a87d24 18%, #dcbb62 34%, #9c721c 50%, #caa449 68%, #7a5913 100%);
+  --f-foil: linear-gradient(100deg, #5e420c 0%, #8f6a1b 24%, #a17a22 38%, #7d5a14 56%, #9c721c 74%, #5e420c 100%);
   --f-mark: rgb(240 199 94 / 55%);
   --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32  0 0 0 0 .26  0 0 0 0 .16  0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   --f-ink-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)'/%3E%3C/svg%3E");
@@ -17,7 +17,7 @@ html[data-cc-signature="founders"] {
 }
 
 /* The whole portal on receipt paper. */
-html[data-cc-signature="founders"] body::after {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) body::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -28,20 +28,20 @@ html[data-cc-signature="founders"] body::after {
 }
 
 /* CUIMS's own page titles and table heads. */
-html[data-cc-signature="founders"] .inner-wrapper .form_header,
-html[data-cc-signature="founders"] .inner-wrapper h1,
-html[data-cc-signature="founders"] .inner-wrapper h2.page-title {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .inner-wrapper .form_header,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .inner-wrapper h1,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .inner-wrapper h2.page-title {
   font-family: var(--f-serif) !important;
   font-weight: 700 !important;
   letter-spacing: 0 !important;
 }
 
-html[data-cc-signature="founders"] .inner-wrapper .form_header {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .inner-wrapper .form_header {
   font-size: 27px !important;
   border-bottom: 2px dashed var(--cc-line) !important;
 }
 
-html[data-cc-signature="founders"] .inner-wrapper table.table th {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .inner-wrapper table.table th {
   font-family: var(--f-mono) !important;
   font-weight: 700 !important;
   letter-spacing: 0.03em;
@@ -49,52 +49,52 @@ html[data-cc-signature="founders"] .inner-wrapper table.table th {
 
 /* ---- our components ---- */
 
-html[data-cc-signature="founders"] [data-cc-own] {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) [data-cc-own] {
   --o-display: var(--f-serif);
 }
 
 /* Titles in the book serif. */
-html[data-cc-signature="founders"] .cc-hero-title,
-html[data-cc-signature="founders"] .cc-ds-name,
-html[data-cc-signature="founders"] .cc-tt-week-title b,
-html[data-cc-signature="founders"] .cc-ds-head b,
-html[data-cc-signature="founders"] .cc-mk-subject-name b,
-html[data-cc-signature="founders"] .cc-mk-notes dd b {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-title,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-name,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-week-title b,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-head b,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject-name b,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-notes dd b {
   font-family: var(--f-serif);
   font-weight: 700;
   letter-spacing: 0;
 }
 
-html[data-cc-signature="founders"] .cc-hero-title {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-title {
   font-size: 31px;
 }
 
 /* Labels, times and counts in receipt print. */
-html[data-cc-signature="founders"] .cc-hero-label,
-html[data-cc-signature="founders"] .cc-hero-clock-label,
-html[data-cc-signature="founders"] .cc-hero-meta b,
-html[data-cc-signature="founders"] .cc-stop-time,
-html[data-cc-signature="founders"] .cc-stop-gap span,
-html[data-cc-signature="founders"] .cc-tt-grid thead th,
-html[data-cc-signature="founders"] .cc-tt-start,
-html[data-cc-signature="founders"] .cc-tt-end,
-html[data-cc-signature="founders"] .cc-class-room,
-html[data-cc-signature="founders"] .cc-class-kind,
-html[data-cc-signature="founders"] .cc-tt-week-title span,
-html[data-cc-signature="founders"] .cc-ds-count,
-html[data-cc-signature="founders"] .cc-ds-day,
-html[data-cc-signature="founders"] .cc-ds-month,
-html[data-cc-signature="founders"] .cc-ds-run-head,
-html[data-cc-signature="founders"] .cc-mk-label,
-html[data-cc-signature="founders"] .cc-mk-notes dt,
-html[data-cc-signature="founders"] .cc-mk-subject-name span,
-html[data-cc-signature="founders"] .cc-score,
-html[data-cc-signature="founders"] .cc-hero-action {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-label,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-clock-label,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-meta b,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-stop-time,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-stop-gap span,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-grid thead th,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-start,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-end,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class-room,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class-kind,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-week-title span,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-count,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-day,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-month,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-run-head,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-label,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-notes dt,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject-name span,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-score,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-action {
   font-family: var(--f-mono);
   font-weight: 700;
 }
 
-html[data-cc-signature="founders"] .cc-hero-action {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-action {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -102,9 +102,9 @@ html[data-cc-signature="founders"] .cc-hero-action {
 }
 
 /* Gold foil on the figures that matter. */
-html[data-cc-signature="founders"] .cc-hero-clock b,
-html[data-cc-signature="founders"] .cc-ds-exam.is-lead .cc-ds-date,
-html[data-cc-signature="founders"] .cc-mk-big b {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-clock b,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-exam.is-lead .cc-ds-date,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-big b {
   font-family: var(--f-serif);
   color: transparent;
   background: var(--f-foil);
@@ -114,7 +114,7 @@ html[data-cc-signature="founders"] .cc-mk-big b {
 
 /* The hero is a receipt slip: paper, square corners, a torn bottom edge,
    a strip of tape in the subject's colour holding it on. */
-html[data-cc-signature="founders"] .cc-tt-hero {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-hero {
   border-radius: 3px 3px 0 0;
   background: var(--o-surface);
   box-shadow: inset 0 0 0 1px var(--o-line);
@@ -124,7 +124,7 @@ html[data-cc-signature="founders"] .cc-tt-hero {
   overflow: visible;
 }
 
-html[data-cc-signature="founders"] .cc-tt-hero::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-hero::before {
   content: "";
   position: absolute;
   top: 0;
@@ -135,63 +135,63 @@ html[data-cc-signature="founders"] .cc-tt-hero::before {
   transform: rotate(-2.5deg);
 }
 
-html[data-cc-signature="founders"] .cc-hero-label {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-label {
   color: var(--f-red);
 }
 
-html[data-cc-signature="founders"] .cc-hero-dot {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-dot {
   background: var(--f-red);
 }
 
 /* Highlighter over the room you are heading to. */
-html[data-cc-signature="founders"] .cc-hero-meta b {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-hero-meta b {
   padding: 0 3px;
   background: linear-gradient(transparent 50%, var(--f-mark) 50%, var(--f-mark) 92%, transparent 92%);
 }
 
-html[data-cc-signature="founders"] .cc-line,
-html[data-cc-signature="founders"] .cc-tt-week-head {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-line,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-week-head {
   border-top-style: dashed;
   border-bottom-style: dashed;
   border-width: 2px;
 }
 
 /* Stops are punched holes on the line. */
-html[data-cc-signature="founders"] .cc-stop-dot {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-stop-dot {
   border-width: 2px;
   box-shadow: inset 0 1px 2px rgb(0 0 0 / 22%);
 }
 
-html[data-cc-signature="founders"] .cc-stop.is-now .cc-stop-dot {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-stop.is-now .cc-stop-dot {
   background: var(--f-red);
   border-color: var(--f-red);
   box-shadow: 0 0 0 4px rgb(180 50 42 / 18%);
 }
 
-html[data-cc-signature="founders"] .cc-stop.is-next .cc-stop-name {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-stop.is-next .cc-stop-name {
   background: linear-gradient(transparent 50%, var(--f-mark) 50%, var(--f-mark) 92%, transparent 92%);
 }
 
 /* The week: paper cards with a strip of tape in the subject's colour. */
-html[data-cc-signature="founders"] .cc-tt-week {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-week {
   border-radius: 3px;
 }
 
-html[data-cc-signature="founders"] .cc-tt-grid thead th.is-today .cc-tt-date {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-tt-grid thead th.is-today .cc-tt-date {
   color: var(--f-red);
   background: transparent;
   box-shadow: inset 0 0 0 1.6px var(--f-red);
   transform: rotate(-6deg);
 }
 
-html[data-cc-signature="founders"] .cc-class {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class {
   margin-top: 6px;
   border-radius: 2px;
   background: var(--o-surface);
   box-shadow: 0 1px 0 var(--o-line), 0 0 0 1px var(--o-line);
 }
 
-html[data-cc-signature="founders"] .cc-class::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class::before {
   content: "";
   position: absolute;
   top: -6px;
@@ -202,20 +202,20 @@ html[data-cc-signature="founders"] .cc-class::before {
   transform: rotate(-3deg);
 }
 
-html[data-cc-signature="founders"] .cc-class:nth-of-type(even)::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class:nth-of-type(even)::before {
   left: auto;
   right: 12px;
   transform: rotate(2.5deg);
 }
 
-html[data-cc-signature="founders"] .cc-class-title {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class-title {
   font-family: var(--f-serif);
   font-size: 13.5px;
   font-weight: 700;
 }
 
 /* "Now" is stamped on. */
-html[data-cc-signature="founders"] .cc-class-now {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class-now {
   color: var(--f-red);
   background: transparent;
   border: 1.5px solid var(--f-red);
@@ -226,26 +226,26 @@ html[data-cc-signature="founders"] .cc-class-now {
   mask: var(--f-ink-edge);
 }
 
-html[data-cc-signature="founders"] .cc-class.is-now {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-class.is-now {
   box-shadow: 0 0 0 1.5px var(--f-red), 0 3px 0 rgb(180 50 42 / 12%);
 }
 
 /* ---- Datesheet ---- */
 
-html[data-cc-signature="founders"] .cc-ds-exam {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-exam {
   border-radius: 3px;
 }
 
-html[data-cc-signature="founders"] .cc-ds-when {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-when {
   border-radius: 0 3px 3px 0;
 }
 
-html[data-cc-signature="founders"] .cc-ds-date {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-date {
   font-family: var(--f-serif);
 }
 
 /* Today and tomorrow are stamped on. */
-html[data-cc-signature="founders"] .cc-ds-exam.is-soon .cc-ds-count {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-exam.is-soon .cc-ds-count {
   justify-self: start;
   padding: 2px 6px 1px;
   border: 1.5px solid var(--f-red);
@@ -256,11 +256,11 @@ html[data-cc-signature="founders"] .cc-ds-exam.is-soon .cc-ds-count {
   mask: var(--f-ink-edge);
 }
 
-html[data-cc-signature="founders"] .cc-ds-exam.is-lead {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-exam.is-lead {
   overflow: visible;
 }
 
-html[data-cc-signature="founders"] .cc-ds-exam.is-lead::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-exam.is-lead::before {
   content: "";
   position: absolute;
   top: 6px;
@@ -271,55 +271,55 @@ html[data-cc-signature="founders"] .cc-ds-exam.is-lead::before {
   transform: rotate(-2deg);
 }
 
-html[data-cc-signature="founders"] .cc-ds-run,
-html[data-cc-signature="founders"] .cc-mk-hero,
-html[data-cc-signature="founders"] .cc-mk-subject {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-run,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-hero,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject {
   border-radius: 3px;
 }
 
-html[data-cc-signature="founders"] .cc-ds-run-list b {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-run-list b {
   font-family: var(--f-serif);
   font-size: 13px;
 }
 
-html[data-cc-signature="founders"] .is-done > .cc-ds-run-dot {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .is-done > .cc-ds-run-dot {
   border-color: var(--f-red);
   background: var(--f-red);
 }
 
-html[data-cc-signature="founders"] .cc-ds-run-list li.is-done::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-ds-run-list li.is-done::before {
   background: var(--f-red);
 }
 
 /* ---- Marks ---- */
 
 @media (min-width: 761px) {
-  html[data-cc-signature="founders"] .cc-mk-notes > div {
+  html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-notes > div {
     border-left-style: dashed;
     border-left-width: 2px;
   }
 }
 
 @media (max-width: 760px) {
-  html[data-cc-signature="founders"] .cc-mk-notes > div {
+  html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-notes > div {
     border-top-style: dashed;
   }
 }
 
-html[data-cc-signature="founders"] .cc-mk-meter i {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-meter i {
   background: var(--f-red);
 }
 
-html[data-cc-signature="founders"] .cc-mk-subject-pct {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject-pct {
   font-family: var(--f-serif);
 }
 
-html[data-cc-signature="founders"] .cc-mk-subject {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject {
   position: relative;
   overflow: visible;
 }
 
-html[data-cc-signature="founders"] .cc-mk-subject::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject::before {
   content: "";
   position: absolute;
   top: -5px;
@@ -330,27 +330,27 @@ html[data-cc-signature="founders"] .cc-mk-subject::before {
   transform: rotate(-3deg);
 }
 
-html[data-cc-signature="founders"] .cc-mk-subject:nth-child(even)::before {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject:nth-child(even)::before {
   left: auto;
   right: 16px;
   transform: rotate(2.5deg);
 }
 
 /* A subject below the line gets the highlighter. */
-html[data-cc-signature="founders"] .cc-mk-subject[data-band="low"] .cc-mk-subject-name b {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-mk-subject[data-band="low"] .cc-mk-subject-name b {
   align-self: start;
   padding: 0 2px;
   background: linear-gradient(transparent 50%, var(--f-mark) 50%, var(--f-mark) 92%, transparent 92%);
 }
 
-html[data-cc-signature="founders"] #accordion > h3.ui-accordion-header {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #accordion > h3.ui-accordion-header {
   font-family: var(--f-serif) !important;
   font-weight: 700 !important;
   border-radius: 3px !important;
 }
 
 /* Each subject's total is stamped on its header. */
-html[data-cc-signature="founders"] .cc-score {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-score {
   border: 1.5px solid currentColor !important;
   border-radius: 3px;
   background: transparent !important;
@@ -362,357 +362,111 @@ html[data-cc-signature="founders"] .cc-score {
 /* ---- the portal around them ---- */
 
 /* Where you are, in the sidebar: highlighted, as in a notebook. */
-html[data-cc-signature="founders"] #menu-content a.cc-here {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #menu-content a.cc-here {
   background: linear-gradient(transparent 55%, var(--f-mark) 55%, var(--f-mark) 90%, transparent 90%) !important;
 }
 
-html[data-cc-signature="founders"] .inner-wrapper #short_links .shortLinks__item > a h6 {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .inner-wrapper #short_links .shortLinks__item > a h6 {
   font-family: var(--f-mono) !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em;
 }
 
-/* ---- Founding 100 · Blueprint on CUIMS ----
-   The cyanotype sheet: drafting grid, white linework, technical lettering,
-   hollow numerals, dimension lines for free time, red-pencil revision
-   clouds round what is on now. */
+/* ---- Black Card on CUIMS ---- */
 
-html[data-cc-signature="blueprint"] {
-  --b-tech: "DIN Condensed", "DIN Alternate", "Bahnschrift SemiCondensed", Bahnschrift, "Avenir Next Condensed", "Arial Narrow", sans-serif;
-  --b-red: #ff7f6e;
-  --b-line: rgb(234 241 248 / 50%);
-  --b-faint: rgb(234 241 248 / 22%);
-  --b-tape: rgb(226 214 184 / 72%);
-  --b-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' fill='none' stroke='%23ff7f6e' stroke-width='1.7'%3E%3Cpath d='M0 6 a5 5 0 0 1 10 0 a5 5 0 0 1 10 0 a5 5 0 0 1 10 0 M24 0 a5 5 0 0 1 0 10 a5 5 0 0 1 0 10 a5 5 0 0 1 0 10 M30 24 a5 5 0 0 1 -10 0 a5 5 0 0 1 -10 0 a5 5 0 0 1 -10 0 M6 30 a5 5 0 0 1 0 -10 a5 5 0 0 1 0 -10 a5 5 0 0 1 0 -10'/%3E%3C/svg%3E");
-  --b-ring: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke='%23ff7f6e' stroke-width='1.6'%3E%3Cpath d='M16.00 3.80 A3.96 3.96 0 0 1 23.17 6.13 A3.96 3.96 0 0 1 27.60 12.23 A3.96 3.96 0 0 1 27.60 19.77 A3.96 3.96 0 0 1 23.17 25.87 A3.96 3.96 0 0 1 16.00 28.20 A3.96 3.96 0 0 1 8.83 25.87 A3.96 3.96 0 0 1 4.40 19.77 A3.96 3.96 0 0 1 4.40 12.23 A3.96 3.96 0 0 1 8.83 6.13 A3.96 3.96 0 0 1 16.00 3.80 Z'/%3E%3C/svg%3E");
-  --b-crop: linear-gradient(var(--b-line), var(--b-line)) left top / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) left top / 1px 12px,
-    linear-gradient(var(--b-line), var(--b-line)) right top / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) right top / 1px 12px,
-    linear-gradient(var(--b-line), var(--b-line)) left bottom / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) left bottom / 1px 12px,
-    linear-gradient(var(--b-line), var(--b-line)) right bottom / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) right bottom / 1px 12px;
-  --b-hatch: repeating-linear-gradient(135deg, rgb(234 241 248 / 85%) 0 1.4px, transparent 1.4px 4px);
+html[data-cc-signature="black"] {
+  --f-red: #e8664f;
+  --f-foil: linear-gradient(100deg, #b98c2e 0%, #f1d27c 28%, #c99a3a 50%, #f3d98a 72%, #b48628 100%);
+  --f-mark: rgb(217 178 90 / 26%);
+  --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95  0 0 0 0 .9  0 0 0 0 .8  0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --f-crop: linear-gradient(currentColor, currentColor) left top / 12px 1px, linear-gradient(currentColor, currentColor) left top / 1px 12px,
+    linear-gradient(currentColor, currentColor) right top / 12px 1px, linear-gradient(currentColor, currentColor) right top / 1px 12px,
+    linear-gradient(currentColor, currentColor) left bottom / 12px 1px, linear-gradient(currentColor, currentColor) left bottom / 1px 12px,
+    linear-gradient(currentColor, currentColor) right bottom / 12px 1px, linear-gradient(currentColor, currentColor) right bottom / 1px 12px;
 }
 
-html[data-cc-signature="blueprint"] body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 2147483000;
-  pointer-events: none;
-  background-image:
-    radial-gradient(ellipse at 15% 0%, rgb(255 255 255 / 5%), transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgb(0 0 0 / 22%), transparent 60%),
-    linear-gradient(rgb(234 241 248 / 6%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(234 241 248 / 6%) 1px, transparent 1px),
-    linear-gradient(rgb(234 241 248 / 3%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(234 241 248 / 3%) 1px, transparent 1px);
-  background-size: auto, auto, 60px 60px, 60px 60px, 12px 12px, 12px 12px;
+html[data-cc-signature="black"] body::after {
+  mix-blend-mode: screen;
 }
 
-html[data-cc-signature="blueprint"] .inner-wrapper .form_header {
-  font-family: var(--b-tech) !important;
-  font-size: 26px !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.1em !important;
-  text-transform: uppercase;
-}
-
-html[data-cc-signature="blueprint"] .inner-wrapper table.table th,
-html[data-cc-signature="blueprint"] .inner-wrapper #short_links .shortLinks__item > a h6 {
-  font-family: var(--b-tech) !important;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-/* Lettering. */
-html[data-cc-signature="blueprint"] :is(.cc-hero-title, .cc-hero-label, .cc-hero-clock, .cc-hero-meta b, .cc-stop-time, .cc-stop-name, .cc-stop-gap span, .cc-tt-week-title, .cc-tt-grid thead th, .cc-tt-start, .cc-tt-end, .cc-class-title, .cc-class-room, .cc-class-kind, .cc-ds-head b, .cc-ds-name, .cc-ds-count, .cc-ds-when, .cc-ds-run-head, .cc-ds-run-list b, .cc-mk-label, .cc-mk-big, .cc-mk-notes dt, .cc-mk-notes dd b, .cc-mk-subject-name b, .cc-mk-subject-pct, .cc-score, .cc-hero-action) {
-  font-family: var(--b-tech);
-  letter-spacing: 0.04em;
-}
-
-html[data-cc-signature="blueprint"] :is(.cc-hero-label, .cc-hero-clock-label, .cc-tt-week-title b, .cc-ds-head b, .cc-ds-count, .cc-mk-label, .cc-mk-notes dt, .cc-hero-action, .cc-tt-grid thead th) {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-html[data-cc-signature="blueprint"] .cc-hero-title {
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-/* Hollow numerals. */
-html[data-cc-signature="blueprint"] :is(.cc-hero-clock b, .cc-ds-exam.is-lead .cc-ds-date, .cc-mk-big b) {
-  color: transparent;
-  -webkit-text-stroke: 1.3px var(--o-ink);
-  letter-spacing: 0.03em;
-}
-
-html[data-cc-signature="blueprint"] .cc-hero-clock b {
-  font-size: 44px;
-}
-
-html[data-cc-signature="blueprint"] .cc-mk-big b {
-  font-size: 64px;
-}
-
-/* Every card is linework on the sheet, with crop marks. */
-html[data-cc-signature="blueprint"] :is(.cc-tt-hero, .cc-tt-week, .cc-ds-run, .cc-mk-hero, .cc-mk-subject) {
-  border-radius: 0;
+/* Cards are linework on the card stock, crop marks at the corners. */
+html[data-cc-signature="black"] :is(.cc-tt-hero, .cc-tt-week, .cc-ds-run, .cc-mk-hero, .cc-mk-subject, .cc-class) {
   background: transparent;
-  box-shadow: inset 0 0 0 1px var(--b-line);
 }
 
-html[data-cc-signature="blueprint"] :is(.cc-tt-hero, .cc-mk-hero)::after {
+html[data-cc-signature="black"] :is(.cc-tt-week, .cc-ds-run, .cc-mk-hero) {
+  position: relative;
+  overflow: visible;
+  box-shadow: inset 0 0 0 1px rgb(239 230 210 / 24%);
+}
+
+html[data-cc-signature="black"] :is(.cc-tt-week, .cc-ds-run, .cc-mk-hero)::after {
   content: "";
   position: absolute;
-  inset: 6px;
+  inset: -6px;
   pointer-events: none;
-  background: var(--b-crop);
+  color: rgb(239 230 210 / 42%);
+  background: var(--f-crop);
   background-repeat: no-repeat;
 }
 
-html[data-cc-signature="blueprint"] .cc-mk-hero {
-  position: relative;
-}
-
-/* The timetable hero is a sheet with its own title block. */
-html[data-cc-signature="blueprint"] .cc-tt-hero {
+html[data-cc-signature="black"] .cc-tt-week {
   overflow: visible;
-  padding-bottom: 44px;
 }
 
-html[data-cc-signature="blueprint"] .cc-tt-hero[data-sheet]::before {
-  content: "SHEET  " attr(data-sheet) "   ·   DRAWN BY CUIMS CLEAR   ·   SCALE 1:1";
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  padding: 5px 12px;
-  border-top: 1px solid var(--b-line);
-  border-left: 1px solid var(--b-line);
-  color: var(--o-muted);
-  font: 700 11px/1.2 var(--b-tech);
-  letter-spacing: 0.12em;
-  white-space: pre;
+html[data-cc-signature="black"] .cc-tt-scroll {
+  border-radius: 3px;
 }
 
-html[data-cc-signature="blueprint"] .cc-hero-label {
-  color: var(--b-red);
+html[data-cc-signature="black"] .cc-tt-hero {
+  box-shadow: inset 0 0 0 1px rgb(239 230 210 / 24%);
 }
 
-html[data-cc-signature="blueprint"] .cc-hero-dot {
-  background: var(--b-red);
+html[data-cc-signature="black"] .cc-class {
+  box-shadow: 0 0 0 1px rgb(239 230 210 / 16%);
 }
 
-html[data-cc-signature="blueprint"] .cc-hero-meta b {
-  text-decoration: underline wavy var(--b-red) 1.3px;
-  text-underline-offset: 4px;
+html[data-cc-signature="black"] .cc-ds-exam {
+  --edge: rgb(239 230 210 / 24%);
+  background: transparent;
 }
 
-/* The day: stops are ticks on a dimension line; free time is a dimension. */
-html[data-cc-signature="blueprint"] .cc-line {
-  border-top: 1px dashed var(--b-faint);
+html[data-cc-signature="black"] .cc-ds-exam.is-lead {
+  --edge: rgb(226 189 98 / 55%);
+  background: linear-gradient(100deg, rgb(217 178 90 / 14%) 0%, transparent 70%);
 }
 
-html[data-cc-signature="blueprint"] :is(.cc-stop, .cc-stop-gap)::before {
-  height: 1px;
-  top: 6px;
-  background: var(--b-line);
+html[data-cc-signature="black"] .cc-ds-when {
+  background: rgb(239 230 210 / 5%);
 }
 
-html[data-cc-signature="blueprint"] .cc-stop-dot {
-  width: 2px;
-  height: 14px;
-  margin: -1px 0 6px 5px;
-  border: 0;
-  border-radius: 0;
-  background: var(--o-ink);
-  box-shadow: none;
+html[data-cc-signature="black"] .cc-ds-exam.is-lead .cc-ds-when {
+  background: rgb(217 178 90 / 16%);
 }
 
-html[data-cc-signature="blueprint"] .cc-stop.is-past .cc-stop-dot {
-  background: var(--b-faint);
+html[data-cc-signature="black"] :is(.cc-ds-exam.is-lead::before, .cc-mk-subject::before) {
+  background: repeating-linear-gradient(45deg, rgb(226 189 98 / 40%) 0 6px, rgb(226 189 98 / 26%) 6px 12px);
 }
 
-html[data-cc-signature="blueprint"] .cc-stop.is-now .cc-stop-dot {
-  width: 22px;
-  height: 22px;
-  margin: -5px 0 0 -5px;
-  background: var(--b-ring) center / 100% 100% no-repeat;
+html[data-cc-signature="black"] .cc-class::before {
+  opacity: 0.85;
 }
 
-html[data-cc-signature="blueprint"] .cc-stop-gap span {
-  background: var(--o-surface);
-  box-shadow: none;
-  border-radius: 0;
+/* On black, a mid-height highlighter reads as a strike: it sits low, as a marker underline. */
+html[data-cc-signature="black"] :is(.cc-hero-meta b, .cc-stop.is-next .cc-stop-name, .cc-mk-subject[data-band="low"] .cc-mk-subject-name b, #menu-content a.cc-here) {
+  background: linear-gradient(transparent 74%, rgb(226 189 98 / 45%) 74%, rgb(226 189 98 / 45%) 96%, transparent 96%) !important;
+}
+
+/* The next exam's stamp and stub stay readable on the gold wash. */
+html[data-cc-signature="black"] .cc-ds-exam.is-lead .cc-ds-when {
+  background: rgb(217 178 90 / 10%);
+}
+
+html[data-cc-signature="black"] .cc-ds-exam.is-lead :is(.cc-ds-day, .cc-ds-month) {
   color: var(--o-ink);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
-html[data-cc-signature="blueprint"] .cc-stop-gap span::before {
-  content: "\25C2  ";
-}
-
-html[data-cc-signature="blueprint"] .cc-stop-gap span::after {
-  content: "  \25B8";
-}
-
-/* The week: linework cards, a colour key per subject, a cloud round now. */
-html[data-cc-signature="blueprint"] .cc-tt-week-head {
-  border-bottom: 1px solid var(--b-line);
-}
-
-html[data-cc-signature="blueprint"] .cc-class {
-  border-radius: 0;
-  background: transparent;
-  box-shadow: inset 2px 0 0 var(--cc-hue), inset 0 0 0 1px var(--b-faint);
-}
-
-html[data-cc-signature="blueprint"] .cc-class-title {
-  font-size: 14.5px;
-  font-weight: 600;
-}
-
-html[data-cc-signature="blueprint"] .cc-class.is-now {
-  background: transparent;
-  border: 9px solid transparent;
-  border-image: var(--b-cloud) 9 round;
-  box-shadow: inset 2px 0 0 var(--cc-hue);
-  padding: 0 4px 2px 7px;
-}
-
-html[data-cc-signature="blueprint"] .cc-class-now {
-  color: var(--b-red);
-  background: transparent;
-  border: 1px solid var(--b-red);
-  border-radius: 0;
-}
-
-html[data-cc-signature="blueprint"] .cc-tt-grid thead th.is-today .cc-tt-date {
-  color: var(--b-red);
-  background: var(--b-ring) center / 100% 100% no-repeat;
-  min-width: 32px;
-  height: 32px;
-}
-
-/* ---- Datesheet ---- */
-
-html[data-cc-signature="blueprint"] .cc-ds-exam {
-  --edge: var(--b-line);
-  border-radius: 0;
-  background: transparent;
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-exam.is-lead {
-  --edge: var(--o-ink);
-  background: transparent;
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-when {
-  border-radius: 0;
-  background: transparent;
-  border-left: 1px dashed var(--b-line);
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-exam.is-lead .cc-ds-when {
-  background: transparent;
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-exam.is-soon .cc-ds-count {
-  color: var(--b-red);
-  text-decoration: underline wavy var(--b-red) 1.3px;
-  text-underline-offset: 4px;
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-date {
-  font-family: var(--b-tech);
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-run-list li::before {
-  height: 1px;
-  background: var(--b-line);
-}
-
-html[data-cc-signature="blueprint"] .cc-ds-run-dot {
-  border-radius: 0;
-  transform: rotate(45deg) scale(0.8);
-  background: transparent;
-  border-color: var(--o-ink);
-}
-
-html[data-cc-signature="blueprint"] .is-done > .cc-ds-run-dot {
-  background: var(--o-ink);
-}
-
-html[data-cc-signature="blueprint"] .is-done > .cc-ds-run-dot::after {
-  display: none;
-}
-
-html[data-cc-signature="blueprint"] .is-next > .cc-ds-run-dot {
-  background: var(--b-red);
-  border-color: var(--b-red);
-  box-shadow: none;
-}
-
-/* ---- Marks: hatching, as on a section drawing ---- */
-
-html[data-cc-signature="blueprint"] .cc-mk-meter {
-  border-radius: 0;
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--b-line);
-  height: 9px;
-}
-
-html[data-cc-signature="blueprint"] .cc-mk-meter i {
-  border-radius: 0;
-  background: var(--b-hatch);
-}
-
-@media (min-width: 761px) {
-  html[data-cc-signature="blueprint"] .cc-mk-notes > div {
-    border-left: 1px dashed var(--b-line);
-  }
-}
-
-@media (max-width: 760px) {
-  html[data-cc-signature="blueprint"] .cc-mk-notes > div {
-    border-top: 1px dashed var(--b-line);
-  }
-}
-
-html[data-cc-signature="blueprint"] .cc-mk-seg {
-  border-radius: 0;
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--b-faint);
-}
-
-html[data-cc-signature="blueprint"] .cc-mk-seg i {
-  border-radius: 0;
-  background: var(--b-hatch);
-}
-
-html[data-cc-signature="blueprint"] .cc-mk-seg[data-band="low"] i,
-html[data-cc-signature="blueprint"] .cc-mk-seg[data-band="absent"] {
-  background: repeating-linear-gradient(135deg, var(--b-red) 0 1.4px, transparent 1.4px 4px);
-}
-
-html[data-cc-signature="blueprint"] .cc-mk-subject[data-band="low"] .cc-mk-subject-name b {
-  text-decoration: underline wavy var(--b-red) 1.3px;
-  text-underline-offset: 4px;
-}
-
-html[data-cc-signature="blueprint"] .cc-score {
-  border-radius: 0;
-  background: transparent !important;
-}
-
-html[data-cc-signature="blueprint"] #accordion > h3.ui-accordion-header {
-  font-family: var(--b-tech) !important;
-  letter-spacing: 0.05em;
-  border-radius: 0 !important;
-}
-
-html[data-cc-signature="blueprint"] #menu-content a.cc-here {
-  text-decoration: underline wavy var(--b-red) 1.3px !important;
-  text-underline-offset: 4px;
+html[data-cc-signature="black"] .cc-ds-exam.is-soon .cc-ds-count {
+  color: #f4907b;
+  border-color: #f4907b;
 }

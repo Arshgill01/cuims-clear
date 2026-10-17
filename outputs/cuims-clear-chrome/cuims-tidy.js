@@ -262,8 +262,6 @@
 
     const item = lead.items[0];
     wrap.style.setProperty("--cc-hue", hueFor(item.code, hues));
-    // The sheet this is, for themes that draw a title block (Blueprint).
-    if (lineDay.key) wrap.dataset.sheet = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${lineDay.key}T00:00:00Z`)).toUpperCase();
     const head = el("div", "cc-hero-head");
     const text = el("div", "cc-hero-text");
     const tag = el("p", `cc-hero-label${live ? " is-live" : ""}`);

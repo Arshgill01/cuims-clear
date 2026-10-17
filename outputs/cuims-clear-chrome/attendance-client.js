@@ -307,11 +307,27 @@
 
   const LEAVE_PAGES = { dl: "/frmStudentApplyDutyLeave.aspx", ml: "/frmStudentMedicalLeaveApply.aspx" };
 
+  // Since October 2026 the Duty Leave page opens on its Internal (events)
+  // tab; the application form and history sit on the External tab, one
+  // postback away (the rblType radio).
+  const DL_EXTERNAL_TARGET = "ctl00$ContentPlaceHolder1$rblType$1";
+
   // The student's own duty or medical leave applications and their status.
   // Never follow a redirect to a login page; the daemon owns sign-in and
   // retry decisions so the page cannot replace a tab's captcha.
   async function readLeavePage(request, which) {
-    const page = await optionalPage(request, url(LEAVE_PAGES[which]));
+    const target = url(LEAVE_PAGES[which]);
+    let page = await optionalPage(request, target);
+    if (which === "dl" && !api.hasDutyLeaveHistory(page.html) && /ContentPlaceHolder1_rblType_1/.test(page.html)) {
+      page = await postForm(request, new URL(api.formAction(page.html) || target, page.url || target).href, {
+        ...api.hiddenFields(page.html),
+        __EVENTTARGET: DL_EXTERNAL_TARGET,
+        __EVENTARGUMENT: "",
+        "ctl00$ContentPlaceHolder1$rblType": "External",
+      });
+      if (isLoginUrl(page.url) || api.isLoginDocument(page.html)) throw coded("signed-out");
+      if (isErrorPage(page.url)) throw coded("page-limit");
+    }
     return which === "dl" ? api.parseDutyLeaves(page.html) : api.parseMedicalLeaves(page.html);
   }
 

@@ -395,6 +395,7 @@
   api.hasTimetable = (html) => Boolean(firstTable(html, TIMETABLE_IDS));
   api.leaveState = leaveState;
   api.parseDutyLeaves = parseDutyLeaves;
+  api.hasDutyLeaveHistory = (html) => /\bid\s*=\s*["'](?:ContentPlaceHolder1_)?gvHistory["']/i.test(String(html || ""));
   api.parseMedicalLeaves = parseMedicalLeaves;
   api.parseDateSheet = parseDateSheet;
 })(globalThis);

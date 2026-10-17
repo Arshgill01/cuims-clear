@@ -1,18 +1,18 @@
 /* ---- Founding 100 on the LMS clear view ----
-   lms-boot.js sets html[data-cc-signature="founders"] while that theme is on.
+   lms-boot.js sets html:is([data-cc-signature="founders"], [data-cc-signature="black"]) while that theme is on.
    The course directory reads like a ledger: torn lines between courses,
    Courier codes, serif names, stamped links. */
 
-html[data-cc-signature="founders"] {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) {
   --f-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --f-mono: "Courier New", Courier, "Nimbus Mono PS", monospace;
   --f-red: #b4322a;
-  --f-foil: linear-gradient(100deg, #6f4f10 0%, #a87d24 18%, #dcbb62 34%, #9c721c 50%, #caa449 68%, #7a5913 100%);
+  --f-foil: linear-gradient(100deg, #5e420c 0%, #8f6a1b 24%, #a17a22 38%, #7d5a14 56%, #9c721c 74%, #5e420c 100%);
   --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32  0 0 0 0 .26  0 0 0 0 .16  0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   --f-ink-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)'/%3E%3C/svg%3E");
 }
 
-html[data-cc-signature="founders"] body.cc-lms::after {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) body.cc-lms::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -22,8 +22,8 @@ html[data-cc-signature="founders"] body.cc-lms::after {
   mix-blend-mode: multiply;
 }
 
-html[data-cc-signature="founders"] #cc-toolbar .cc-brand,
-html[data-cc-signature="founders"] #cc-directory h1 {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-toolbar .cc-brand,
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-directory h1 {
   font-family: var(--f-serif);
   font-weight: 700;
   letter-spacing: 0;
@@ -33,37 +33,37 @@ html[data-cc-signature="founders"] #cc-directory h1 {
   background-clip: text;
 }
 
-html[data-cc-signature="founders"] #cc-directory h1 {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-directory h1 {
   font-size: 32px;
 }
 
-html[data-cc-signature="founders"] #cc-toolbar {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-toolbar {
   border-bottom: 2px dashed var(--cc-line);
 }
 
-html[data-cc-signature="founders"] :is(#cc-toolbar button, #cc-toolbar a:not(.cc-brand), .cc-text-button, #cc-directory .cc-count, #cc-directory .cc-columns, #cc-directory label, .cc-lms .cc-code, body.cc-lms .format_onetopic-tabs .nav-link, body.cc-lms .cc-course-nav) {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) :is(#cc-toolbar button, #cc-toolbar a:not(.cc-brand), .cc-text-button, #cc-directory .cc-count, #cc-directory .cc-columns, #cc-directory label, .cc-lms .cc-code, body.cc-lms .format_onetopic-tabs .nav-link, body.cc-lms .cc-course-nav) {
   font-family: var(--f-mono);
   font-weight: 700;
 }
 
-html[data-cc-signature="founders"] #cc-directory .cc-columns {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-directory .cc-columns {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border-bottom: 2px dashed var(--cc-line);
 }
 
-html[data-cc-signature="founders"] #cc-directory .cc-course-row {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-directory .cc-course-row {
   border-bottom: 2px dashed var(--cc-line);
 }
 
-html[data-cc-signature="founders"] :is(#cc-directory h2, body.cc-lms #page-header h1, body.cc-lms .page-header-headings h1) {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) :is(#cc-directory h2, body.cc-lms #page-header h1, body.cc-lms .page-header-headings h1) {
   font-family: var(--f-serif) !important;
   font-weight: 700 !important;
   letter-spacing: 0 !important;
 }
 
 /* Links to a course's materials and work are stamped on. */
-html[data-cc-signature="founders"] .cc-lms .cc-course-link {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-lms .cc-course-link {
   border: 1.5px solid currentColor;
   border-radius: 3px;
   font-family: var(--f-mono);
@@ -73,68 +73,27 @@ html[data-cc-signature="founders"] .cc-lms .cc-course-link {
   transform: rotate(-1deg);
 }
 
-html[data-cc-signature="founders"] .cc-lms .cc-course-link:nth-of-type(even) {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) .cc-lms .cc-course-link:nth-of-type(even) {
   transform: rotate(1deg);
 }
 
-html[data-cc-signature="founders"] body.cc-lms .activity-item {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) body.cc-lms .activity-item {
   border-radius: 3px !important;
 }
 
-html[data-cc-signature="founders"] #cc-directory input {
+html:is([data-cc-signature="founders"], [data-cc-signature="black"]) #cc-directory input {
   border-radius: 3px;
   font-family: var(--f-mono);
 }
 
-/* ---- Blueprint on the LMS ---- */
+/* ---- Black Card on the LMS ---- */
 
-html[data-cc-signature="blueprint"] {
-  --b-tech: "DIN Condensed", "DIN Alternate", "Bahnschrift SemiCondensed", Bahnschrift, "Avenir Next Condensed", "Arial Narrow", sans-serif;
-  --b-line: rgb(234 241 248 / 50%);
+html[data-cc-signature="black"] {
+  --f-red: #e8664f;
+  --f-foil: linear-gradient(100deg, #b98c2e 0%, #f1d27c 28%, #c99a3a 50%, #f3d98a 72%, #b48628 100%);
+  --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .95  0 0 0 0 .9  0 0 0 0 .8  0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-html[data-cc-signature="blueprint"] body.cc-lms::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 2147483000;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgb(234 241 248 / 6%) 1px, transparent 1px), linear-gradient(90deg, rgb(234 241 248 / 6%) 1px, transparent 1px),
-    linear-gradient(rgb(234 241 248 / 3%) 1px, transparent 1px), linear-gradient(90deg, rgb(234 241 248 / 3%) 1px, transparent 1px);
-  background-size: 60px 60px, 60px 60px, 12px 12px, 12px 12px;
-}
-
-html[data-cc-signature="blueprint"] :is(#cc-toolbar, #cc-directory, body.cc-lms #page-header h1, body.cc-lms .cc-course-nav) {
-  font-family: var(--b-tech);
-  letter-spacing: 0.04em;
-}
-
-html[data-cc-signature="blueprint"] :is(#cc-directory h1, #cc-toolbar .cc-brand, #cc-directory .cc-columns) {
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-html[data-cc-signature="blueprint"] #cc-directory h1 {
-  font-size: 34px;
-  color: transparent;
-  -webkit-text-stroke: 1.2px var(--cc-ink);
-}
-
-html[data-cc-signature="blueprint"] #cc-directory h2 {
-  font-family: var(--b-tech);
-  font-size: 19px;
-  letter-spacing: 0.03em;
-}
-
-html[data-cc-signature="blueprint"] #cc-directory .cc-course-row {
-  border-bottom: 1px dashed var(--b-line);
-}
-
-html[data-cc-signature="blueprint"] .cc-lms .cc-course-link {
-  border-radius: 0;
-  border: 1px solid var(--b-line);
-  background: transparent;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+html[data-cc-signature="black"] body.cc-lms::after {
+  mix-blend-mode: screen;
 }
