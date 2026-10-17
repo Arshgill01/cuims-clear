@@ -186,6 +186,13 @@ body {
   display: none;
 }
 
+/* Its words are for screen readers; give them the dot's own readable ink
+   so a contrast check reads them as what they are. */
+.rail-dot .sr-only {
+  color: var(--ink);
+  background: var(--surface);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -3073,4 +3080,38 @@ input[role="switch"]:disabled {
   .fc-detail {
     animation: none;
   }
+}
+
+/* Founding 100: a theme only founders can pick. Everyone else sees it,
+   locked, so they know it exists. */
+.theme-card.is-locked {
+  cursor: not-allowed;
+}
+
+.theme-card.is-locked .theme-preview {
+  filter: grayscale(0.85);
+  opacity: 0.55;
+}
+
+.theme-card.is-locked .theme-name::after {
+  content: " · locked";
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.theme-group.is-founders .section-meta {
+  color: var(--warn-ink);
+  font-weight: 700;
+}
+
+/* Past the last day of classes: the result, not a forecast. */
+.fc-ended-note {
+  margin: 10px 0 2px;
+  color: var(--h-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fc-ended-note .text-button {
+  color: var(--h-ink);
 }

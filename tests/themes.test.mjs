@@ -16,8 +16,15 @@ const T = loadThemes();
 const IDS = T.list.map((entry) => entry.id);
 
 test("the themes are the default plus a varied Omarchy set, with no near-duplicate whites", () => {
-  assert.deepEqual([...IDS], ["clear", "tokyo-night", "catppuccin", "gruvbox", "everforest", "kanagawa", "nord", "osaka-jade", "retro-82", "matte-black", "solitude", "ristretto", "ethereal", "lumon", "hackerman", "last-horizon", "miasma", "catppuccin-latte", "flexoki-light", "rose-pine"]);
-  assert.equal(T.list.filter((entry) => entry.scheme === "light").length, 4);
+  assert.deepEqual([...IDS], ["clear", "tokyo-night", "catppuccin", "gruvbox", "everforest", "kanagawa", "nord", "osaka-jade", "retro-82", "matte-black", "solitude", "ristretto", "ethereal", "lumon", "hackerman", "last-horizon", "miasma", "founders", "catppuccin-latte", "flexoki-light", "rose-pine"]);
+  assert.equal(T.list.filter((entry) => entry.scheme === "light" && !entry.founders).length, 4);
+});
+
+test("Founding 100 is one founders-only light theme, and the picker locks it for everyone else", () => {
+  assert.equal(JSON.stringify(T.list.filter((entry) => entry.founders).map((entry) => [entry.id, entry.scheme])), JSON.stringify([["founders", "light"]]));
+  const popup = readFileSync(new URL("../outputs/cuims-clear-firefox/popup.js", import.meta.url), "utf8");
+  assert.match(popup, /const locked = entry\.founders && !isFounder;/);
+  assert.match(popup, /isFounder = stored\.founding\?\.founder === true;/);
 });
 
 test("status colours keep their hue when nudged for contrast", () => {

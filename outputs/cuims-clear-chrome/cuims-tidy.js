@@ -110,18 +110,30 @@
     return { days, slots };
   }
 
-  function card(item, hue, state) {
-    const node = el("div", `cc-class${state ? ` is-${state}` : ""}`);
-    node.style.setProperty("--cc-hue", hue);
-    node.title = item.raw;
-    // Non-breaking hyphens, so "Coding-II" never wraps after its hyphen.
-    node.append(el("span", "cc-class-title", (item.title || item.code).replace(/-/g, "\u2011")));
-    const meta = [KIND[item.kind], item.room].filter(Boolean).join(" · ");
-    if (meta) node.append(el("span", "cc-class-meta", meta));
-    const who = [item.code, item.teacher].filter(Boolean).join(" · ");
-    if (who) node.append(el("span", "cc-class-who", who));
-    if (state === "now") node.prepend(el("span", "cc-class-now", "Now"));
-    return node;
+  // Two cells hold the same class (or the same set of group classes).
+  function sameClasses(a, b) {
+    return a.length > 0 && a.length === b.length && a.every((item, i) => ["code", "kind", "room", "group"].every((key) => item[key] === b[i][key]));
+  }
+
+  // Each day's classes as runs: a class taught over back-to-back periods
+  // (a two-period lab) is one run. `rows` are the slots the grid shows.
+  function runsByDay(model, rows) {
+    return model.days.map((_, column) => {
+      const runs = [];
+      rows.forEach((slot, row) => {
+        const items = slot.classes[column];
+        if (!items.length) return;
+        const last = runs[runs.length - 1];
+        if (last && last.lastRow === row - 1 && slot.start - last.end <= 10 && sameClasses(last.items, items)) {
+          last.end = slot.end;
+          last.lastRow = row;
+          last.periods += 1;
+          return;
+        }
+        runs.push({ items, start: slot.start, end: slot.end, row, lastRow: row, periods: 1 });
+      });
+      return runs;
+    });
   }
 
   function hueFor(code, order) {
@@ -130,31 +142,193 @@
     return order.get(key);
   }
 
-  // One line above the grid: what is on now and what comes next today.
-  function nowLine(model, today, minutes, hues) {
-    const line = el("p", "cc-tt-now");
-    line.setAttribute("aria-live", "polite");
-    const column = model.days.findIndex((entry) => entry.day === today);
-    if (column < 0) return line;
-    const todays = model.slots.flatMap((slot) => slot.classes[column].map((item) => ({ ...item, start: slot.start, end: slot.end })));
-    const current = todays.find((item) => item.start <= minutes && minutes < item.end);
-    const next = todays.find((item) => item.start > minutes);
-    const name = (item) => item.title || item.code;
-    const where = (item) => (item.room ? ` in ${item.room}` : "");
-    const parts = [];
-    if (current) parts.push(["Now", `${name(current)}${where(current)}, until ${clock(current.end)}`, hueFor(current.code, hues)]);
-    if (next) parts.push(["Next", `${name(next)}${where(next)} at ${clock(next.start)}`, hueFor(next.code, hues)]);
-    if (!parts.length) parts.push(["Today", todays.length ? "No more classes" : "No classes", ""]);
-    for (const [label, text, hue] of parts) {
-      const chunk = el("span", "cc-tt-now-part");
-      if (hue) chunk.style.setProperty("--cc-hue", hue);
-      chunk.append(el("b", "", label), el("span", "", text));
-      line.append(chunk);
-    }
-    return line;
+  const nameOf = (item) => (item.title || item.code || "Class").replace(/-/g, "‑");
+
+  // "40 min", "1 h 05 min"
+  function span(minutes) {
+    const m = Math.max(0, Math.round(minutes));
+    if (m < 60) return `${m} min`;
+    return `${Math.floor(m / 60)} h${m % 60 ? ` ${String(m % 60).padStart(2, "0")} min` : ""}`;
   }
 
-  function buildTimetable(grid) {
+  function card(run, item, hue, state) {
+    const node = el("div", `cc-class${state ? ` is-${state}` : ""}${run.periods > 1 ? " is-long" : ""}`);
+    node.style.setProperty("--cc-hue", hue);
+    if (run.periods > 1) node.style.setProperty("--cc-periods", String(run.periods));
+    node.title = item.raw;
+    if (state === "now") node.append(el("span", "cc-class-now", "Now"));
+    // Non-breaking hyphens, so "Coding-II" never wraps after its hyphen.
+    node.append(el("span", "cc-class-title", nameOf(item)));
+    const meta = el("span", "cc-class-meta");
+    if (item.room) meta.append(el("b", "cc-class-room", item.room));
+    // A group is worth naming only where the class splits into groups.
+    const kind = [KIND[item.kind], item.group && run.items.length > 1 ? `Group ${item.group}` : ""].filter(Boolean).join(" · ");
+    if (kind) meta.append(el("span", "cc-class-kind", kind));
+    node.append(meta);
+    const who = [item.code, item.teacher].filter(Boolean).join(" · ");
+    if (who) node.append(el("span", "cc-class-who", who));
+    if (run.periods > 1) node.append(el("span", "cc-class-span", `${clock(run.start)} – ${clock(run.end)} · ${run.periods} periods`));
+    return node;
+  }
+
+  // The campus day `offset` days from today, with whatever the calendar says
+  // about it (a holiday, a break, a test week).
+  function dayInfo(now, offset, context) {
+    const number = api.dayNumberOf?.(now.key);
+    const key = number == null ? null : new Date((number + offset) * 86400000).toISOString().slice(0, 10);
+    const weekday = DAYS[(DAYS.indexOf(now.weekday) + offset) % 7];
+    const reason = key && api.noClassReason ? api.noClassReason(key, context) : null;
+    return { key, weekday, offset, reason };
+  }
+
+  function dayName(info) {
+    if (info.offset === 0) return "Today";
+    if (info.offset === 1) return "Tomorrow";
+    return new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "long" }).format(new Date(`${info.key}T00:00:00Z`));
+  }
+
+  // The hero above the week: what is on now or next, the day as a line,
+  // and what comes after.
+  function hero(model, runs, now, hues, context) {
+    const wrap = el("section", "cc-tt-hero");
+    wrap.dataset.ccOwn = "";
+    wrap.setAttribute("aria-label", "Your day");
+    const column = (weekday) => model.days.findIndex((entry) => entry.day === weekday);
+    const runsOn = (info) => {
+      const index = column(info.weekday);
+      return index < 0 || (info.reason && info.reason.kind !== "over") ? [] : runs[index];
+    };
+    const today = dayInfo(now, 0, context);
+    const todays = runsOn(today);
+    const current = todays.find((run) => run.start <= now.minutes && now.minutes < run.end);
+    const later = todays.filter((run) => run.start > now.minutes);
+    // The next day with classes, within a week, holidays skipped.
+    const skipped = [];
+    let ahead = null;
+    for (let offset = 1; offset <= 7 && !ahead; offset += 1) {
+      const info = dayInfo(now, offset, context);
+      if (info.reason?.kind === "over") break;
+      if (runsOn(info).length) ahead = info;
+      else if (info.reason && column(info.weekday) >= 0 && runs[column(info.weekday)].length) skipped.push(info);
+    }
+
+    let label;
+    let lead;
+    let clockBig;
+    let clockSmall;
+    let railDay = today;
+    let railRuns = todays;
+    if (current) {
+      lead = current;
+      label = `Now · until ${clock(current.end)}`;
+      [clockBig, clockSmall] = [span(current.end - now.minutes), "left"];
+    } else if (later.length) {
+      lead = later[0];
+      const first = !todays.some((run) => run.end <= now.minutes);
+      label = `${first ? "First class" : "Next"} · ${clock(lead.start)}`;
+      [clockBig, clockSmall] = [span(lead.start - now.minutes), "to go"];
+    } else if (ahead) {
+      lead = runsOn(ahead)[0];
+      railDay = ahead;
+      railRuns = runsOn(ahead);
+      const why = today.reason ? ` (${today.reason.label.replace(/\s*\(.*\)$/, "")})` : "";
+      label = `${todays.length ? "Done for today" : `No classes today${why}`} · next ${dayName(ahead).toLowerCase()}`;
+      [clockBig, clockSmall] = [clock(lead.start), dayName(ahead)];
+    }
+
+    const top = el("div", "cc-hero-top");
+    const tag = el("p", `cc-hero-label${current ? " is-live" : ""}`);
+    tag.append(el("span", "cc-hero-dot"), el("span", "", label || (today.reason?.kind === "over" ? today.reason.label : "No classes this week")));
+    top.append(tag);
+    const action = el("button", "cc-hero-action", "Add to calendar");
+    action.type = "button";
+    action.dataset.ccExport = "classes";
+    action.title = "Download your weekly classes as an .ics file, repeating until the last teaching day";
+    top.append(action);
+    wrap.append(top);
+
+    if (lead) {
+      const item = lead.items[0];
+      const main = el("div", "cc-hero-main");
+      main.style.setProperty("--cc-hue", hueFor(item.code, hues));
+      const text = el("div", "cc-hero-text");
+      text.append(el("h2", "cc-hero-title", lead.items.map(nameOf).join(" / ")));
+      const meta = el("p", "cc-hero-meta");
+      if (item.room) meta.append(el("b", "", item.room));
+      for (const part of [KIND[item.kind], lead.periods > 1 ? `${clock(lead.start)} – ${clock(lead.end)}` : "", item.teacher]) if (part) meta.append(el("span", "", part));
+      text.append(meta);
+      const time = el("p", "cc-hero-clock");
+      time.append(el("b", "", clockBig), el("span", "", clockSmall));
+      main.append(text, time);
+      wrap.append(main);
+    }
+
+    if (railRuns.length) wrap.append(rail(railRuns, railDay, now, hues));
+
+    const after = [];
+    const rest = current ? later : later.slice(1);
+    if (rest.length) {
+      const next = rest[0];
+      after.push(`Then ${nameOf(next.items[0])} at ${clock(next.start)}${next.items[0].room ? ` in ${next.items[0].room}` : ""}`);
+      const finish = todays[todays.length - 1].end;
+      after.push(`${rest.length} more ${rest.length === 1 ? "class" : "classes"} · done at ${clock(finish)}`);
+    } else if (current) {
+      after.push("Last class today");
+    }
+    for (const info of skipped) after.push(`${dayName(info)}: no classes (${info.reason.label.replace(/\s*\(.*\)$/, "")})`);
+    if (after.length) {
+      const foot = el("p", "cc-hero-foot");
+      for (const part of after) foot.append(el("span", "", part));
+      wrap.append(foot);
+    }
+    return wrap;
+  }
+
+  // One day as a line: every class to scale, free time between, and where
+  // the day is now.
+  function rail(runs, info, now, hues) {
+    const from = Math.floor(runs[0].start / 60) * 60;
+    const to = Math.ceil(runs[runs.length - 1].end / 60) * 60;
+    const at = (minutes) => `${(((minutes - from) / (to - from)) * 100).toFixed(3)}%`;
+    const wrap = el("div", "cc-rail");
+    wrap.setAttribute("aria-hidden", "true");
+    const track = el("div", "cc-rail-track");
+    const live = info.offset === 0;
+    runs.forEach((run, i) => {
+      const item = run.items[0];
+      const state = !live ? "" : now.minutes >= run.end ? "past" : now.minutes >= run.start ? "now" : "";
+      const block = el("div", `cc-rail-block${state ? ` is-${state}` : ""}`);
+      block.style.left = at(run.start);
+      block.style.width = `calc(${at(run.end)} - ${at(run.start)} - 3px)`;
+      block.style.setProperty("--cc-hue", hueFor(item.code, hues));
+      block.append(el("b", "", nameOf(item)), el("span", "", [clock(run.start), item.room].filter(Boolean).join(" · ")));
+      track.append(block);
+      const next = runs[i + 1];
+      if (next && next.start - run.end >= 30) {
+        const gap = el("div", "cc-rail-gap", `Free ${span(next.start - run.end)}`);
+        gap.style.left = at(run.end);
+        gap.style.width = `calc(${at(next.start)} - ${at(run.end)} - 3px)`;
+        track.append(gap);
+      }
+    });
+    if (live && now.minutes >= from && now.minutes <= to) {
+      const needle = el("div", "cc-rail-now");
+      needle.style.left = at(now.minutes);
+      needle.append(el("span", "", clock(now.minutes).replace(/ [AP]M$/, "")));
+      track.append(needle);
+    }
+    wrap.append(track);
+    const ticks = el("div", "cc-rail-ticks");
+    for (let minutes = from; minutes <= to; minutes += 60) {
+      const tick = el("span", "", String(Math.floor(minutes / 60) % 12 || 12));
+      tick.style.left = at(minutes);
+      ticks.append(tick);
+    }
+    wrap.append(ticks);
+    return wrap;
+  }
+
+  function buildTimetable(grid, context) {
     const { table: legend, titles } = courseTitles();
     const model = readGrid(grid, titles);
     if (!model || !model.slots.length) return null;
@@ -167,44 +341,65 @@
     const now = api.campusParts(new Date());
     const used = model.days.map((_, column) => model.slots.some((slot) => slot.classes[column].length));
     const shown = model.days.map((entry, column) => ({ ...entry, column })).filter((entry) => used[entry.column]);
+    const rows = model.slots.filter((slot) => shown.some((entry) => slot.classes[entry.column].length));
+    const runs = runsByDay(model, rows);
 
     const wrap = el("div", "cc-tt");
+    wrap.dataset.ccOwn = "";
     wrap.dataset.day = now.key;
-    wrap.append(nowLine(model, now.weekday, now.minutes, hues));
+    wrap.append(hero(model, runs, now, hues, context));
+
+    // This week's dates, Monday first, to put on each day and to find holidays.
+    const todayIndex = DAYS.indexOf(now.weekday);
+    const week = new Map(DAYS.map((day, i) => [day, dayInfo(now, i - todayIndex, context)]));
+    const card$ = el("section", "cc-tt-week");
+    card$.setAttribute("aria-label", "This week");
     const scroller = el("div", "cc-tt-scroll");
     const table = el("table", "cc-tt-grid");
     const caption = el("caption", "cc-sr", "Weekly timetable, in time order");
     const headRow = el("tr");
     headRow.append(el("th", "cc-tt-time", "Time"));
     for (const entry of shown) {
-      const th = el("th", entry.day === now.weekday ? "is-today" : "", entry.label);
+      const info = week.get(entry.day);
+      const off = info?.reason && info.reason.kind !== "over";
+      const th = el("th", [entry.day === now.weekday ? "is-today" : "", off ? "is-off" : ""].filter(Boolean).join(" "), entry.label.slice(0, 3));
       th.scope = "col";
-      if (entry.day === now.weekday) th.append(el("span", "cc-tt-today", "Today"));
+      if (info?.key) th.append(el("span", "cc-tt-date", String(Number(info.key.slice(8)))));
+      if (off) th.append(el("span", "cc-tt-off", info.reason.label.replace(/\s*\(.*\)$/, "")));
       headRow.append(th);
     }
     const thead = el("thead");
     thead.append(headRow);
     const tbody = el("tbody");
-    for (const slot of model.slots) {
-      if (!shown.some((entry) => slot.classes[entry.column].length)) continue;
-      const row = el("tr");
+    rows.forEach((slot, row) => {
+      const tr = el("tr");
       const time = el("th", "cc-tt-time");
       time.scope = "row";
       time.append(el("span", "cc-tt-start", clock(slot.start)), el("span", "cc-tt-end", clock(slot.end)));
-      row.append(time);
+      tr.append(time);
       for (const entry of shown) {
+        const dayRuns = runs[entry.column];
+        if (dayRuns.some((run) => run.row < row && run.lastRow >= row)) continue;
+        const run = dayRuns.find((candidate) => candidate.row === row);
         const isToday = entry.day === now.weekday;
-        const td = el("td", isToday ? "is-today" : "");
-        const state = !isToday ? "" : now.minutes >= slot.end ? "past" : now.minutes >= slot.start ? "now" : "";
-        for (const item of slot.classes[entry.column]) td.append(card(item, hueFor(item.code, hues), state));
-        row.append(td);
+        const info = week.get(entry.day);
+        const td = el("td", [isToday ? "is-today" : "", info?.reason && info.reason.kind !== "over" ? "is-off" : ""].filter(Boolean).join(" "));
+        if (run) {
+          if (run.periods > 1) td.rowSpan = run.lastRow - run.row + 1;
+          const state = !isToday ? "" : now.minutes >= run.end ? "past" : now.minutes >= run.start ? "now" : "";
+          const stack = el("div", "cc-cell");
+          for (const item of run.items) stack.append(card(run, item, hueFor(item.code, hues), state));
+          td.append(stack);
+        }
+        tr.append(td);
       }
-      tbody.append(row);
-    }
+      tbody.append(tr);
+    });
     table.style.setProperty("--cc-days", String(shown.length));
     table.append(caption, thead, tbody);
     scroller.append(table);
-    wrap.append(scroller);
+    card$.append(scroller);
+    wrap.append(card$);
     if (legend) {
       legend.classList.add("cc-tt-legend");
       for (const row of legend.rows) {
@@ -212,7 +407,22 @@
         if (hue) row.style.setProperty("--cc-hue", hue);
       }
     }
+    // For the calendar file: each run once per weekday.
+    wrap.ccClasses = shown.flatMap((entry) =>
+      runs[entry.column].flatMap((run) => run.items.map((item) => ({ ...item, day: entry.day, start: run.start, end: run.end }))),
+    );
     return wrap;
+  }
+
+  // Stored choices the timetable and datesheet need for the calendar.
+  const calendarContext = { calendar: "cu", exams: [] };
+
+  function exportClasses(view) {
+    const exporter = globalThis.CuimsCalendarExport;
+    const result = exporter?.classesIcs(view.ccClasses, { todayKey: api.campusParts(new Date()).key, ...calendarContext });
+    if (!result) return false;
+    exporter.download(result.text, "cuims-classes.ics");
+    return result;
   }
 
   function tidyTimetable() {
@@ -224,9 +434,9 @@
       return;
     }
     const previous = grid.previousElementSibling?.classList.contains("cc-tt") ? grid.previousElementSibling : null;
-    const signature = JSON.stringify([grid.textContent, courseTitles().table?.textContent || ""]);
+    const signature = JSON.stringify([grid.textContent, courseTitles().table?.textContent || "", calendarContext.calendar]);
     if (previous && previous.dataset.source === signature) return;
-    const built = buildTimetable(grid);
+    const built = buildTimetable(grid, calendarContext);
     if (!built) {
       previous?.remove();
       grid.classList.remove("cc-tt-original");
@@ -236,6 +446,7 @@
     built.dataset.source = signature;
     grid.classList.add("cc-tt-original");
     if (previous) {
+      built.classList.add("is-still");
       // A rebuild (the minute clock) keeps wherever the student scrolled.
       const scrolled = previous.querySelector(".cc-tt-scroll")?.scrollLeft || 0;
       previous.replaceWith(built);
@@ -267,6 +478,20 @@
       }
     }, 60000 - (Date.now() % 60000) + 50);
   }
+
+  // The calendar buttons on the timetable and the datesheet.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-cc-export]");
+    if (!button || !enabled) return;
+    const result = button.dataset.ccExport === "classes" ? exportClasses(button.closest(".cc-tt") || {}) : exportExams();
+    const was = button.dataset.label || button.textContent;
+    button.dataset.label = was;
+    button.textContent = result ? `Saved ${result.count} ${button.dataset.ccExport === "classes" ? (result.count === 1 ? "class" : "classes") : result.count === 1 ? "exam" : "exams"} · open the file` : "Nothing to add";
+    clearTimeout(button.ccTimer);
+    button.ccTimer = setTimeout(() => {
+      button.textContent = was;
+    }, 4000);
+  });
 
   // ---- attendance ----
 
@@ -374,12 +599,83 @@
     return quiet;
   }
 
+  const dateParts = (key) => {
+    const date = new Date(`${key}T00:00:00Z`);
+    const part = (options) => new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", ...options }).format(date);
+    return { weekday: part({ weekday: "short" }), day: part({ day: "numeric" }), month: part({ month: "short" }) };
+  };
+
+  // Every exam the datesheet lists, once (CUIMS repeats some rows).
+  let sheetExams = [];
+
+  function exportExams() {
+    const exporter = globalThis.CuimsCalendarExport;
+    const today = api.campusParts(new Date()).key;
+    const upcoming = sheetExams.filter((exam) => exam.key >= today);
+    const result = exporter?.examsIcs(upcoming.map((exam) => ({ day: exam.key, start: exam.start, name: exam.name, code: exam.code, type: exam.type, venue: exam.venue, mode: exam.mode, link: exam.link?.href || "" })));
+    if (!result) return false;
+    exporter.download(result.text, "cuims-exams.ics");
+    return result;
+  }
+
+  function examItem(exam, lead) {
+    const item = el("li", `cc-ds-exam${exam.days <= 1 ? " is-soon" : ""}${lead ? " is-lead" : ""}`);
+    if (lead) item.dataset.ccOwn = "";
+    const parts = dateParts(exam.key);
+    const stub = el("span", "cc-ds-when");
+    stub.append(el("span", "cc-ds-day", parts.weekday), el("span", "cc-ds-date", parts.day), el("span", "cc-ds-month", parts.month));
+    const body = el("span", "cc-ds-body");
+    const count = el("span", "cc-ds-count", countdown(exam.days));
+    // The day of the exam, counted down to the hour.
+    if (exam.days === 0 && exam.start != null) {
+      const left = exam.start - api.campusParts(new Date()).minutes;
+      count.textContent = left > 0 ? `Today · in ${span(left)}` : "Today";
+    }
+    body.append(count, el("span", "cc-ds-name", exam.name || exam.code));
+    // Non-breaking hyphens keep "Online-CBT" on one line.
+    const meta = [exam.type, exam.start != null ? clock(exam.start) : "", exam.venue, exam.mode].filter(Boolean).join(" · ").replace(/-/g, "‑");
+    body.append(el("span", "cc-ds-meta", meta));
+    if (exam.link) {
+      const open = el("a", "cc-ds-link", "Exam link");
+      open.href = exam.link.href;
+      open.target = "_blank";
+      open.rel = "noreferrer";
+      body.append(open);
+    }
+    item.append(body, stub);
+    return item;
+  }
+
+  // The papers of one datesheet (MST-2, say) in order: written, next, to come.
+  function progress(exams, type, todayKey) {
+    const papers = exams.filter((exam) => exam.type === type).sort((a, b) => a.key.localeCompare(b.key) || (a.start ?? 0) - (b.start ?? 0));
+    if (papers.length < 2) return null;
+    const done = papers.filter((exam) => exam.key < todayKey).length;
+    const wrap = el("div", "cc-ds-run");
+    const head = el("p", "cc-ds-run-head");
+    head.append(el("b", "", type), el("span", "", done === papers.length ? `all ${papers.length} written` : `${done} of ${papers.length} written`));
+    wrap.append(head);
+    const list = el("ol", "cc-ds-run-list");
+    const nextIndex = papers.findIndex((exam) => exam.key >= todayKey);
+    papers.forEach((exam, i) => {
+      const state = exam.key < todayKey ? "done" : i === nextIndex ? "next" : "later";
+      const node = el("li", `is-${state}`);
+      const parts = dateParts(exam.key);
+      node.append(el("span", "cc-ds-run-dot"), el("b", "", exam.name || exam.code), el("span", "", `${parts.day} ${parts.month}`));
+      node.title = `${exam.name} · ${parts.weekday} ${parts.day} ${parts.month}${exam.start != null ? ` · ${clock(exam.start)}` : ""}`;
+      list.append(node);
+    });
+    wrap.append(list);
+    return wrap;
+  }
+
   function tidyDatesheet() {
     const table = document.querySelector('table[id$="gvStudentDateSheet"]');
     let strip = table?.closest('div[id$="upPnale"]')?.previousElementSibling;
     if (!strip?.classList.contains("cc-ds")) strip = document.querySelector(".cc-ds");
     if (!table || table.rows.length < 2) {
       strip?.remove();
+      sheetExams = [];
       return;
     }
     const headers = [...table.rows[0].cells].map((cell) => clean(cell.textContent));
@@ -388,9 +684,15 @@
     if (at.date < 0 || at.name < 0) return;
 
     const now = api.campusParts(new Date());
-    const exams = [];
+    const all = [];
+    const seen = new Set();
     for (const row of [...table.rows].slice(1)) {
       const cells = [...row.cells];
+      // CUIMS lists some papers twice; the copy is hidden.
+      const whole = cells.map((cell) => clean(cell.textContent) + (cell.querySelector("a[href]")?.href || "")).join("|");
+      const dup = seen.has(whole);
+      seen.add(whole);
+      row.classList.toggle("cc-ds-dup", dup);
       const key = api.parseDateKey(clean(cells[at.date]?.textContent));
       if (!key) continue;
       const start = api.parseRange(`${clean(cells[at.time]?.textContent)} - 23:59`)?.start ?? null;
@@ -399,9 +701,9 @@
       const past = days < 0;
       row.classList.toggle("cc-ds-past", past);
       row.classList.remove("cc-ds-next");
-      if (past) continue;
+      if (dup) continue;
       const link = cells[at.venue]?.querySelector("a[href]");
-      exams.push({
+      all.push({
         row,
         key,
         days,
@@ -414,6 +716,8 @@
         link,
       });
     }
+    sheetExams = all;
+    const exams = all.filter((exam) => exam.days >= 0);
     exams.sort((a, b) => a.key.localeCompare(b.key) || (a.start ?? 0) - (b.start ?? 0));
     // Every exam on the nearest exam day.
     for (const exam of exams) exam.row.classList.toggle("cc-ds-next", exam.key === exams[0].key);
@@ -426,44 +730,37 @@
       });
     }
 
-    const signature = JSON.stringify([now.key, exams.map((exam) => [
+    // The datesheet in play: the nearest exam's, or the latest one written.
+    const latest = [...all].sort((a, b) => b.key.localeCompare(a.key))[0];
+    const type = exams[0]?.type || latest?.type || "";
+    const signature = JSON.stringify([now.key, exams[0]?.days === 0 ? Math.floor(now.minutes / 5) : 0, type, all.map((exam) => [
       exam.key, exam.start, exam.code, exam.name, exam.type, exam.venue, exam.mode, exam.link?.href || "",
     ])]);
     if (strip?.dataset.signature === signature) return;
     const fresh = el("section", "cc-ds");
+    fresh.dataset.ccOwn = "";
     fresh.dataset.signature = signature;
     fresh.setAttribute("aria-label", "Upcoming exams");
+    const top = el("div", "cc-ds-top");
     const head = el("p", "cc-ds-head");
     head.append(el("b", "", exams.length ? "Upcoming exams" : "No exams coming up"));
     if (exams.length) head.append(el("span", "", `${exams.length} left on this datesheet`));
-    fresh.append(head);
+    top.append(head);
+    if (exams.length) {
+      const action = el("button", "cc-hero-action is-plain", "Add to calendar");
+      action.type = "button";
+      action.dataset.ccExport = "exams";
+      action.title = "Download your upcoming exams as an .ics file, with reminders the day before and an hour before";
+      top.append(action);
+    }
+    fresh.append(top);
     if (exams.length) {
       const list = el("ol", "cc-ds-list");
-      for (const exam of exams) {
-        const item = el("li", `cc-ds-exam${exam.days <= 1 ? " is-soon" : ""}`);
-        const date = new Date(`${exam.key}T00:00:00Z`);
-        const when = el("span", "cc-ds-when");
-        when.append(
-          el("span", "cc-ds-day", new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short" }).format(date)),
-          el("span", "cc-ds-date", new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", month: "short" }).format(date)),
-        );
-        const body = el("span", "cc-ds-body");
-        body.append(el("span", "cc-ds-count", countdown(exam.days)), el("span", "cc-ds-name", exam.name || exam.code));
-        // Non-breaking hyphens keep "Online-CBT" on one line.
-        const meta = [exam.type, exam.start != null ? clock(exam.start) : "", exam.venue, exam.mode].filter(Boolean).join(" · ").replace(/-/g, "\u2011");
-        body.append(el("span", "cc-ds-meta", meta));
-        if (exam.link) {
-          const open = el("a", "cc-ds-link", "Exam link");
-          open.href = exam.link.href;
-          open.target = "_blank";
-          open.rel = "noreferrer";
-          body.append(open);
-        }
-        item.append(when, body);
-        list.append(item);
-      }
+      exams.forEach((exam, i) => list.append(examItem(exam, i === 0)));
       fresh.append(list);
     }
+    const run = type ? progress(all, type, now.key) : null;
+    if (run) fresh.append(run);
     if (strip?.classList.contains("cc-ds")) strip.replaceWith(fresh);
     else (table.closest('div[id$="upPnale"]') || table).before(fresh);
   }
@@ -531,40 +828,193 @@
     text.after(el("span", "cc-code", match[2]));
   }
 
+  const round2 = (value) => String(Math.round(value * 100) / 100);
+  const pct = (got, max) => (max > 0 ? (got / max) * 100 : null);
+  // Good, fair or low, for a share of marks.
+  const band = (share) => (share == null ? "" : share >= 80 ? "good" : share >= 55 ? "fair" : "low");
+
+  // One subject's assessments from its accordion panel. An ABSENT counts as
+  // zero of its marks; anything else unposted ("Not posted", blank) is left out.
+  function readSubject(header) {
+    const panel = header.nextElementSibling;
+    const items = [];
+    for (const row of panel?.querySelectorAll("tbody tr") || []) {
+      const cells = [...row.cells];
+      if (cells.length < 3) continue;
+      const outOf = number(cells[cells.length - 2].textContent);
+      const raw = clean(cells[cells.length - 1].textContent);
+      const absent = /^ab(sent)?$/i.test(raw);
+      const scored = absent ? 0 : number(raw);
+      if (outOf == null || outOf <= 0 || scored == null) continue;
+      items.push({ row, cell: cells[cells.length - 1], name: clean(cells[0].textContent), max: outOf, got: scored, absent });
+    }
+    const codeNode = header.querySelector(".cc-code");
+    const text = clean([...header.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" "));
+    const match = text.match(/^([\s\S]*?)\s*\(([A-Z0-9-]{2,})\)\s*$/i);
+    return {
+      header,
+      items,
+      title: match ? match[1] : text,
+      code: codeNode?.textContent || match?.[2] || "",
+      max: items.reduce((sum, item) => sum + item.max, 0),
+      got: items.reduce((sum, item) => sum + item.got, 0),
+      absent: items.filter((item) => item.absent).length,
+    };
+  }
+
+  // A row's mark as a short bar beside the number.
+  function markBar(item) {
+    let bar = item.cell.querySelector(".cc-mk-bar");
+    const share = pct(item.got, item.max);
+    const width = `${Math.max(0, Math.min(100, share)).toFixed(1)}%`;
+    if (!bar) {
+      bar = el("span", "cc-mk-bar");
+      bar.setAttribute("aria-hidden", "true");
+      bar.append(el("i"));
+      item.cell.append(bar);
+    }
+    bar.dataset.band = item.absent ? "absent" : band(share);
+    if (bar.firstChild.style.width !== width) bar.firstChild.style.width = width;
+    item.row.classList.toggle("cc-mk-absent", item.absent);
+  }
+
+  function segments(subject) {
+    const bar = el("span", "cc-mk-segments");
+    bar.setAttribute("aria-hidden", "true");
+    for (const item of subject.items) {
+      const share = pct(item.got, item.max);
+      const seg = el("span", "cc-mk-seg");
+      seg.dataset.band = item.absent ? "absent" : band(share);
+      seg.style.flexGrow = String(item.max);
+      seg.title = `${item.name}: ${item.absent ? "absent" : `${round2(item.got)} / ${round2(item.max)}`}`;
+      const fill = el("i");
+      fill.style.width = `${Math.max(0, Math.min(100, share)).toFixed(1)}%`;
+      seg.append(fill);
+      bar.append(seg);
+    }
+    return bar;
+  }
+
+  // Above the accordion: everything marked so far, every subject at a
+  // glance, and where the marks went.
+  function marksSummary(subjects) {
+    const marked = subjects.filter((subject) => subject.items.length);
+    if (!marked.length) return null;
+    const wrap = el("section", "cc-mk");
+    wrap.dataset.ccOwn = "";
+    wrap.setAttribute("aria-label", "Marks so far");
+    const max = marked.reduce((sum, subject) => sum + subject.max, 0);
+    const got = marked.reduce((sum, subject) => sum + subject.got, 0);
+    const count = marked.reduce((sum, subject) => sum + subject.items.length, 0);
+
+    const hero = el("div", "cc-mk-hero");
+    const total = el("div", "cc-mk-total");
+    total.append(el("p", "cc-mk-label", "Marked so far"));
+    const big = el("p", "cc-mk-big");
+    big.append(el("b", "", (Math.floor(pct(got, max) * 10) / 10).toFixed(1)), el("span", "", "%"));
+    total.append(big, el("p", "cc-mk-sub", `${round2(got)} of ${round2(max)} marks · ${count} assessments · ${marked.length} ${marked.length === 1 ? "subject" : "subjects"}`));
+    hero.append(total);
+
+    const notes = el("dl", "cc-mk-notes");
+    const note = (term, value, detail, tone) => {
+      const row = el("div", tone ? `is-${tone}` : "");
+      row.append(el("dt", "", term));
+      const dd = el("dd");
+      dd.append(el("b", "", value));
+      if (detail) dd.append(el("span", "", detail));
+      row.append(dd);
+      notes.append(row);
+    };
+    const ranked = [...marked].sort((a, b) => pct(b.got, b.max) - pct(a.got, a.max));
+    note("Strongest", ranked[0].title, `${Math.round(pct(ranked[0].got, ranked[0].max))}%`, "good");
+    if (ranked.length > 1) {
+      const weakest = ranked[ranked.length - 1];
+      note("Needs the most", weakest.title, `${Math.round(pct(weakest.got, weakest.max))}%`, band(pct(weakest.got, weakest.max)) === "low" ? "low" : "");
+    }
+    // The single assessment that cost the most marks.
+    const dropped = marked.flatMap((subject) => subject.items.map((item) => ({ ...item, subject }))).sort((a, b) => b.max - b.got - (a.max - a.got))[0];
+    if (dropped && dropped.max - dropped.got > 0) {
+      note("Most marks dropped", `${dropped.subject.title} · ${dropped.name}`, dropped.absent ? `absent, ${round2(dropped.max)} marks` : `${round2(dropped.max - dropped.got)} of ${round2(dropped.max)} lost`, dropped.absent ? "low" : "");
+    }
+    hero.append(notes);
+    wrap.append(hero);
+
+    const grid = el("div", "cc-mk-grid");
+    subjects.forEach((subject, index) => {
+      const share = pct(subject.got, subject.max);
+      const tile = el("button", `cc-mk-subject${subject.items.length ? "" : " is-empty"}`);
+      tile.type = "button";
+      tile.dataset.ccOpen = String(index);
+      tile.dataset.band = band(share);
+      const head = el("span", "cc-mk-subject-head");
+      const name = el("span", "cc-mk-subject-name");
+      name.append(el("b", "", subject.title.replace(/-/g, "‑")), el("span", "", subject.code));
+      head.append(name, el("span", "cc-mk-subject-pct", share == null ? "—" : `${Math.round(share)}%`));
+      tile.append(head);
+      if (subject.items.length) tile.append(segments(subject));
+      const foot = el("span", "cc-mk-subject-foot");
+      foot.append(el("span", "", subject.items.length ? `${round2(subject.got)} / ${round2(subject.max)}` : "Nothing marked yet"));
+      if (subject.items.length) foot.append(el("span", "", `${subject.items.length} ${subject.items.length === 1 ? "assessment" : "assessments"}${subject.absent ? ` · ${subject.absent} absent` : ""}`));
+      tile.append(foot);
+      tile.setAttribute("aria-label", `${subject.title}: ${share == null ? "nothing marked yet" : `${Math.round(share)} percent, ${round2(subject.got)} of ${round2(subject.max)}`}. Show its marks.`);
+      grid.append(tile);
+    });
+    wrap.append(grid);
+    return wrap;
+  }
+
   function tidyMarks() {
-    for (const header of document.querySelectorAll("#accordion > h3.ui-accordion-header")) {
-      const panel = header.nextElementSibling;
-      if (!panel) continue;
-      let max = 0;
-      let got = 0;
-      let counted = 0;
-      for (const row of panel.querySelectorAll("tbody tr")) {
-        const cells = [...row.cells];
-        if (cells.length < 3) continue;
-        const outOf = number(cells[cells.length - 2].textContent);
-        const scored = number(cells[cells.length - 1].textContent);
-        if (outOf == null || scored == null) continue;
-        max += outOf;
-        got += scored;
-        counted += 1;
-      }
+    const accordion = document.getElementById("accordion");
+    const headers = [...document.querySelectorAll("#accordion > h3.ui-accordion-header")];
+    const subjects = [];
+    for (const header of headers) {
+      if (!header.nextElementSibling) continue;
+      mutedCode(header);
+      const subject = readSubject(header);
+      subjects.push(subject);
       let chip = header.querySelector(".cc-score");
-      if (!counted) {
+      if (!subject.items.length) {
         chip?.remove();
         continue;
       }
-      const round = (value) => String(Math.round(value * 100) / 100);
-      const text = `${round(got)} / ${round(max)}`;
+      for (const item of subject.items) markBar(item);
+      const text = `${round2(subject.got)} / ${round2(subject.max)}`;
       if (!chip) {
         chip = el("span", "cc-score");
         header.append(chip);
       }
       if (chip.textContent !== text) chip.textContent = text;
-      mutedCode(header);
-      chip.title = `${counted} assessment${counted === 1 ? "" : "s"} marked so far`;
+      chip.dataset.band = band(pct(subject.got, subject.max));
+      chip.title = `${subject.items.length} assessment${subject.items.length === 1 ? "" : "s"} marked so far${subject.absent ? `, ${subject.absent} absent (counted as 0)` : ""}`;
       header.classList.add("cc-marks-head");
     }
+    let summary = accordion?.previousElementSibling?.classList.contains("cc-mk") ? accordion.previousElementSibling : document.querySelector(".cc-mk");
+    // The summary belongs to Marks View alone; other pages' accordions only get chips.
+    if (!accordion || !subjects.length || !/frmStudentMarksView/i.test(location.pathname)) {
+      summary?.remove();
+      return;
+    }
+    const signature = JSON.stringify(subjects.map((subject) => [subject.title, subject.code, subject.items.map((item) => [item.name, item.max, item.got, item.absent])]));
+    if (summary?.dataset.signature === signature && summary.nextElementSibling === accordion) return;
+    const fresh = marksSummary(subjects);
+    if (!fresh) {
+      summary?.remove();
+      return;
+    }
+    fresh.dataset.signature = signature;
+    if (summary) summary.remove();
+    accordion.before(fresh);
   }
+
+  // A subject tile opens that subject in CUIMS's own accordion.
+  document.addEventListener("click", (event) => {
+    const tile = event.target.closest?.(".cc-mk-subject[data-cc-open]");
+    if (!tile || !enabled) return;
+    const header = document.querySelectorAll("#accordion > h3.ui-accordion-header")[Number(tile.dataset.ccOpen)];
+    if (!header) return;
+    if (!header.classList.contains("ui-accordion-header-active")) header.click();
+    header.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
 
   // ---- lifecycle ----
 
@@ -589,7 +1039,7 @@
   // UpdatePanels and CUIMS's own scripts (the attendance table, the marks
   // accordion) build these after load, so look again whenever nodes arrive.
   // Our own insertions are ignored, so this never feeds itself.
-  const ours = (node) => node?.nodeType === 1 && node.closest(".cc-tt, .cc-score, .cc-code, .cc-tally, .cc-ds");
+  const ours = (node) => node?.nodeType === 1 && node.closest("[data-cc-own], .cc-tt, .cc-score, .cc-code, .cc-tally, .cc-ds, .cc-mk, .cc-mk-bar");
   const observer = new MutationObserver((records) => {
     if (queued) return;
     if (!records.some((record) => {
@@ -621,13 +1071,30 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
   else start();
 
-  chrome.storage.local.get({ [KEY]: true, attendanceGoal: "standard" }, (stored) => {
+  // The calendar (holidays, the last teaching day) for the timetable's
+  // hero and the calendar file.
+  function readCalendar(stored) {
+    calendarContext.calendar = api.calendarFor?.(stored.academicCalendar, stored.uid) || "cu";
+    const exams = stored.attendanceSnapshot?.exams;
+    calendarContext.exams = Array.isArray(exams) ? exams : [];
+  }
+
+  chrome.storage.local.get({ [KEY]: true, attendanceGoal: "standard", academicCalendar: "auto", uid: "", attendanceSnapshot: null }, (stored) => {
     subjectMin = (api.GOALS[stored.attendanceGoal] || api.GOALS.standard).subject;
+    readCalendar(stored);
     setEnabled(stored[KEY]);
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.attendanceGoal) subjectMin = (api.GOALS[changes.attendanceGoal.newValue] || api.GOALS.standard).subject;
+    if (changes.academicCalendar || changes.uid) {
+      chrome.storage.local.get({ academicCalendar: "auto", uid: "", attendanceSnapshot: null }, (stored) => {
+        readCalendar(stored);
+        const view = document.querySelector(".cc-tt");
+        if (view) delete view.dataset.source;
+        run();
+      });
+    }
     if (changes[KEY]) setEnabled(changes[KEY].newValue);
     else if (changes.attendanceGoal) run();
   });

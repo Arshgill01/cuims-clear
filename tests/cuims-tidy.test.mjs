@@ -38,7 +38,7 @@ test("the timetable parses from CUIMS's grdMain markup", () => {
   const slots = A.parseTimetable(NEW_TIMETABLE);
   assert.equal(slots.length, 4);
   const coding = slots.find((slot) => slot.weekday === "wed");
-  assert.deepEqual({ ...coding }, { weekday: "wed", start: 770, end: 820, shortCode: "24CSP-305", title: "Competitive Coding-II", kind: "P" });
+  assert.deepEqual({ ...coding }, { weekday: "wed", start: 770, end: 820, shortCode: "24CSP-305", title: "Competitive Coding-II", kind: "P", room: "C1-307", teacher: "Asha Rao", group: "A" });
   assert.equal(slots.find((slot) => slot.weekday === "tue").title, "Computer Networks");
 });
 
@@ -75,7 +75,8 @@ test("both manifests load the tidy layer on CUIMS, after the model it uses", () 
     const entry = manifest.content_scripts.find((script) => script.js.includes("cuims-tidy.js"));
     assert.ok(entry, build);
     assert.deepEqual(entry.matches, ["https://students.cuchd.in/*"]);
-    assert.deepEqual(entry.js, ["attendance-model.js", "cuims-tidy.js"]);
+    // The calendar (holidays, last teaching day) and the .ics export come before the layer that uses them.
+    assert.deepEqual(entry.js, ["attendance-model.js", "academic-calendar.js", "calendar-export.js", "cuims-tidy.js"]);
     assert.deepEqual(entry.css, ["cuims-tidy.css"]);
     assert.equal(entry.all_frames, undefined, `${build}: top frame only`);
   }
@@ -115,6 +116,8 @@ const MARKS = `
     <tbody><tr><td>MST-1</td><td>20</td><td>18.5</td></tr><tr><td>Quiz</td><td>5</td><td>4</td></tr><tr><td>Assignment</td><td>10</td><td>Not posted</td></tr></tbody></table></div>
   <h3 class="ui-accordion-header"><span class="ui-icon"></span>  Aptitude (24TDT-312)</h3>
   <div class="ui-accordion-content"><table><tbody></tbody></table></div>
+  <h3 class="ui-accordion-header"><span class="ui-icon"></span>  Salesforce-I (24CSH-316)</h3>
+  <div class="ui-accordion-content"><table><tbody><tr><td>Practical Test-1</td><td>30</td><td>ABSENT</td></tr><tr><td>Mid Term</td><td>15</td><td>14</td></tr></tbody></table></div>
 </div>
 <table id="SortTable"><tbody>
   <tr><td data-label="Course Code:">A</td><td data-label="Eligible Delivered:">40</td><td data-label="Eligible Percentage:">72.5</td></tr>
@@ -175,7 +178,8 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
       heads: [...document.querySelectorAll(".cc-tt-grid thead th")].map((cell) => cell.firstChild.textContent),
       today: document.querySelector(".cc-tt-grid thead th.is-today")?.firstChild.textContent,
       now: [...document.querySelectorAll(".cc-class.is-now .cc-class-title")].map((node) => node.textContent),
-      line: document.querySelector(".cc-tt-now").textContent,
+      line: document.querySelector(".cc-tt-hero").textContent,
+      rail: [...document.querySelectorAll(".cc-rail-block")].map((block) => block.className),
       originalHidden: getComputedStyle(document.getElementById("grdMain")).display === "none",
       // Every card holds its own text and sits inside its cell (in Firefox,
       // cards once collapsed and their text ran over the next row).
@@ -203,11 +207,17 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
     assert.deepEqual(view.heads, ["Time", "Mon", "Tue", "Wed"]);
     assert.equal(view.today, "Wed");
     assert.deepEqual(view.now, ["Competitive Coding‑II"]);
-    assert.match(view.line, /^NowCompetitive Coding-II in C1-307, until 1:40 PM/);
+    // The hero: what is on now, where, and for how long; the day as a line.
+    assert.match(view.line, /Now · until 1:40 PM/);
+    assert.match(view.line, /Competitive Coding\u2011II/);
+    assert.match(view.line, /C1-307/);
+    assert.match(view.line, /40 minleft/);
+    assert.deepEqual(view.rail, ["cc-rail-block is-now"]);
     assert.equal(view.originalHidden, true);
     assert.equal(view.spilled, 0);
     // Unposted marks are left out of the total; a subject with none has no chip.
-    assert.deepEqual(view.scores, ["22.5 / 25"]);
+    // An ABSENT is a zero out of its marks, not a test left out.
+    assert.deepEqual(view.scores, ["22.5 / 25", "14 / 45"]);
     assert.equal(view.code, "24CST-302");
     assert.deepEqual(view.low, ["72.5"]);
     assert.deepEqual(view.ok, ["91"]);
@@ -276,7 +286,7 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
       cell.replaceChildren(text);
     });
     await page.waitForFunction(() => document.querySelector(".cc-class.is-now .cc-class-meta")?.textContent.includes("D2-204"));
-    assert.match(await page.$eval(".cc-tt-now", (line) => line.textContent), /D2-204/);
+    assert.match(await page.$eval(".cc-tt-hero", (line) => line.textContent), /D2-204/);
 
     await page.evaluate(() => {
       const table = document.querySelector('table[id$="gvStudentDateSheet"]');

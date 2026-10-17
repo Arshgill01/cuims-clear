@@ -20,6 +20,8 @@
     uid: "",
     academicCalendar: "auto",
     proxyRunBest: 0,
+    attendanceTimetable: null,
+    attendanceDateSheet: null,
   };
   // Signs the extension was in use before 1.0, for when the update event
   // was missed (celebrate-bg.js decides on install or update).
@@ -130,7 +132,10 @@
       lines.push({ t: "row", l: "ATTENDANCE", r: `${(Math.floor(s.percent * 10) / 10).toFixed(1)} %`, cls: "r-strong" });
       if (s.streak > 1) lines.push({ t: "row", l: "LONGEST STREAK", r: `${s.streak} IN A ROW` });
       if (s.missedDay) lines.push({ t: "row", l: "MOST-MISSED DAY", r: s.missedDay });
-      if (s.best) lines.push({ t: "row", l: "TOP SUBJECT", r: `${Math.round(s.best.percent)} %` }, { t: "indent", text: s.best.title.toUpperCase().slice(0, 30) });
+      if (s.best) {
+        lines.push({ t: "row", l: "TOP SUBJECT", r: `${Math.round(s.best.percent)} %` });
+        for (const text of fitLines(s.best.title.toUpperCase(), 30, 2)) lines.push({ t: "indent", text });
+      }
     }
 
     lines.push({ t: "rule" });
@@ -159,6 +164,24 @@
     lines.push({ t: "center", text: "THANK YOU. COME AGAIN.", cls: "r-thanks" });
     lines.push({ t: "center", text: "(you will. it's CUIMS.)", cls: "r-small" });
     return lines;
+  }
+
+  // Words onto lines of at most `width` characters; past `max` lines the
+  // last one ends in an ellipsis.
+  function fitLines(text, width, max) {
+    const lines = [];
+    let line = "";
+    for (const word of String(text).split(/\s+/).filter(Boolean)) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length > width && line) {
+        lines.push(line);
+        line = word;
+      } else line = next;
+    }
+    if (line) lines.push(line);
+    const out = lines.slice(0, max).map((entry) => (entry.length > width ? `${entry.slice(0, width - 1)}…` : entry));
+    if (lines.length > max) out[max - 1] = `${out[max - 1].slice(0, width - 1).replace(/\s+\S*$/, "")}…`;
+    return out;
   }
 
   // Bar widths from a string: a pretend barcode that is the same for the
@@ -235,8 +258,9 @@
     ctx.save();
     ctx.globalAlpha = 0.07;
     ctx.fillStyle = colours.accent;
-    ctx.font = "800 900px ui-monospace, Menlo, monospace";
-    ctx.fillText("//", 330, 1500);
+    ctx.font = "800 1100px ui-monospace, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("//", 540, 1560);
     ctx.restore();
 
     ctx.fillStyle = colours.ink;
@@ -444,6 +468,114 @@
     </svg>`;
   }
 
+  // ---- every class, day by day ----
+
+  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  // Each class day of the semester as a square, weeks across, Monday to
+  // Saturday down: green as far as you were there, red for what you missed.
+  function heatmapModel(history, calendar, todayKey) {
+    const A = root.CuimsAttendance;
+    const days = new Map();
+    for (const subject of Object.values(history?.subjects || {})) {
+      for (const mark of subject?.marks || []) {
+        const [day, , kind] = mark || [];
+        if ((kind !== "p" && kind !== "a") || keyToNumber(day) == null) continue;
+        const entry = days.get(day) || { p: 0, a: 0 };
+        entry[kind] += 1;
+        days.set(day, entry);
+      }
+    }
+    if (days.size < 3) return null;
+    const keys = [...days.keys()].sort();
+    const today = keyToNumber(todayKey);
+    const firstMark = keyToNumber(keys[0]);
+    const lastMark = keyToNumber(keys[keys.length - 1]);
+    const first = firstMark;
+    const lastTeach = A?.lastTeachingDay?.(today, { calendar });
+    const last = Math.max(lastMark, lastTeach != null && lastTeach >= today && lastTeach - today < 120 ? lastTeach : today);
+    const monday = first - ((new Date(first * DAY_MS).getUTCDay() + 6) % 7);
+    const weeks = Math.floor((last - monday) / 7) + 1;
+    const cells = [];
+    for (let w = 0; w < weeks; w += 1) {
+      for (let d = 0; d < 6; d += 1) {
+        const n = monday + w * 7 + d;
+        const key = numberToKey(n);
+        const entry = days.get(key) || null;
+        const reason = entry ? null : A?.noClassReason?.(key, { calendar });
+        cells.push({ w, d, key, entry, today: n === today, future: n > today, off: Boolean(reason && reason.kind !== "over"), reason: reason?.label || "" });
+      }
+    }
+    let perfect = 0;
+    let run = 0;
+    let bestRun = 0;
+    const months = new Map();
+    for (const key of keys) {
+      const entry = days.get(key);
+      if (entry.a === 0) {
+        perfect += 1;
+        run += 1;
+        bestRun = Math.max(bestRun, run);
+      } else run = 0;
+      const month = months.get(key.slice(0, 7)) || { p: 0, n: 0 };
+      month.p += entry.p;
+      month.n += entry.p + entry.a;
+      months.set(key.slice(0, 7), month);
+    }
+    const best = [...months.entries()].filter(([, month]) => month.n >= 20).sort((a, b) => b[1].p / b[1].n - a[1].p / a[1].n)[0];
+    return {
+      cells,
+      weeks,
+      monday,
+      days: keys.length,
+      perfect,
+      bestRun,
+      bestMonth: best ? { name: MONTH_NAMES[Number(best[0].slice(5, 7)) - 1], rate: (best[1].p / best[1].n) * 100 } : null,
+    };
+  }
+
+  function heatmapSvg(model) {
+    const cell = 11;
+    const step = 13;
+    const left = 14;
+    const top = 14;
+    const width = left + model.weeks * step;
+    const height = top + 6 * step;
+    let out = `<svg class="heat-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Attendance by day, ${model.days} class days">`;
+    out += `<defs><pattern id="heat-off" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="4" class="heat-off-bg"/><rect width="1.6" height="4" class="heat-off-line"/></pattern></defs>`;
+    ["M", "", "W", "", "F", ""].forEach((name, d) => {
+      if (name) out += `<text x="0" y="${top + d * step + 9}" class="heat-label">${name}</text>`;
+    });
+    let lastMonth = "";
+    for (let w = 0; w < model.weeks; w += 1) {
+      const key = numberToKey(model.monday + w * 7);
+      const month = key.slice(5, 7);
+      if (month !== lastMonth && w < model.weeks - 1) {
+        out += `<text x="${left + w * step}" y="9" class="heat-label">${MONTHS[Number(month) - 1][0]}${MONTHS[Number(month) - 1].slice(1).toLowerCase()}</text>`;
+        lastMonth = month;
+      }
+    }
+    for (const c of model.cells) {
+      const x = left + c.w * step;
+      const y = top + c.d * step;
+      const when = shortDate(c.key);
+      if (c.entry) {
+        const total = c.entry.p + c.entry.a;
+        const h = c.entry.a ? Math.max(2.5, (cell * c.entry.a) / total) : 0;
+        out += `<g class="heat-day${c.today ? " is-today" : ""}"><title>${esc(`${when}: ${c.entry.p} of ${total} ${total === 1 ? "class" : "classes"}`)}</title><rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" class="heat-p"/>`;
+        if (h) out += `<rect x="${x}" y="${(y + cell - h).toFixed(2)}" width="${cell}" height="${h.toFixed(2)}" rx="${c.entry.p ? 1 : 2.5}" class="heat-a"/>`;
+        out += `</g>`;
+      } else if (c.off && !c.future) {
+        out += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" fill="url(#heat-off)"><title>${esc(`${when}: ${c.reason}`)}</title></rect>`;
+      } else if (c.future) {
+        out += `<rect x="${x + 0.5}" y="${y + 0.5}" width="${cell - 1}" height="${cell - 1}" rx="2.5" class="heat-future${c.today ? " is-today" : ""}"/>`;
+      } else {
+        out += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5" class="heat-none${c.today ? " is-today" : ""}"/>`;
+      }
+    }
+    return `${out}</svg>`;
+  }
+
   // ---- the time capsule ----
 
   // The last day of classes this semester, or of the next one when this
@@ -539,6 +671,11 @@
           uidLength: String(stored.uid || "").length,
           best: Number(stored.proxyRunBest) || 0,
           version: chrome.runtime.getManifest().version,
+          snapshot: stored.attendanceSnapshot,
+          history: stored.attendanceHistory,
+          timetable: Array.isArray(stored.attendanceTimetable?.slots) ? stored.attendanceTimetable.slots : Array.isArray(stored.attendanceSnapshot?.slots) ? stored.attendanceSnapshot.slots : [],
+          sheet: Array.isArray(stored.attendanceDateSheet?.exams) ? stored.attendanceDateSheet.exams : [],
+          todayKey: dayKeyOf(new Date()),
         };
         done?.(data);
       });
@@ -561,6 +698,114 @@
             <button type="button" class="receipt-button is-quiet" data-receipt="copy">Copy image</button>
           </div>
         </section>`;
+    }
+
+    // Semester Wrapped: sealed like the capsule until the last teaching day.
+    function wrappedCard() {
+      const last = root.CuimsAttendance?.lastTeachingDay?.(keyToNumber(data.todayKey), { calendar: data.calendar });
+      const opens = last != null ? numberToKey(last) : capsuleOpensOn(data.todayKey, data.calendar, data.exams);
+      const open = last != null && keyToNumber(data.todayKey) >= last;
+      const ready = Boolean(root.CuimsWrapped && data.history && Object.keys(data.history.subjects || {}).length);
+      const days = keyToNumber(opens) - keyToNumber(data.todayKey);
+      return `
+        <section class="club-card wrapped-card${open ? " is-open" : ""}" aria-labelledby="wrapped-title">
+          <div class="wrapped-teaser">
+            <p class="wrapped-kicker" id="wrapped-title">Semester Wrapped</p>
+            <p class="wrapped-headline">${open ? "Your semester, wrapped." : `Opens ${esc(shortDate(opens))}`}</p>
+            <p class="wrapped-copy">${
+              !ready
+                ? "Needs your attendance first: open the Attendance tab once."
+                : open
+                  ? "Your days, your subjects, your closest call. Six cards, each one saves as a story."
+                  : `${days === 1 ? "Tomorrow" : `${days} days`}, on the last day of classes. Your days, your subjects, your closest call.`
+            }</p>
+            ${ready ? `<div class="wrapped-actions"><button type="button" class="receipt-button" data-wrapped-open="${open ? "full" : "peek"}">${open ? "Open it" : "Peek at it so far"}</button></div>` : ""}
+          </div>
+        </section>`;
+    }
+
+    function heatCard() {
+      const model = data.history ? heatmapModel(data.history, data.calendar, data.todayKey) : null;
+      if (!model) return "";
+      const facts = [
+        `${model.perfect} of ${model.days} days without a miss`,
+        model.bestRun > 2 ? `best run ${model.bestRun} days` : "",
+        model.bestMonth ? `${model.bestMonth.name} was your best month (${Math.round(model.bestMonth.rate)}%)` : "",
+      ].filter(Boolean);
+      return `
+        <section class="club-card heat-card" aria-labelledby="heat-title">
+          <div class="section-head">
+            <h2 class="section-label" id="heat-title">Every class, this semester</h2>
+          </div>
+          <div class="heat-wrap">${heatmapSvg(model)}</div>
+          <p class="heat-legend" aria-hidden="true"><span class="k k-p"></span>there <span class="k k-a"></span>missed <span class="k k-off"></span>no classes</p>
+          <p class="heat-facts">${facts.map(esc).join(" · ")}.</p>
+        </section>`;
+    }
+
+    // Classes and exams for the student's own calendar app.
+    function calendarCard() {
+      const classes = calendarClasses();
+      const exams = calendarExams();
+      if (!classes.length && !exams.length) return "";
+      const until = root.CuimsAttendance?.lastTeachingDay?.(keyToNumber(data.todayKey), { calendar: data.calendar });
+      return `
+        <section class="club-card cal-card" aria-labelledby="cal-title">
+          <div class="section-head">
+            <h2 class="section-label" id="cal-title">Take your week with you</h2>
+          </div>
+          <p class="cal-copy">Your classes in Google Calendar, Apple Calendar or Outlook${until != null ? `, every week until ${esc(shortDate(numberToKey(until)))}` : ""}, holidays left out. Exams come with reminders the day before and an hour before.</p>
+          <div class="receipt-actions">
+            <button type="button" class="receipt-button" data-cal="classes"${classes.length ? "" : " disabled"}>Classes (.ics)</button>
+            <button type="button" class="receipt-button is-quiet" data-cal="exams"${exams.length ? "" : " disabled"}>${exams.length ? `Exams (.ics)` : "No exams ahead"}</button>
+          </div>
+        </section>`;
+    }
+
+    function titleFor(code) {
+      const key = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const subject = (data.snapshot?.subjects || []).find((entry) => String(entry.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "") === key);
+      const slot = data.timetable.find((entry) => String(entry.shortCode || "").toUpperCase().replace(/[^A-Z0-9]/g, "") === key && entry.title);
+      return subject?.title || slot?.title || "";
+    }
+
+    function calendarClasses() {
+      return data.timetable
+        .filter((slot) => slot.weekday && slot.end > slot.start && slot.shortCode)
+        .map((slot) => ({ day: slot.weekday, start: slot.start, end: slot.end, code: slot.shortCode, kind: slot.kind, title: slot.title || titleFor(slot.shortCode), room: slot.room || "", teacher: slot.teacher || "", group: slot.group || "" }));
+    }
+
+    function calendarExams() {
+      const today = data.todayKey;
+      const seen = new Set();
+      return data.sheet
+        .filter((exam) => exam.day >= today)
+        .filter((exam) => {
+          const key = [exam.code, exam.day, exam.type].join("|");
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((exam) => ({ day: exam.day, start: root.CuimsAttendance?.parseRange?.(`${exam.time} - 23:59`)?.start ?? null, code: exam.code, type: exam.type, name: titleFor(exam.code) }));
+    }
+
+    function exportCalendar(kind) {
+      const exporter = root.CuimsCalendarExport;
+      if (!exporter) return;
+      const result = kind === "classes"
+        ? exporter.classesIcs(calendarClasses(), { todayKey: data.todayKey, calendar: data.calendar, exams: data.exams })
+        : exporter.examsIcs(calendarExams());
+      if (!result) return announce?.("Nothing to add yet.");
+      exporter.download(result.text, kind === "classes" ? "cuims-classes.ics" : "cuims-exams.ics");
+      announce?.(`Saved ${result.count} ${kind === "classes" ? (result.count === 1 ? "class" : "classes") : result.count === 1 ? "exam" : "exams"}. Open the file to add ${result.count === 1 ? "it" : "them"}.`);
+    }
+
+    function openWrapped(mode) {
+      const W = root.CuimsWrapped;
+      const s = W?.stats({ snapshot: data.snapshot, history: data.history, ledger: data.ledger, best: data.best, calendar: data.calendar, todayKey: data.todayKey });
+      if (!s) return announce?.("Not enough classes posted yet for a Wrapped.");
+      game?.pause();
+      W.open(document.body, s, { soFar: mode !== "full", announce });
     }
 
     function gameCard() {
@@ -589,7 +834,7 @@
 
     function render({ printing = false } = {}) {
       game?.pause();
-      view.innerHTML = `<div class="club">${receiptCard(printing)}${gameCard()}${capsuleCard()}</div>`;
+      view.innerHTML = `<div class="club">${receiptCard(printing)}${wrappedCard()}${heatCard()}${gameCard()}${capsuleCard()}${calendarCard()}</div>`;
       const canvas = view.querySelector(".proxy-canvas");
       game = root.CuimsProxyRun?.create(canvas, {
         storage: chrome.storage.local,
@@ -725,6 +970,8 @@
       else if (button.dataset.receipt === "copy") copyImage();
       else if (button.dataset.game === "play") playNow();
       else if (button.dataset.capsule) capsuleAction(button.dataset.capsule, button);
+      else if (button.dataset.wrappedOpen) openWrapped(button.dataset.wrappedOpen);
+      else if (button.dataset.cal) exportCalendar(button.dataset.cal);
     });
 
     return {
@@ -745,8 +992,13 @@
     const seen = stored?.clubSeen;
     if (!seen?.at) return true;
     const capsule = stored?.timeCapsule;
-    return Boolean(capsule && !capsule.broken && todayKey >= capsule.opensOn && Number(seen.at) < Date.parse(`${capsule.opensOn}T00:00:00+05:30`));
+    if (capsule && !capsule.broken && todayKey >= capsule.opensOn && Number(seen.at) < Date.parse(`${capsule.opensOn}T00:00:00+05:30`)) return true;
+    // Semester Wrapped opened since the last visit.
+    const A = root.CuimsAttendance;
+    const calendar = A?.calendarFor?.(stored?.academicCalendar, stored?.uid) || "cu";
+    const last = A?.lastTeachingDay?.(keyToNumber(todayKey), { calendar });
+    return last != null && keyToNumber(todayKey) >= last && Number(seen.at) < Date.parse(`${numberToKey(last)}T00:00:00+05:30`);
   }
 
-  root.CuimsClub = { mount, hasNews, receiptLines, semesterStats, capsuleOpensOn, bars };
+  root.CuimsClub = { mount, hasNews, receiptLines, semesterStats, capsuleOpensOn, bars, heatmapModel, fitLines };
 })(globalThis);

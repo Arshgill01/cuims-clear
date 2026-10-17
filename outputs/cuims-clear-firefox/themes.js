@@ -112,6 +112,14 @@
       accent: "#78824b", good: "#5f875f", warn: "#c9a554", bad: "#bb7744", brandBg: "#191919", brandInk: "#c9a554",
     },
     {
+      // Founding 100: for everyone who had CUIMS Clear before 1.0. The
+      // receipt's thermal paper, its graphite print, and gold foil where the
+      // others have their accent. The stamp's red marks what needs attention.
+      id: "founders", name: "Founding 100", scheme: "light", founders: true,
+      canvas: "#ebe4d4", surface: "#f8f4ea", ink: "#23221f", muted: "#67625a", line: "#ddd4c2", lineStrong: "#b5aa94",
+      accent: "#e2b84b", good: "#4d7c2a", warn: "#b5651d", bad: "#b4322a", brandBg: "#23221f", brandInk: "#f0c75e",
+    },
+    {
       id: "catppuccin-latte", name: "Catppuccin Latte", scheme: "light",
       canvas: "#eff1f5", surface: "#ffffff", ink: "#4c4f69", muted: "#6c6f85", line: "#ccd0da", lineStrong: "#acb0be",
       accent: "#1e66f5", good: "#40a02b", warn: "#df8e1d", bad: "#d20f39", brandBg: "#4c4f69", brandInk: "#eff1f5",
@@ -401,7 +409,7 @@ html[data-cc-theme].cc-lms-pending{background:${t.canvas} !important}`;
   root.CuimsThemes = {
     DEFAULT,
     STORE_KEY,
-    list: PALETTES.map(({ id, name, scheme }) => ({ id, name, scheme })),
+    list: PALETTES.map(({ id, name, scheme, founders }) => ({ id, name, scheme, founders: Boolean(founders) })),
     tokens,
     contrast,
     applyToPopup,

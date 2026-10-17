@@ -581,3 +581,248 @@
     animation: none;
   }
 }
+
+/* ---- Semester Wrapped ---- */
+
+.wrapped-card {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 14px 14px;
+  border: 0;
+  background: var(--brand-bg);
+  color: var(--hero-ink);
+  isolation: isolate;
+}
+
+/* Two slashes, faint, like the mark. */
+.wrapped-card::after {
+  content: "//";
+  position: absolute;
+  z-index: -1;
+  right: -6px;
+  bottom: -46px;
+  font: 800 150px/1 ui-monospace, Menlo, Consolas, monospace;
+  letter-spacing: -0.12em;
+  color: var(--hero-line);
+}
+
+.wrapped-kicker {
+  margin: 0;
+  color: var(--brand-ink);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.wrapped-headline {
+  margin: 4px 0 6px;
+  color: var(--hero-ink);
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.wrapped-copy {
+  margin: 0;
+  color: var(--hero-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.wrapped-actions {
+  margin-top: 12px;
+}
+
+.wrapped-card .receipt-button {
+  background: var(--brand-ink);
+  border-color: var(--brand-ink);
+  color: var(--brand-bg);
+}
+
+.wrapped-card:not(.is-open) .receipt-button {
+  background: transparent;
+  border-color: var(--hero-faint);
+  color: var(--hero-ink);
+}
+
+.wrapped {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  background: rgb(10 11 10 / 94%);
+}
+
+.wrapped-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The 1080×1920 card, as large as fits, never stretched. */
+.wrapped-canvas {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 50%);
+  cursor: pointer;
+}
+
+.wrapped-canvas:focus {
+  outline: none;
+}
+
+.wrapped-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wrapped-count {
+  color: #b0b1b0;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wrapped-button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #b7f34a;
+  border-radius: 999px;
+  background: #b7f34a;
+  color: #18200d;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.wrapped-button.is-quiet {
+  border-color: #4a4c48;
+  background: transparent;
+  color: #ededec;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wrapped {
+    animation: wrapped-in 220ms ease-out both;
+  }
+}
+
+@keyframes wrapped-in {
+  from { opacity: 0; transform: scale(0.98); }
+}
+
+/* ---- every class, day by day ---- */
+
+.heat-wrap {
+  margin: 2px 0 8px;
+}
+
+.heat-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: inherit;
+}
+
+.heat-label {
+  fill: var(--muted);
+  font-size: 7.5px;
+  font-weight: 700;
+}
+
+.heat-p {
+  fill: var(--good);
+}
+
+.heat-a {
+  fill: var(--bad);
+}
+
+.heat-none {
+  fill: var(--track);
+  opacity: 0.6;
+}
+
+.heat-future {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 1.5;
+}
+
+.heat-off-bg {
+  fill: var(--track);
+}
+
+.heat-off-line {
+  fill: var(--line-strong);
+}
+
+.heat-day.is-today rect:first-child,
+.heat-none.is-today,
+.heat-future.is-today {
+  stroke: var(--ink);
+  stroke-width: 1.4;
+  stroke-dasharray: none;
+}
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.heat-legend .k {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 4px;
+  border-radius: 2px;
+}
+
+.heat-legend .k:first-child {
+  margin-left: 0;
+}
+
+.heat-legend .k-p { background: var(--good); }
+.heat-legend .k-a { background: var(--bad); }
+.heat-legend .k-off { background: repeating-linear-gradient(45deg, var(--track) 0 2px, var(--line-strong) 2px 3.2px); }
+
+.heat-facts {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ---- take your week with you ---- */
+
+.cal-copy {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cal-card .receipt-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

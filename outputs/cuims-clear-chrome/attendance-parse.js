@@ -311,11 +311,19 @@
     const coded = raw.match(/^([A-Z0-9-]{2,}):\s*([LPT])\b/i);
     if (!coded) return { shortCode: "", title: raw, kind: "L" };
     const shortCode = coded[1].toUpperCase();
-    return {
+    const slot = {
       shortCode,
       title: courseNames[normLoose(shortCode)] || "",
       kind: coded[2].toUpperCase(),
     };
+    // Where and with whom, for the calendar file.
+    const room = (raw.match(/\bat\s+(.+)$/i)?.[1] || "").replace(/^Block[-\s]*/i, "").trim();
+    const teacher = raw.match(/\bBy\s+(.+?)\s*\(/i)?.[1] || "";
+    const group = raw.match(/::\s*(?:GP-)?([^:]+?)\s*:/i)?.[1] || "";
+    if (room) slot.room = room;
+    if (teacher) slot.teacher = teacher;
+    if (group && !/^all$/i.test(group)) slot.group = group;
+    return slot;
   }
 
   function isWeekday(value) {

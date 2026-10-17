@@ -293,10 +293,46 @@
     </section>`;
   }
 
+  // Past the last day of classes there is nothing left to forecast: the
+  // hero says where the semester ended and against which goal.
+  function endedHero(forecast, state) {
+    const goal = forecast.goal;
+    const now = forecast.overall.now;
+    let verdict;
+    if (goal.overall) {
+      const made = now >= goal.overall * 100 - 1e-9;
+      verdict = made
+        ? { state: "good", strong: "Goal reached", small: `${whole(goal.overall)} overall` }
+        : { state: "risk", strong: `Short of ${whole(goal.overall)}`, small: `by ${(goal.overall * 100 - now).toFixed(1)} points` };
+    } else {
+      const counted = forecast.subjects.filter((subject) => subject.now != null);
+      const made = counted.filter((subject) => subject.now >= goal.subject * 100 - 1e-9).length;
+      verdict = { state: made === counted.length ? "good" : "risk", strong: `${made} of ${counted.length} subjects`, small: `at ${whole(goal.subject)} or more` };
+    }
+    return `<section class="fc-hero is-${verdict.state} is-ended" aria-label="Semester result">
+      <div class="fc-hero-top">
+        <div class="fc-hero-figure">
+          <p class="fc-eyebrow">Final · classes ended ${esc(forecast.end.label)}</p>
+          <p class="fc-big">${esc(pct(now).replace("%", ""))}<span class="fc-unit">%</span></p>
+          <p class="fc-range">Semester over</p>
+        </div>
+        <div class="fc-verdict" role="status">
+          <span class="fc-verdict-icon" aria-hidden="true">${STATE_ICON[verdict.state]}</span>
+          <strong>${esc(verdict.strong)}</strong>
+          <span>${esc(verdict.small)}</span>
+        </div>
+      </div>
+      ${figure("overall", forecast.overall.series, `Overall attendance over the semester, ending at ${pct(now)}.`, { height: 138 })}
+      <p class="fc-ended-note">Classes are over. Your Semester Wrapped is open. <button type="button" class="text-button" data-goto="club">Open the 1.0 tab</button></p>
+      ${endControl(forecast, state.calendar)}
+    </section>`;
+  }
+
   function hero(forecast, state) {
     const overall = forecast.overall;
     const result = overall.result;
     if (!forecast.timetableKnown) return waitingHero(forecast, state);
+    if (forecast.end.days < 0 || (forecast.end.days === 0 && result && !result.left)) return endedHero(forecast, state);
     if (!result) return "";
     const verdict = heroVerdict(forecast);
     const planned = forecast.plan?.planned || 0;

@@ -42,13 +42,22 @@ session to pair syllabus materials with semester work.
 
 ## Attendance
 
-When you use the Attendance or Forecast tab, the extension reads your own attendance report,
-class-by-class attendance record, timetable, and duty and medical leave applications from CUIMS with your browser's CUIMS session, signing in with your
-saved UID and password in the background when needed. It reads them only when
-you press Refresh; opening the popup or a tab never starts a read, and nothing runs on
-a timer. Attendance figures and the
-class record are stored only in chrome.storage.local on this device and are removed by
-Clear login. The Forecast tab's projections are calculated on the device from them.
+When you open the Attendance or Forecast tab and the last read is more than two minutes
+old, or when you press Refresh, the extension reads your own attendance report,
+class-by-class attendance record, timetable, date sheet, and duty and medical leave
+applications from CUIMS with your browser's CUIMS session, signing in with your saved UID
+and password in the background when needed. Nothing runs on a timer in the background.
+Attendance figures, the class record, the timetable (with rooms and teachers) and the date
+sheet are stored only in chrome.storage.local on this device and are removed by Clear
+login. The Forecast tab's projections are calculated on the device from them.
+
+## CUIMS pages and calendar files
+
+On My Time Table, Datesheet and Marks View, the extension redraws the page's own data in a
+clearer layout, on the page itself. Add to calendar, on those pages or on the 1.0 tab,
+builds an .ics calendar file on your device from what the page or the saved attendance
+shows, and hands it to the browser's own download. The file is not sent anywhere; adding
+it to a calendar app is up to you.
 
 Access is limited to https://students.cuchd.in/* and https://lms.cuchd.in/*.
 The extension does not maintain a browsing-history record.
@@ -61,8 +70,10 @@ are already used up and cannot sign anyone in), how many logins it pressed, how 
 event and feedback dialogs it hid, and how many attendance reads it made. It also keeps
 whether you used it before 1.0 (the Founding 100 stamp, decided by the browser's own
 install event), your best Proxy Run score, and, if you write one, your time-capsule note.
-None of this is sent anywhere. Saving or copying the receipt makes an image on your device;
-sharing it is up to you. Uninstalling the extension removes all of it.
+Semester Wrapped and the day-by-day attendance grid on the 1.0 tab are worked out on the
+device from the attendance it already stores. Founders also get a Founding 100 theme.
+None of this is sent anywhere. Saving or copying the receipt or a Wrapped card makes an
+image on your device; sharing it is up to you. Uninstalling the extension removes all of it.
 
 ## Updates
 
@@ -81,4 +92,4 @@ or lending. The developer does not have access to your portal data.
 
 Contact: arshgill6120@gmail.com
 
-Last updated: 30 September 2026.
+Last updated: 17 October 2026.

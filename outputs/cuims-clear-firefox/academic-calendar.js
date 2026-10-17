@@ -113,18 +113,28 @@
     return { from: monday, to: monday + 5 };
   }
 
-  // Test weeks from the student's date sheet: every week holding one of
-  // their MST-n papers, labelled IST-n. Null when the sheet has none.
+  // Test weeks from the student's date sheet: for each MST-n, the week
+  // holding most of its papers, labelled IST-n. A lone paper set in another
+  // week (a clash, a re-test) does not stop that week's classes. Null when
+  // the sheet has none.
   function sheetTests(exams) {
-    const weeks = new Map();
+    const counts = new Map();
     for (const exam of exams || []) {
       const n = Number(String(exam?.type || "").match(/^MST-?(\d)/i)?.[1] || 0);
       const day = dayNumber(exam?.day);
       if (!n || day == null) continue;
       const week = weekOf(day);
-      weeks.set(week.from, { from: week.from, to: week.to, label: `IST-${n}`, n });
+      const key = `${n}@${week.from}`;
+      const entry = counts.get(key) || { from: week.from, to: week.to, label: `IST-${n}`, n, papers: 0 };
+      entry.papers += 1;
+      counts.set(key, entry);
     }
-    return weeks.size ? [...weeks.values()] : null;
+    const weeks = new Map();
+    for (const entry of counts.values()) {
+      const held = weeks.get(entry.n);
+      if (!held || entry.papers > held.papers || (entry.papers === held.papers && entry.from < held.from)) weeks.set(entry.n, entry);
+    }
+    return weeks.size ? [...weeks.values()].map(({ papers, ...week }) => week) : null;
   }
 
   // The semester a day belongs to: the one it falls in (start to the day

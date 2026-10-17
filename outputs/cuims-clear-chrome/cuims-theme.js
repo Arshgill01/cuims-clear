@@ -345,6 +345,9 @@
     if (SKIP.has(el.tagName) || el.closest?.("svg")) return false;
     if (el === document.documentElement || el === document.body) return false;
     if (String(el.id || "").startsWith("cuims-clear") || el.id === STYLE_ID) return false;
+    // CUIMS Clear's own page components (cuims-tidy.js) are drawn from the
+    // theme's tokens below; reading and re-mapping them would mix them up.
+    if (el.closest?.("[data-cc-own]")) return false;
     return true;
   }
 
@@ -402,10 +405,24 @@
 
   // Only the page itself and things no element pass can reach. Element
   // colours are read before any of this could colour them.
+  // The theme's tokens, for CUIMS Clear's own components (cuims-tidy.css).
+  const OWN_TOKENS = {
+    canvas: "canvas", surface: "surface", soft: "surface2", ink: "ink", muted: "muted", line: "line", "line-strong": "lineStrong",
+    accent: "accent", "accent-ink": "accentInk", focus: "focus", good: "good", "good-ink": "goodInk", "good-bg": "goodBg",
+    warn: "warn", "warn-ink": "warnInk", "warn-bg": "warnBg", bad: "bad", "bad-ink": "badInk", "bad-bg": "badBg",
+    "hero-bg": "brandBg", "hero-ink": "heroInk", "hero-muted": "heroMuted", "hero-faint": "heroFaint", "hero-line": "heroLine",
+    "hero-accent": "heroGood", "hero-warn": "heroWarn", "hero-bad": "heroBad",
+  };
+
+  function ownTokens(t) {
+    return Object.entries(OWN_TOKENS).map(([name, key]) => (t[key] ? `--cct-${name}:${t[key]};` : "")).join("") + `--cct-scheme:${t.scheme};`;
+  }
+
   function baseCss(t) {
     // Embedded pages (the weather widget) keep their own scheme; a mismatch
     // makes the browser paint the frame opaque white.
-    return `html,body{background-color:${t.canvas} !important;color:${t.ink} !important;color-scheme:${t.scheme}}
+    return `html{${ownTokens(t)}}
+html,body{background-color:${t.canvas} !important;color:${t.ink} !important;color-scheme:${t.scheme}}
 iframe{color-scheme:normal !important}
 .highcharts-background,.highcharts-plot-background{fill:${t.surface} !important}
 .highcharts-grid-line,.highcharts-axis-line,.highcharts-tick{stroke:${t.line} !important}
@@ -643,5 +660,5 @@ input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`
     apply(current, enabled);
   });
 
-  globalThis.CuimsPageTheme = { apply, repaint, family, mapBackground, mapText, washedImage };
+  globalThis.CuimsPageTheme = { apply, repaint, family, mapBackground, mapText, washedImage, ownTokens };
 })();

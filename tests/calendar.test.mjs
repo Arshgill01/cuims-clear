@@ -91,6 +91,20 @@ test("the student's own date sheet decides their test weeks, whatever the calend
   assert.equal(A.noClassReason("2026-09-01", context)?.kind, "tests");
 });
 
+test("a lone paper outside the test week leaves that week's classes alone", () => {
+  // MST-2 2026: three papers on 13-14 Oct, one re-set to Mon 19 Oct.
+  const exams = [
+    { type: "MST-2", code: "24CST-302", day: "2026-10-13", time: "12:30" },
+    { type: "MST-2", code: "24TDT-312", day: "2026-10-13", time: "15:00" },
+    { type: "MST-2", code: "24CSH-301", day: "2026-10-14", time: "12:30" },
+    { type: "MST-2", code: "24SMT-341", day: "2026-10-19", time: "15:00" },
+  ];
+  const context = { calendar: "cu", exams };
+  assert.equal(A.noClassReason("2026-10-14", context)?.kind, "tests");
+  assert.equal(A.noClassReason("2026-10-19", context), null, "the week of the lone paper still has classes");
+  assert.equal(A.noClassReason("2026-10-21", context), null);
+});
+
 // ---- Attendance ----
 
 test("on a day without classes, today's timetable shows no classes and says why", () => {

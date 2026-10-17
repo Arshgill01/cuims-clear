@@ -1137,9 +1137,13 @@ const club = (views.club && globalThis.CuimsClub?.mount(views.club, { announce: 
 // ---- themes ----
 
 const THEME_GROUPS = [
+  ["founders", "Founding 100"],
   ["light", "Light"],
   ["dark", "Dark"],
 ];
+
+// Whether this browser had CUIMS Clear before 1.0 (celebrate-bg.js decides).
+let isFounder = false;
 
 // Each card previews its theme with that theme's own colours.
 function themeCard(entry) {
@@ -1152,7 +1156,9 @@ function themeCard(entry) {
   const dots = [t.goodInk, t.warnInk, t.badInk].map((color) => `<span style="background:${color}"></span>`).join("");
   const checked = entry.id === currentTheme;
   const name = CuimsAttendance.escapeHtml(entry.name);
-  return `<li role="none"><button type="button" class="theme-card" role="radio" data-theme-id="${entry.id}" aria-checked="${checked}" tabindex="${checked ? 0 : -1}" title="${name}" style="${style}">
+  const locked = entry.founders && !isFounder;
+  const title = locked ? "For everyone who had CUIMS Clear before 1.0" : name;
+  return `<li role="none"><button type="button" class="theme-card${locked ? " is-locked" : ""}" role="radio" data-theme-id="${entry.id}" aria-checked="${checked}"${locked ? ' aria-disabled="true"' : ""} tabindex="${checked ? 0 : -1}" title="${title}" style="${style}">
     <span class="theme-preview" aria-hidden="true">
       <span class="theme-preview-top"><span class="theme-preview-mark">//</span><span class="theme-preview-accent"></span></span>
       <span class="theme-preview-card"><span class="theme-preview-line"></span><span class="theme-preview-meter"><span></span></span><span class="theme-preview-dots">${dots}</span></span>
@@ -1165,10 +1171,13 @@ function themeCard(entry) {
 function renderThemes() {
   themeGroups.setAttribute("role", "radiogroup");
   themeGroups.setAttribute("aria-label", "Theme");
-  themeGroups.innerHTML = THEME_GROUPS.map(([scheme, label]) => {
-    const entries = CuimsThemes.list.filter((entry) => entry.scheme === scheme);
-    return `<section class="theme-group" role="none">
-      <div class="section-head"><h2 class="section-label">${label}</h2><span class="section-meta">${entries.length}</span></div>
+  // Founders see their theme first; everyone else, last.
+  const groups = isFounder ? THEME_GROUPS : [...THEME_GROUPS.slice(1), THEME_GROUPS[0]];
+  themeGroups.innerHTML = groups.map(([scheme, label]) => {
+    const entries = CuimsThemes.list.filter((entry) => (scheme === "founders" ? entry.founders : !entry.founders && entry.scheme === scheme));
+    const meta = scheme === "founders" ? (isFounder ? "yours" : "founders only") : entries.length;
+    return `<section class="theme-group${scheme === "founders" ? " is-founders" : ""}" role="none">
+      <div class="section-head"><h2 class="section-label">${label}</h2><span class="section-meta">${meta}</span></div>
       <ul class="theme-grid" role="none">${entries.map(themeCard).join("")}</ul>
     </section>`;
   }).join("");
@@ -1196,6 +1205,10 @@ function useTheme(id) {
 themeGroups.addEventListener("click", (event) => {
   const card = event.target.closest("[data-theme-id]");
   if (!card) return;
+  if (card.getAttribute("aria-disabled") === "true") {
+    showStatus("Founding 100 is for everyone who had CUIMS Clear before 1.0.");
+    return;
+  }
   useTheme(card.dataset.themeId);
   CuimsThemes.save(currentTheme);
 });
@@ -1217,7 +1230,7 @@ function cardInRow(cards, from, direction) {
 
 // Arrow keys move through the cards like a radio group; selection follows.
 themeGroups.addEventListener("keydown", (event) => {
-  const cards = themeCards();
+  const cards = themeCards().filter((card) => card.getAttribute("aria-disabled") !== "true");
   const index = cards.indexOf(document.activeElement);
   if (index < 0) return;
   let next = null;
@@ -1258,8 +1271,10 @@ chrome.storage.local.get(
     updateDone: null,
     clubSeen: null,
     timeCapsule: null,
+    founding: null,
   },
   (stored) => {
+    isFounder = stored.founding?.founder === true;
     for (const key of Object.keys(SWITCH_DEFAULTS)) settings[key] = stored[key] !== false;
     savedLogin = { uid: String(stored.uid || ""), password: String(stored.password || "") };
     uid.value = savedLogin.uid;

@@ -71,7 +71,7 @@ test("GetReport and GetFullReport wrappers both unwrap, and No Data Found is an 
 test("timetable parses weekday columns, times, and course names", () => {
   const slots = A.parseTimetable(TIMETABLE_HTML);
   assert.equal(slots.length, 3);
-  assert.deepEqual({ ...slots[0] }, { weekday: "mon", start: 580, end: 620, shortCode: "24CSP-305", title: "Competitive Coding-II", kind: "P" });
+  assert.deepEqual({ ...slots[0] }, { weekday: "mon", start: 580, end: 620, shortCode: "24CSP-305", title: "Competitive Coding-II", kind: "P", room: "1-2-C", teacher: "Teacher", group: "A" });
   assert.equal(slots[1].start, 13 * 60);
   assert.equal(slots[2].weekday, "tue");
 });

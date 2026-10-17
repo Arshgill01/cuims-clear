@@ -36,7 +36,9 @@
     "1.0.0": [
       "CUIMS Clear is 1.0: 100 students on the Chrome Web Store. Thank you.",
       "A new 1.0 tab: your receipt, Proxy Run, and a time capsule for the end of the semester.",
-      "Had it before today? There's a Founding 100 stamp waiting for you.",
+      "Had it before today? A Founding 100 stamp on your receipt, and a theme only founders get.",
+      "Semester Wrapped opens on the last day of classes. Every class of the semester, day by day, is on the 1.0 tab now.",
+      "My Time Table, Datesheet and Marks View in CUIMS are redesigned, with Add to calendar for your classes and exams.",
     ],
     "0.10.6": [
       "Tells you when a new version is out, in the popup, on the toolbar icon and on CUIMS, with an Update button.",

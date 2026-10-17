@@ -117,11 +117,11 @@ test("founding: an update from before 1.0 is a founder, a fresh install is not, 
 });
 
 test("both builds ship the 1.0 files the same, and the popup loads them", () => {
-  for (const name of ["ledger.js", "proxy-run.js", "celebrate.js", "celebrate.css", "celebrate-bg.js"]) {
+  for (const name of ["ledger.js", "proxy-run.js", "celebrate.js", "celebrate.css", "celebrate-bg.js", "wrapped.js", "calendar-export.js"]) {
     assert.equal(readFileSync(new URL(`../outputs/cuims-clear-chrome/${name}`, import.meta.url), "utf8"), read(name), name);
   }
   const html = read("popup.html");
-  for (const name of ["captcha-glyphs.js", "ledger.js", "proxy-run.js", "celebrate.js"]) assert.ok(html.indexOf(`src="${name}"`) < html.indexOf('src="popup.js"'), name);
+  for (const name of ["captcha-glyphs.js", "ledger.js", "proxy-run.js", "calendar-export.js", "wrapped.js", "celebrate.js"]) assert.ok(html.indexOf(`src="${name}"`) < html.indexOf('src="popup.js"'), name);
   assert.match(html, /id="tab-club"/);
   assert.match(html, /id="view-club"/);
 });

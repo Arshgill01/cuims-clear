@@ -51,6 +51,8 @@
       ],
       "js": [
         "attendance-model.js",
+        "academic-calendar.js",
+        "calendar-export.js",
         "cuims-tidy.js"
       ],
       "css": [
