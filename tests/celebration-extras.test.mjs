@@ -116,3 +116,13 @@ test("past the last day of classes the Forecast shows the result, not a forecast
   const before = A.renderForecast(A.buildForecast(semester({ until: "2026-10-16" }).snapshot, semester({ until: "2026-10-16" }).history, new Date("2026-10-17T04:30:00Z"), { goal: "standard", calendar: "cu" }), {});
   assert.doesNotMatch(before, /is-ended/);
 });
+
+test("credits CUIMS lists as a weekly class (summer training) stay out of the calendar file", () => {
+  const { CuimsCalendarExport: X } = load(["attendance-model.js", "academic-calendar.js", "calendar-export.js"]);
+  const result = X.classesIcs([
+    { day: "sun", start: 570, end: 620, title: "Institute/Industrial Summer Training", code: "24CSI-305", kind: "P" },
+    { day: "mon", start: 570, end: 620, title: "Computer Networks", code: "24CST-302", kind: "L" },
+  ], { todayKey: "2026-10-17", calendar: "cu" });
+  assert.equal(result.count, 1);
+  assert.doesNotMatch(result.text, /Summer Training/);
+});

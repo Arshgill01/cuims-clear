@@ -179,7 +179,9 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
       today: document.querySelector(".cc-tt-grid thead th.is-today")?.firstChild.textContent,
       now: [...document.querySelectorAll(".cc-class.is-now .cc-class-title")].map((node) => node.textContent),
       line: document.querySelector(".cc-tt-hero").textContent,
-      rail: [...document.querySelectorAll(".cc-rail-block")].map((block) => block.className),
+      stops: [...document.querySelectorAll(".cc-stop")].map((stop) => stop.className),
+      weekHead: document.querySelector(".cc-tt-week-title")?.textContent,
+      exportIn: Boolean(document.querySelector(".cc-tt-week [data-cc-export='classes']")),
       originalHidden: getComputedStyle(document.getElementById("grdMain")).display === "none",
       // Every card holds its own text and sits inside its cell (in Firefox,
       // cards once collapsed and their text ran over the next row).
@@ -208,11 +210,14 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
     assert.equal(view.today, "Wed");
     assert.deepEqual(view.now, ["Competitive Coding‑II"]);
     // The hero: what is on now, where, and for how long; the day as a line.
-    assert.match(view.line, /Now · until 1:40 PM/);
+    assert.match(view.line, /^Now/);
     assert.match(view.line, /Competitive Coding\u2011II/);
     assert.match(view.line, /C1-307/);
-    assert.match(view.line, /40 minleft/);
-    assert.deepEqual(view.rail, ["cc-rail-block is-now"]);
+    assert.match(view.line, /ends in40 min12:50 PM – 1:40 PM/);
+    // One class today: no line of stops, just the class.
+    assert.deepEqual(view.stops, []);
+    assert.match(view.weekHead, /^This week/);
+    assert.equal(view.exportIn, true, "Add to calendar sits on the week");
     assert.equal(view.originalHidden, true);
     assert.equal(view.spilled, 0);
     // Unposted marks are left out of the total; a subject with none has no chip.

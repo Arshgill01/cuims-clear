@@ -293,32 +293,6 @@ html.cc-tidy #UpdateProgress1 #loader-wrapper::before {
   padding: 0;
 }
 
-/* The brand card: graphite like the mark, the two slashes faint behind. */
-.cc-tt-hero,
-.cc-ds-exam.is-lead,
-.cc-mk-hero {
-  position: relative;
-  overflow: hidden;
-  background: var(--o-hero-bg);
-  color: var(--o-hero-ink);
-  border-radius: 18px;
-  isolation: isolate;
-}
-
-.cc-tt-hero::after,
-.cc-ds-exam.is-lead::after,
-.cc-mk-hero::after {
-  content: "//";
-  position: absolute;
-  z-index: -1;
-  right: -0.06em;
-  bottom: -0.36em;
-  font: 800 260px/1 ui-monospace, Menlo, Consolas, monospace;
-  letter-spacing: -0.12em;
-  color: var(--o-hero-line);
-  pointer-events: none;
-}
-
 .cc-hero-action {
   appearance: none;
   display: inline-flex;
@@ -328,7 +302,7 @@ html.cc-tidy #UpdateProgress1 #loader-wrapper::before {
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--o-hero-accent);
+  background: var(--o-accent);
   color: var(--o-accent-ink);
   font: 650 13px/1 var(--o-font);
   letter-spacing: 0.01em;
@@ -386,26 +360,39 @@ html.cc-tidy .cc-tt {
 }
 
 .cc-tt-hero {
-  padding: 18px 22px 18px;
-  display: grid;
-  gap: 14px;
+  position: relative;
+  overflow: hidden;
+  padding: 20px 24px 18px 28px;
+  border-radius: 16px;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--cc-hue, var(--o-accent)) 12%, var(--o-surface)) 0%, var(--o-surface) 58%);
+  box-shadow: inset 4px 0 0 var(--cc-hue, var(--o-accent)), inset 0 0 0 1px var(--o-line);
 }
 
-.cc-hero-top {
+.cc-tt-hero.is-empty {
+  background: var(--o-surface);
+  box-shadow: inset 0 0 0 1px var(--o-line);
+}
+
+.cc-hero-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 24px;
+}
+
+.cc-hero-text {
+  min-width: 0;
 }
 
 .cc-hero-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--o-hero-muted);
+  margin-bottom: 6px !important;
+  color: color-mix(in srgb, var(--cc-hue, var(--o-muted)) 55%, var(--o-ink));
   font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: 750;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -413,34 +400,12 @@ html.cc-tidy .cc-tt {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--o-hero-faint);
-}
-
-.cc-hero-label.is-live {
-  color: var(--o-hero-accent);
-}
-
-.cc-hero-label.is-live .cc-hero-dot {
-  background: var(--o-hero-accent);
-  box-shadow: 0 0 0 0 var(--o-hero-accent);
-}
-
-.cc-hero-main {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.cc-hero-text {
-  min-width: 0;
-  padding-left: 14px;
-  border-left: 4px solid var(--cc-hue, var(--o-hero-accent));
+  background: var(--cc-hue, var(--o-muted));
 }
 
 .cc-hero-title {
-  color: var(--o-hero-ink);
-  font: 700 30px/1.12 var(--o-font);
+  color: var(--o-ink);
+  font: 700 28px/1.15 var(--o-font);
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
@@ -448,20 +413,20 @@ html.cc-tidy .cc-tt {
 .cc-hero-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 0;
+  gap: 2px 0;
   margin-top: 6px !important;
-  color: var(--o-hero-muted);
+  color: var(--o-muted);
   font-size: 14px;
 }
 
 .cc-hero-meta > * + *::before {
   content: "·";
   margin: 0 8px;
-  color: var(--o-hero-faint);
+  opacity: 0.6;
 }
 
 .cc-hero-meta b {
-  color: var(--o-hero-ink);
+  color: var(--o-ink);
   font-weight: 650;
 }
 
@@ -472,146 +437,191 @@ html.cc-tidy .cc-tt {
   text-align: right;
 }
 
-.cc-hero-clock b {
-  color: var(--o-hero-accent);
-  font: 700 40px/1 var(--o-font);
-  letter-spacing: -0.03em;
-}
-
-.cc-hero-clock span {
-  margin-top: 4px;
-  color: var(--o-hero-muted);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+.cc-hero-clock-label {
+  color: var(--o-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-/* The day as a line. */
-.cc-rail {
-  padding-top: 30px;
+.cc-hero-clock b {
+  color: var(--o-ink);
+  font: 700 34px/1.1 var(--o-font);
+  letter-spacing: -0.03em;
+  white-space: nowrap;
 }
 
-.cc-rail-track {
+.cc-hero-clock-sub {
+  color: var(--o-muted);
+  font-size: 12.5px;
+}
+
+/* The day as a line of stops. */
+.cc-line {
+  display: flex;
+  align-items: flex-start;
+  margin: 16px 0 0 !important;
+  padding: 16px 0 2px !important;
+  border-top: 1px solid var(--o-line);
+  overflow-x: auto;
+  list-style: none;
+}
+
+.cc-stop {
   position: relative;
-  height: 46px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--o-hero-line) 55%, transparent);
-}
-
-.cc-rail-block,
-.cc-rail-gap {
-  position: absolute;
-  top: 0;
-  bottom: 0;
   display: grid;
-  align-content: center;
-  min-width: 0;
-  padding: 0 9px;
-  border-radius: 9px;
-  overflow: hidden;
+  justify-items: start;
+  gap: 1px;
+  flex: 1 1 0;
+  min-width: 108px;
+  padding-right: 12px;
 }
 
-.cc-rail-block {
-  background: color-mix(in srgb, var(--cc-hue) 42%, var(--o-hero-bg));
-  box-shadow: inset 3px 0 0 var(--cc-hue);
+/* The track to the next stop. */
+.cc-stop::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  right: 0;
+  height: 2px;
+  background: var(--o-line);
 }
 
-.cc-rail-block b,
-.cc-rail-block span {
+.cc-stop:last-child::before {
+  display: none;
+}
+
+.cc-stop.is-past::before {
+  background: color-mix(in srgb, var(--o-ink) 35%, var(--o-line));
+}
+
+.cc-stop-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  margin-bottom: 7px;
+  border: 2px solid var(--cc-hue);
+  border-radius: 50%;
+  background: var(--o-surface);
+}
+
+.cc-stop.is-past .cc-stop-dot {
+  border-color: color-mix(in srgb, var(--o-ink) 35%, var(--o-line));
+  background: color-mix(in srgb, var(--o-ink) 35%, var(--o-line));
+}
+
+.cc-stop.is-now .cc-stop-dot {
+  background: var(--cc-hue);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cc-hue) 26%, transparent);
+}
+
+.cc-stop.is-next .cc-stop-dot {
+  border-color: var(--o-ink);
+}
+
+.cc-stop-time {
+  color: var(--o-muted);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.cc-stop-name {
+  max-width: 100%;
   overflow: hidden;
+  color: var(--o-ink);
+  font-size: 13px;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cc-rail-block b {
-  color: var(--o-hero-ink);
-  font-size: 12px;
-  font-weight: 650;
+.cc-stop-room {
+  color: var(--o-muted);
+  font-size: 11.5px;
 }
 
-.cc-rail-block span {
-  color: var(--o-hero-muted);
-  font-size: 10.5px;
+.cc-stop.is-past .cc-stop-name,
+.cc-stop.is-past .cc-stop-time,
+.cc-stop.is-past .cc-stop-room {
+  color: var(--o-muted);
+  opacity: 0.75;
 }
 
-.cc-rail-block.is-past {
-  opacity: 0.38;
-}
-
-.cc-rail-block.is-now {
-  box-shadow: inset 3px 0 0 var(--cc-hue), 0 0 0 2px var(--o-hero-accent);
-}
-
-.cc-rail-gap {
-  justify-items: center;
-  border: 1px dashed var(--o-hero-faint);
-  color: var(--o-hero-muted);
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  background: var(--o-hero-bg);
-}
-
-.cc-rail-now {
-  position: absolute;
-  top: -8px;
-  bottom: -4px;
-  width: 2px;
-  margin-left: -1px;
-  background: var(--o-hero-accent);
-  border-radius: 2px;
-  z-index: 2;
-}
-
-.cc-rail-now span {
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  transform: translate(-50%, -100%);
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--o-hero-accent);
-  color: var(--o-accent-ink);
-  font-size: 10.5px;
-  font-weight: 750;
-  white-space: nowrap;
-}
-
-.cc-rail-ticks {
+/* Free time sits on the track, between the two classes it separates. */
+.cc-stop-gap {
   position: relative;
-  height: 16px;
-  margin-top: 6px;
+  display: flex;
+  justify-content: center;
+  flex: 0.6 1 0;
+  min-width: 92px;
+  margin-left: -12px;
+  padding-right: 12px;
 }
 
-.cc-rail-ticks span {
+.cc-stop-gap::before {
+  content: "";
   position: absolute;
-  transform: translateX(-50%);
-  color: var(--o-hero-faint);
-  font-size: 10.5px;
-  font-weight: 600;
+  top: 5px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--o-line);
 }
 
-.cc-rail-ticks span:first-child {
-  transform: none;
-}
-
-.cc-rail-ticks span:last-child {
-  transform: translateX(-100%);
+.cc-stop-gap span {
+  position: relative;
+  margin-top: -3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--o-soft);
+  box-shadow: 0 0 0 3px var(--o-surface);
+  color: var(--o-muted);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .cc-hero-foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 18px;
-  padding-top: 12px !important;
-  border-top: 1px solid var(--o-hero-line);
-  color: var(--o-hero-muted);
+  gap: 4px 16px;
+  margin-top: 14px !important;
+  color: var(--o-muted);
   font-size: 13px;
 }
 
 .cc-hero-foot span:first-child {
-  color: var(--o-hero-ink);
+  color: var(--o-ink);
+}
+
+/* The week's own header: which week, and the calendar file. */
+.cc-tt-week-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--o-line);
+}
+
+.cc-tt-week-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.cc-tt-week-title b {
+  color: var(--o-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cc-tt-week-title span {
+  color: var(--o-muted);
+  font-size: 13px;
 }
 
 /* The week. */
@@ -639,15 +649,16 @@ html.cc-tidy .cc-tt {
 .cc-tt-grid th,
 .cc-tt-grid td {
   padding: 4px;
-  border: 0;
-  border-bottom: 1px solid var(--o-line);
+  /* CUIMS's own table rules draw borders on every cell; only ours show. */
+  border: 0 !important;
+  border-bottom: 1px solid var(--o-line) !important;
   vertical-align: top;
   background: none;
   text-align: left;
 }
 
 .cc-tt-grid tbody tr:last-child > * {
-  border-bottom: 0;
+  border-bottom: 0 !important;
 }
 
 .cc-tt-grid thead th {
@@ -832,7 +843,7 @@ html.cc-tidy .cc-tt {
   border-radius: 999px;
   background: var(--o-accent);
   color: var(--o-accent-ink);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -890,28 +901,52 @@ html.cc-tidy .cc-tt-legend tr[style*="--cc-hue"] td:first-child::before {
 
 @media (max-width: 760px) {
   .cc-tt-hero {
-    padding: 16px;
+    padding: 16px 16px 14px 20px;
   }
-  .cc-hero-main {
+  .cc-hero-head {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
   }
   .cc-hero-clock {
     justify-items: start;
     text-align: left;
   }
   .cc-hero-title {
-    font-size: 24px;
+    font-size: 23px;
   }
-  .cc-rail {
-    overflow-x: auto;
+  /* The day as a list, top to bottom, instead of a line off the screen. */
+  .cc-line {
+    flex-direction: column;
+    gap: 12px;
+    overflow: visible;
   }
-  .cc-rail-track,
-  .cc-rail-ticks {
-    min-width: 620px;
+  .cc-stop {
+    grid-template-columns: 12px 64px minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 10px;
+    min-width: 0;
+    padding-right: 0;
   }
-  .cc-hero-top {
-    flex-wrap: wrap;
+  .cc-stop::before {
+    top: 12px;
+    left: 5px;
+    right: auto;
+    bottom: -12px;
+    width: 2px;
+    height: auto;
+  }
+  .cc-stop-dot {
+    margin-bottom: 0;
+  }
+  .cc-stop-gap {
+    justify-content: flex-start;
+    min-width: 0;
+    margin: -4px 0;
+    padding: 0 0 0 22px;
+  }
+  .cc-stop-gap::before {
+    display: none;
   }
 }
 
@@ -1118,12 +1153,13 @@ html:not(.cc-tidy) .cc-ds {
    perforation, with a notch cut at each end of it. */
 .cc-ds-exam {
   --stub: 96px;
+  --edge: var(--o-line);
   position: relative;
   display: flex;
   min-height: 116px;
   border-radius: 16px;
   background: var(--o-surface);
-  box-shadow: inset 0 0 0 1px var(--o-line);
+  box-shadow: inset 0 0 0 1px var(--edge);
   -webkit-mask:
     radial-gradient(circle 9px at calc(100% - var(--stub)) 0, transparent 97%, #000) top / 100% 51% no-repeat,
     radial-gradient(circle 9px at calc(100% - var(--stub)) 100%, transparent 97%, #000) bottom / 100% 51% no-repeat;
@@ -1149,7 +1185,10 @@ html:not(.cc-tidy) .cc-ds {
   flex: none;
   width: var(--stub);
   border-left: 2px dashed var(--o-line-strong);
+  border-radius: 0 16px 16px 0;
   background: var(--o-soft);
+  /* The stub's fill would cover the ticket's outline; it carries its own. */
+  box-shadow: inset 0 1px 0 var(--edge), inset -1px 0 0 var(--edge), inset 0 -1px 0 var(--edge);
   text-align: center;
 }
 
@@ -1171,7 +1210,7 @@ html:not(.cc-tidy) .cc-ds {
 }
 
 .cc-ds-count {
-  color: var(--o-focus);
+  color: var(--o-good-ink);
   font-size: 11.5px;
   font-weight: 750;
   letter-spacing: 0.12em;
@@ -1210,56 +1249,40 @@ html:not(.cc-tidy) .cc-ds {
   content: " ↗";
 }
 
-/* The next exam is the big ticket. */
+/* The next exam is the big ticket: a highlighter wash of the accent. */
 .cc-ds-exam.is-lead {
   --stub: 128px;
   grid-column: 1 / -1;
-  min-height: 160px;
-  box-shadow: none;
-}
-
-.cc-ds-exam.is-lead::after {
-  right: calc(var(--stub) + 10px);
+  min-height: 150px;
+  --edge: color-mix(in srgb, var(--o-accent) 45%, var(--o-line));
+  background: linear-gradient(100deg, color-mix(in srgb, var(--o-accent) 16%, var(--o-surface)) 0%, var(--o-surface) 70%);
 }
 
 .cc-ds-exam.is-lead .cc-ds-body {
-  padding: 20px 24px;
+  padding: 20px 26px;
   gap: 6px;
 }
 
 .cc-ds-exam.is-lead .cc-ds-count {
-  color: var(--o-hero-accent);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .cc-ds-exam.is-lead .cc-ds-name {
-  color: var(--o-hero-ink);
-  font-size: 28px;
+  font-size: 27px;
   letter-spacing: -0.02em;
 }
 
 .cc-ds-exam.is-lead .cc-ds-meta {
-  color: var(--o-hero-muted);
   font-size: 14px;
 }
 
-.cc-ds-exam.is-lead .cc-ds-link {
-  background: var(--o-hero-accent);
-}
-
 .cc-ds-exam.is-lead .cc-ds-when {
-  border-left-color: var(--o-hero-faint);
-  background: var(--o-hero-line);
-}
-
-.cc-ds-exam.is-lead .cc-ds-day,
-.cc-ds-exam.is-lead .cc-ds-month {
-  color: var(--o-hero-muted);
+  border-left-color: color-mix(in srgb, var(--o-accent) 55%, var(--o-line-strong));
+  background: color-mix(in srgb, var(--o-accent) 26%, var(--o-surface));
 }
 
 .cc-ds-exam.is-lead .cc-ds-date {
-  color: var(--o-hero-accent);
-  font-size: 52px;
+  font-size: 50px;
 }
 
 /* One datesheet's papers, in order. */
@@ -1406,19 +1429,21 @@ html:not(.cc-tidy) .cc-mk-bar {
 }
 
 .cc-mk-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px 32px;
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 20px 36px;
   padding: 22px 26px;
+  border-radius: 16px;
+  background: var(--o-surface);
+  box-shadow: inset 0 0 0 1px var(--o-line);
 }
 
 .cc-mk-label {
-  color: var(--o-hero-muted);
+  color: var(--o-muted);
   font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -1426,47 +1451,61 @@ html:not(.cc-tidy) .cc-mk-bar {
   display: flex;
   align-items: baseline;
   gap: 2px;
-  margin: 4px 0 6px !important;
+  margin: 2px 0 10px !important;
 }
 
 .cc-mk-big b {
-  color: var(--o-hero-ink);
-  font-size: 60px;
+  color: var(--o-ink);
+  font-size: 54px;
   font-weight: 750;
   line-height: 1;
   letter-spacing: -0.04em;
 }
 
 .cc-mk-big span {
-  color: var(--o-hero-accent);
-  font-size: 26px;
-  font-weight: 750;
+  color: var(--o-muted);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.cc-mk-meter {
+  display: block;
+  height: 6px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--o-soft);
+}
+
+.cc-mk-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--o-ink);
 }
 
 .cc-mk-sub {
-  color: var(--o-hero-muted);
-  font-size: 13px;
+  color: var(--o-muted);
+  font-size: 12.5px;
 }
 
+/* Three facts side by side, split by hairlines. */
 .cc-mk-notes {
   display: grid;
-  gap: 10px;
-  min-width: 260px;
-  max-width: 520px;
-  flex: 1 1 320px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  align-self: stretch;
 }
 
 .cc-mk-notes > div {
   display: grid;
-  grid-template-columns: 172px 1fr;
-  align-items: baseline;
-  gap: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--o-hero-line);
+  align-content: center;
+  gap: 6px;
+  padding: 4px 20px;
+  border-left: 1px solid var(--o-line);
 }
 
 .cc-mk-notes dt {
-  color: var(--o-hero-muted);
+  color: var(--o-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1474,30 +1513,41 @@ html:not(.cc-tidy) .cc-mk-bar {
 }
 
 .cc-mk-notes dd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
+  display: grid;
+  gap: 2px;
 }
 
 .cc-mk-notes dd b {
-  color: var(--o-hero-ink);
-  font-size: 14px;
+  color: var(--o-ink);
+  font-size: 14.5px;
   font-weight: 650;
+  line-height: 1.3;
 }
 
 .cc-mk-notes dd span {
-  color: var(--o-hero-muted);
+  color: var(--o-muted);
   font-size: 13px;
   font-weight: 650;
 }
 
 .cc-mk-notes .is-good dd span {
-  color: var(--o-hero-accent);
+  color: var(--o-good-ink);
 }
 
 .cc-mk-notes .is-low dd span {
-  color: var(--o-hero-bad);
+  color: var(--o-bad-ink);
+}
+
+@media (max-width: 760px) {
+  .cc-mk-hero {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 18px;
+  }
+  .cc-mk-notes > div {
+    padding: 10px 0;
+    border-left: 0;
+    border-top: 1px solid var(--o-line);
+  }
 }
 
 .cc-mk-grid {
@@ -1816,7 +1866,7 @@ html:not(.cc-tidy) .cc-score {
 
 @keyframes cc-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--o-hero-accent) 60%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cc-hue, var(--o-accent)) 60%, transparent);
   }
   70%,
   100% {

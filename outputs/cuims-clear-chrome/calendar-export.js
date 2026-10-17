@@ -101,6 +101,8 @@
     const until = last != null && last >= today ? last : today + 16 * 7;
     const events = [];
     for (const item of classes || []) {
+      // A credit CUIMS lists as a weekly class nobody attends.
+      if (/\b(summer|industrial)\s+training\b|\binternship\b/i.test(item.title || "")) continue;
       const weekday = WEEKDAYS.indexOf(item.day);
       if (weekday < 0 || !(item.end > item.start)) continue;
       // The first time this class meets from today on.

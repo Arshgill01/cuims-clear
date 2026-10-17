@@ -187,8 +187,14 @@
     return new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "long" }).format(new Date(`${info.key}T00:00:00Z`));
   }
 
-  // The hero above the week: what is on now or next, the day as a line,
-  // and what comes after.
+  // CUIMS lists some credits as a weekly class nobody attends (the summer
+  // training block on Sundays). The grid keeps them; "next class" and the
+  // calendar file do not.
+  const placeholder = (item) => /\b(summer|industrial)\s+training\b|\binternship\b/i.test(item.title || "");
+
+  // The hero above the week: what is on now or next, and the day as a line
+  // of stops. A light card in the page's own surface, washed with the
+  // subject's colour.
   function hero(model, runs, now, hues, context) {
     const wrap = el("section", "cc-tt-hero");
     wrap.dataset.ccOwn = "";
@@ -196,7 +202,8 @@
     const column = (weekday) => model.days.findIndex((entry) => entry.day === weekday);
     const runsOn = (info) => {
       const index = column(info.weekday);
-      return index < 0 || (info.reason && info.reason.kind !== "over") ? [] : runs[index];
+      if (index < 0 || (info.reason && info.reason.kind !== "over")) return [];
+      return runs[index].filter((run) => !run.items.every(placeholder));
     };
     const today = dayInfo(now, 0, context);
     const todays = runsOn(today);
@@ -212,120 +219,95 @@
       else if (info.reason && column(info.weekday) >= 0 && runs[column(info.weekday)].length) skipped.push(info);
     }
 
-    let label;
-    let lead;
-    let clockBig;
-    let clockSmall;
-    let railDay = today;
-    let railRuns = todays;
+    let lead = null;
+    let label = "";
+    let live = false;
+    let clockLabel = "";
+    let clockBig = "";
+    let clockSub = "";
+    let lineDay = today;
+    let lineRuns = todays;
     if (current) {
       lead = current;
-      label = `Now · until ${clock(current.end)}`;
-      [clockBig, clockSmall] = [span(current.end - now.minutes), "left"];
+      live = true;
+      label = "Now";
+      [clockLabel, clockBig, clockSub] = ["ends in", span(current.end - now.minutes), `${clock(current.start)} – ${clock(current.end)}`];
     } else if (later.length) {
       lead = later[0];
-      const first = !todays.some((run) => run.end <= now.minutes);
-      label = `${first ? "First class" : "Next"} · ${clock(lead.start)}`;
-      [clockBig, clockSmall] = [span(lead.start - now.minutes), "to go"];
+      label = todays.some((run) => run.end <= now.minutes) ? "Next" : "First class today";
+      [clockLabel, clockBig, clockSub] = ["starts in", span(lead.start - now.minutes), `at ${clock(lead.start)}`];
     } else if (ahead) {
       lead = runsOn(ahead)[0];
-      railDay = ahead;
-      railRuns = runsOn(ahead);
-      const why = today.reason ? ` (${today.reason.label.replace(/\s*\(.*\)$/, "")})` : "";
-      label = `${todays.length ? "Done for today" : `No classes today${why}`} · next ${dayName(ahead).toLowerCase()}`;
-      [clockBig, clockSmall] = [clock(lead.start), dayName(ahead)];
+      lineDay = ahead;
+      lineRuns = runsOn(ahead);
+      label = `Next class · ${dayName(ahead)}`;
+      [clockLabel, clockBig, clockSub] = [dayName(ahead), clock(lead.start), "first class"];
     }
 
-    const top = el("div", "cc-hero-top");
-    const tag = el("p", `cc-hero-label${current ? " is-live" : ""}`);
-    tag.append(el("span", "cc-hero-dot"), el("span", "", label || (today.reason?.kind === "over" ? today.reason.label : "No classes this week")));
-    top.append(tag);
-    const action = el("button", "cc-hero-action", "Add to calendar");
-    action.type = "button";
-    action.dataset.ccExport = "classes";
-    action.title = "Download your weekly classes as an .ics file, repeating until the last teaching day";
-    top.append(action);
-    wrap.append(top);
+    const notes = [];
+    if (!current && !later.length) {
+      if (todays.length) notes.push("Done for today.");
+      else if (today.reason && today.reason.kind !== "over") notes.push(`No classes today: ${today.reason.label.replace(/\s*\(.*\)$/, "")}.`);
+      else if (column(today.weekday) < 0 || !runs[column(today.weekday)]?.length) notes.push("No classes today.");
+    }
+    for (const info of skipped) notes.push(`${dayName(info)}: no classes (${info.reason.label.replace(/\s*\(.*\)$/, "")}).`);
 
-    if (lead) {
-      const item = lead.items[0];
-      const main = el("div", "cc-hero-main");
-      main.style.setProperty("--cc-hue", hueFor(item.code, hues));
+    if (!lead) {
+      wrap.classList.add("is-empty");
       const text = el("div", "cc-hero-text");
-      text.append(el("h2", "cc-hero-title", lead.items.map(nameOf).join(" / ")));
-      const meta = el("p", "cc-hero-meta");
-      if (item.room) meta.append(el("b", "", item.room));
-      for (const part of [KIND[item.kind], lead.periods > 1 ? `${clock(lead.start)} – ${clock(lead.end)}` : "", item.teacher]) if (part) meta.append(el("span", "", part));
-      text.append(meta);
-      const time = el("p", "cc-hero-clock");
-      time.append(el("b", "", clockBig), el("span", "", clockSmall));
-      main.append(text, time);
-      wrap.append(main);
+      text.append(el("p", "cc-hero-label", today.reason?.kind === "over" ? "Semester over" : "No classes ahead"), el("h2", "cc-hero-title", today.reason?.kind === "over" ? today.reason.label : "Nothing on the timetable this week"));
+      wrap.append(text);
+      return wrap;
     }
 
-    if (railRuns.length) wrap.append(rail(railRuns, railDay, now, hues));
+    const item = lead.items[0];
+    wrap.style.setProperty("--cc-hue", hueFor(item.code, hues));
+    const head = el("div", "cc-hero-head");
+    const text = el("div", "cc-hero-text");
+    const tag = el("p", `cc-hero-label${live ? " is-live" : ""}`);
+    tag.append(el("span", "cc-hero-dot"), el("span", "", label));
+    text.append(tag, el("h2", "cc-hero-title", lead.items.map(nameOf).join(" / ")));
+    const meta = el("p", "cc-hero-meta");
+    if (item.room) meta.append(el("b", "", item.room));
+    for (const part of [KIND[item.kind], item.teacher]) if (part) meta.append(el("span", "", part));
+    text.append(meta);
+    const time = el("p", "cc-hero-clock");
+    time.append(el("span", "cc-hero-clock-label", clockLabel), el("b", "", clockBig), el("span", "cc-hero-clock-sub", clockSub));
+    head.append(text, time);
+    wrap.append(head);
 
-    const after = [];
-    const rest = current ? later : later.slice(1);
-    if (rest.length) {
-      const next = rest[0];
-      after.push(`Then ${nameOf(next.items[0])} at ${clock(next.start)}${next.items[0].room ? ` in ${next.items[0].room}` : ""}`);
-      const finish = todays[todays.length - 1].end;
-      after.push(`${rest.length} more ${rest.length === 1 ? "class" : "classes"} · done at ${clock(finish)}`);
-    } else if (current) {
-      after.push("Last class today");
-    }
-    for (const info of skipped) after.push(`${dayName(info)}: no classes (${info.reason.label.replace(/\s*\(.*\)$/, "")})`);
-    if (after.length) {
+    if (lineRuns.length > 1) wrap.append(dayLine(lineRuns, lineDay, now, hues, lead));
+    const rest = (current ? later : later.slice(1)).length;
+    if (lineDay === today && (current || later.length)) notes.unshift(rest ? `${rest} more after this · done at ${clock(todays[todays.length - 1].end)}` : "Last class today");
+    if (notes.length) {
       const foot = el("p", "cc-hero-foot");
-      for (const part of after) foot.append(el("span", "", part));
+      for (const part of notes) foot.append(el("span", "", part));
       wrap.append(foot);
     }
     return wrap;
   }
 
-  // One day as a line: every class to scale, free time between, and where
-  // the day is now.
-  function rail(runs, info, now, hues) {
-    const from = Math.floor(runs[0].start / 60) * 60;
-    const to = Math.ceil(runs[runs.length - 1].end / 60) * 60;
-    const at = (minutes) => `${(((minutes - from) / (to - from)) * 100).toFixed(3)}%`;
-    const wrap = el("div", "cc-rail");
-    wrap.setAttribute("aria-hidden", "true");
-    const track = el("div", "cc-rail-track");
+  // One day as a line of stops: each class with its time and room, free
+  // time between, the class on now marked.
+  function dayLine(runs, info, now, hues, lead) {
+    const line = el("ol", "cc-line");
+    line.setAttribute("aria-label", `${dayName(info)}'s classes`);
     const live = info.offset === 0;
     runs.forEach((run, i) => {
       const item = run.items[0];
-      const state = !live ? "" : now.minutes >= run.end ? "past" : now.minutes >= run.start ? "now" : "";
-      const block = el("div", `cc-rail-block${state ? ` is-${state}` : ""}`);
-      block.style.left = at(run.start);
-      block.style.width = `calc(${at(run.end)} - ${at(run.start)} - 3px)`;
-      block.style.setProperty("--cc-hue", hueFor(item.code, hues));
-      block.append(el("b", "", nameOf(item)), el("span", "", [clock(run.start), item.room].filter(Boolean).join(" · ")));
-      track.append(block);
+      const state = live && now.minutes >= run.end ? "past" : live && now.minutes >= run.start ? "now" : run === lead ? "next" : "";
+      const stop = el("li", `cc-stop${state ? ` is-${state}` : ""}`);
+      stop.style.setProperty("--cc-hue", hueFor(item.code, hues));
+      stop.append(el("span", "cc-stop-dot"), el("span", "cc-stop-time", clock(run.start).replace(" ", " ")), el("b", "cc-stop-name", nameOf(item)), el("span", "cc-stop-room", item.room || KIND[item.kind] || ""));
+      line.append(stop);
       const next = runs[i + 1];
       if (next && next.start - run.end >= 30) {
-        const gap = el("div", "cc-rail-gap", `Free ${span(next.start - run.end)}`);
-        gap.style.left = at(run.end);
-        gap.style.width = `calc(${at(next.start)} - ${at(run.end)} - 3px)`;
-        track.append(gap);
+        const gap = el("li", "cc-stop-gap");
+        gap.append(el("span", "", `Free ${span(next.start - run.end)}`));
+        line.append(gap);
       }
     });
-    if (live && now.minutes >= from && now.minutes <= to) {
-      const needle = el("div", "cc-rail-now");
-      needle.style.left = at(now.minutes);
-      needle.append(el("span", "", clock(now.minutes).replace(/ [AP]M$/, "")));
-      track.append(needle);
-    }
-    wrap.append(track);
-    const ticks = el("div", "cc-rail-ticks");
-    for (let minutes = from; minutes <= to; minutes += 60) {
-      const tick = el("span", "", String(Math.floor(minutes / 60) % 12 || 12));
-      tick.style.left = at(minutes);
-      ticks.append(tick);
-    }
-    wrap.append(ticks);
-    return wrap;
+    return line;
   }
 
   function buildTimetable(grid, context) {
@@ -349,11 +331,37 @@
     wrap.dataset.day = now.key;
     wrap.append(hero(model, runs, now, hues, context));
 
-    // This week's dates, Monday first, to put on each day and to find holidays.
+    // The week the grid shows, Monday first: this one, or the next once
+    // this one has no classes left. Its dates go on each day, and holidays
+    // are marked.
     const todayIndex = DAYS.indexOf(now.weekday);
-    const week = new Map(DAYS.map((day, i) => [day, dayInfo(now, i - todayIndex, context)]));
+    const left = shown.some((entry) => {
+      const offset = DAYS.indexOf(entry.day) - todayIndex;
+      if (offset < 0) return false;
+      const info = dayInfo(now, offset, context);
+      if (info.reason && info.reason.kind !== "over") return false;
+      return runs[entry.column].some((run) => !run.items.every(placeholder) && (offset > 0 || run.end > now.minutes));
+    });
+    const shift = left ? 0 : 7;
+    const week = new Map(DAYS.map((day, i) => [day, dayInfo(now, i - todayIndex + shift, context)]));
+    const thisWeek = shift === 0;
     const card$ = el("section", "cc-tt-week");
-    card$.setAttribute("aria-label", "This week");
+    card$.setAttribute("aria-label", thisWeek ? "This week" : "Next week");
+    const weekHead = el("div", "cc-tt-week-head");
+    const title = el("p", "cc-tt-week-title");
+    title.append(el("b", "", thisWeek ? "This week" : "Next week"));
+    const monday = week.get("mon")?.key;
+    const sunday = week.get("sun")?.key;
+    if (monday && sunday) {
+      const fmt = (key, month) => new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", day: "numeric", ...(month ? { month: "short" } : {}) }).format(new Date(`${key}T00:00:00Z`));
+      title.append(el("span", "", `${fmt(monday, monday.slice(5, 7) !== sunday.slice(5, 7))} – ${fmt(sunday, true)}`));
+    }
+    const action = el("button", "cc-hero-action", "Add to calendar");
+    action.type = "button";
+    action.dataset.ccExport = "classes";
+    action.title = "Download your weekly classes as an .ics file, repeating until the last teaching day";
+    weekHead.append(title, action);
+    card$.append(weekHead);
     const scroller = el("div", "cc-tt-scroll");
     const table = el("table", "cc-tt-grid");
     const caption = el("caption", "cc-sr", "Weekly timetable, in time order");
@@ -362,7 +370,7 @@
     for (const entry of shown) {
       const info = week.get(entry.day);
       const off = info?.reason && info.reason.kind !== "over";
-      const th = el("th", [entry.day === now.weekday ? "is-today" : "", off ? "is-off" : ""].filter(Boolean).join(" "), entry.label.slice(0, 3));
+      const th = el("th", [thisWeek && entry.day === now.weekday ? "is-today" : "", off ? "is-off" : ""].filter(Boolean).join(" "), entry.label.slice(0, 3));
       th.scope = "col";
       if (info?.key) th.append(el("span", "cc-tt-date", String(Number(info.key.slice(8)))));
       if (off) th.append(el("span", "cc-tt-off", info.reason.label.replace(/\s*\(.*\)$/, "")));
@@ -381,7 +389,7 @@
         const dayRuns = runs[entry.column];
         if (dayRuns.some((run) => run.row < row && run.lastRow >= row)) continue;
         const run = dayRuns.find((candidate) => candidate.row === row);
-        const isToday = entry.day === now.weekday;
+        const isToday = thisWeek && entry.day === now.weekday;
         const info = week.get(entry.day);
         const td = el("td", [isToday ? "is-today" : "", info?.reason && info.reason.kind !== "over" ? "is-off" : ""].filter(Boolean).join(" "));
         if (run) {
@@ -409,7 +417,7 @@
     }
     // For the calendar file: each run once per weekday.
     wrap.ccClasses = shown.flatMap((entry) =>
-      runs[entry.column].flatMap((run) => run.items.map((item) => ({ ...item, day: entry.day, start: run.start, end: run.end }))),
+      runs[entry.column].flatMap((run) => run.items.filter((item) => !placeholder(item)).map((item) => ({ ...item, day: entry.day, start: run.start, end: run.end }))),
     );
     return wrap;
   }
@@ -464,7 +472,9 @@
     const today = view.querySelector("thead th.is-today");
     if (!scroller || !today || scroller.scrollWidth <= scroller.clientWidth) return;
     const time = view.querySelector("thead .cc-tt-time");
-    scroller.scrollLeft = Math.max(0, today.offsetLeft - (time?.offsetWidth || 0));
+    // Today's column starts right after the sticky time column.
+    const gap = today.getBoundingClientRect().left - (time ? time.getBoundingClientRect().right : scroller.getBoundingClientRect().left);
+    scroller.scrollLeft = Math.max(0, scroller.scrollLeft + gap);
   }
 
   // Keep "Now" honest while the page stays open: rebuild at each minute.
@@ -912,7 +922,12 @@
     total.append(el("p", "cc-mk-label", "Marked so far"));
     const big = el("p", "cc-mk-big");
     big.append(el("b", "", (Math.floor(pct(got, max) * 10) / 10).toFixed(1)), el("span", "", "%"));
-    total.append(big, el("p", "cc-mk-sub", `${round2(got)} of ${round2(max)} marks · ${count} assessments · ${marked.length} ${marked.length === 1 ? "subject" : "subjects"}`));
+    const meter = el("span", "cc-mk-meter");
+    meter.setAttribute("aria-hidden", "true");
+    const fill = el("i");
+    fill.style.width = `${Math.max(0, Math.min(100, pct(got, max))).toFixed(1)}%`;
+    meter.append(fill);
+    total.append(big, meter, el("p", "cc-mk-sub", `${round2(got)} of ${round2(max)} marks · ${count} assessments · ${marked.length} ${marked.length === 1 ? "subject" : "subjects"}`));
     hero.append(total);
 
     const notes = el("dl", "cc-mk-notes");

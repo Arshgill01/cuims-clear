@@ -129,7 +129,7 @@ function showStatus(message) {
   statusTimer = window.setTimeout(() => {
     status.classList?.remove("is-shown");
     status.textContent = "";
-  }, 1800);
+  }, Math.min(5000, 1800 + String(message).length * 30));
 }
 
 function hasLogin() {
@@ -1206,7 +1206,7 @@ themeGroups.addEventListener("click", (event) => {
   const card = event.target.closest("[data-theme-id]");
   if (!card) return;
   if (card.getAttribute("aria-disabled") === "true") {
-    showStatus("Founding 100 is for everyone who had CUIMS Clear before 1.0.");
+    showStatus("Founding 100 is for students who had CUIMS Clear before 1.0.");
     return;
   }
   useTheme(card.dataset.themeId);
