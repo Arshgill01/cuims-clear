@@ -77,7 +77,8 @@ test("both manifests load the tidy layer on CUIMS, after the model it uses", () 
     assert.deepEqual(entry.matches, ["https://students.cuchd.in/*"]);
     // The calendar (holidays, last teaching day) and the .ics export come before the layer that uses them.
     assert.deepEqual(entry.js, ["attendance-model.js", "academic-calendar.js", "calendar-export.js", "cuims-tidy.js"]);
-    assert.deepEqual(entry.css, ["cuims-tidy.css"]);
+    // Founding 100's portal styles ride along; they only apply under its signature.
+    assert.deepEqual(entry.css, ["cuims-tidy.css", "founders-cuims.css"]);
     assert.equal(entry.all_frames, undefined, `${build}: top frame only`);
   }
 });

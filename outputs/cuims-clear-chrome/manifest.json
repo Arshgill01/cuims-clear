@@ -56,7 +56,8 @@
         "cuims-tidy.js"
       ],
       "css": [
-        "cuims-tidy.css"
+        "cuims-tidy.css",
+        "founders-cuims.css"
       ],
       "run_at": "document_start"
     },

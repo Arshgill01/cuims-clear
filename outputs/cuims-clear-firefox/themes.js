@@ -115,7 +115,9 @@
       // Founding 100: for everyone who had CUIMS Clear before 1.0. The
       // receipt's thermal paper, its graphite print, and gold foil where the
       // others have their accent. The stamp's red marks what needs attention.
-      id: "founders", name: "Founding 100", scheme: "light", founders: true,
+      // signature: changes more than colours (founders.css, founders-cuims.css,
+      // the LMS view and the toolbar icon read it).
+      id: "founders", name: "Founding 100", scheme: "light", founders: true, signature: "founders",
       canvas: "#ebe4d4", surface: "#f8f4ea", ink: "#23221f", muted: "#67625a", line: "#ddd4c2", lineStrong: "#b5aa94",
       accent: "#e2b84b", good: "#4d7c2a", warn: "#b5651d", bad: "#b4322a", brandBg: "#23221f", brandInk: "#f0c75e",
     },
@@ -307,6 +309,8 @@
     for (const [name, key] of Object.entries(POPUP_VARS)) documentElement.style.setProperty(name, t[key]);
     documentElement.style.setProperty("color-scheme", t.scheme);
     documentElement.dataset.theme = t.id;
+    if (t.signature) documentElement.dataset.signature = t.signature;
+    else delete documentElement.dataset.signature;
   }
 
   // The LMS clear view's own variables. The default keeps its original look,
@@ -324,9 +328,50 @@
 html[data-cc-theme].cc-lms-pending{background:${t.canvas} !important}`;
   }
 
+  // Founding 100's icon: the mark pressed as a round rubber stamp, red ink
+  // on receipt paper, a little crooked.
+  function drawStamp(size, t, Canvas) {
+    const canvas = new Canvas(size, size);
+    const ctx = canvas.getContext("2d");
+    const c = size / 2;
+    const ink = "#b4322a";
+    ctx.fillStyle = "#f6f0e2";
+    ctx.beginPath();
+    ctx.arc(c, c, c - 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = Math.max(1.4, size * 0.085);
+    ctx.beginPath();
+    ctx.arc(c, c, c - ctx.lineWidth / 2 - 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+    if (size >= 32) {
+      ctx.lineWidth = Math.max(1, size * 0.03);
+      ctx.beginPath();
+      ctx.arc(c, c, c * 0.68, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.rotate((8 * Math.PI) / 180);
+    ctx.fillStyle = ink;
+    const s = size / 96;
+    for (const [x1, x2, x3, x4] of [[-22, -6, 6, -10], [0, 16, 28, 12]]) {
+      ctx.beginPath();
+      ctx.moveTo(x1 * s * 0.92, 20 * s);
+      ctx.lineTo(x2 * s * 0.92, -20 * s);
+      ctx.lineTo(x3 * s * 0.92, -20 * s);
+      ctx.lineTo(x4 * s * 0.92, 20 * s);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    return ctx.getImageData(0, 0, size, size);
+  }
+
   // The toolbar icon: the "//" mark in the theme's brand colours.
   function drawIcon(size, id, Canvas = root.OffscreenCanvas) {
     const t = tokens(id);
+    if (t.signature === "founders") return drawStamp(size, t, Canvas);
     const canvas = new Canvas(size, size);
     const ctx = canvas.getContext("2d");
     const s = size / 96;

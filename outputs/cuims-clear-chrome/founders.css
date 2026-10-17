@@ -1,0 +1,223 @@
+/* ---- Founding 100 ----
+   The one theme that changes more than colour. Three things at once:
+   - the receipt: paper grain, Courier print, dashed tear lines, and states
+     pressed on as ink stamps;
+   - letterpress: titles in a book serif, gold foil on the figures that matter;
+   - a notebook: highlighter over what needs you, washi tape in subject colours.
+   Everything is scoped to html[data-signature="founders"] (themes.js sets it),
+   so every other theme is untouched. */
+
+html[data-signature="founders"] {
+  --f-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --f-mono: "Courier New", Courier, "Nimbus Mono PS", monospace;
+  --f-red: #b4322a;
+  --f-foil: linear-gradient(100deg, #6f4f10 0%, #a87d24 18%, #dcbb62 34%, #9c721c 50%, #caa449 68%, #7a5913 100%);
+  --f-foil-dark: linear-gradient(100deg, #b98c2e 0%, #f3d98a 30%, #c99a3a 52%, #f0d07a 74%, #b48628 100%);
+  --f-mark: rgb(240 199 94 / 55%);
+  --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32  0 0 0 0 .26  0 0 0 0 .16  0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --f-ink-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)'/%3E%3C/svg%3E");
+}
+
+/* Paper grain over everything, as on the receipt. */
+html[data-signature="founders"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background-image: var(--f-grain);
+  mix-blend-mode: multiply;
+}
+
+/* ---- letterpress ---- */
+
+html[data-signature="founders"] h1 {
+  font-family: var(--f-serif);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: transparent;
+  background: var(--f-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+html[data-signature="founders"] .course-title,
+html[data-signature="founders"] .overall-label,
+html[data-signature="founders"] .fc-subject-head strong,
+html[data-signature="founders"] .wrapped-headline,
+html[data-signature="founders"] .capsule-when,
+html[data-signature="founders"] .update-news-head h2 {
+  font-family: var(--f-serif);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+html[data-signature="founders"] .course-title {
+  font-size: 13.5px;
+}
+
+html[data-signature="founders"] .overall-label {
+  font-size: 15px;
+}
+
+html[data-signature="founders"] .course-pct,
+html[data-signature="founders"] .overall-pct {
+  font-family: var(--f-serif);
+  font-weight: 700;
+}
+
+html[data-signature="founders"] .overall-pct {
+  font-size: 19px;
+}
+
+/* Gold foil on the figures that matter, on the dark hero cards. */
+html[data-signature="founders"] .fc-big {
+  font-family: var(--f-serif);
+  color: transparent;
+  background: var(--f-foil-dark);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+html[data-signature="founders"] .fc-big .fc-unit,
+html[data-signature="founders"] .fc-big .fc-approx {
+  color: transparent;
+}
+
+/* ---- receipt print ---- */
+
+html[data-signature="founders"] .eyebrow,
+html[data-signature="founders"] .section-label,
+html[data-signature="founders"] .fc-eyebrow,
+html[data-signature="founders"] .rail-tabs button,
+html[data-signature="founders"] .counts,
+html[data-signature="founders"] .chip,
+html[data-signature="founders"] .goal button,
+html[data-signature="founders"] .version {
+  font-family: var(--f-mono);
+  font-weight: 700;
+}
+
+html[data-signature="founders"] .eyebrow,
+html[data-signature="founders"] .section-label,
+html[data-signature="founders"] .fc-eyebrow {
+  letter-spacing: 0.08em;
+}
+
+html[data-signature="founders"] .rail-tabs button {
+  font-size: 10.5px;
+  letter-spacing: 0;
+}
+
+html[data-signature="founders"] .open-link {
+  font-family: var(--f-mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  /* Letterpress: pressed into the paper. */
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 14%), inset 0 1px 0 rgb(255 255 255 / 45%);
+}
+
+/* Cards are slips of the same paper: square-ish corners, a tear line
+   between rows instead of a box round each. */
+html[data-signature="founders"] .course,
+html[data-signature="founders"] .summary,
+html[data-signature="founders"] .fc-card,
+html[data-signature="founders"] .club-card,
+html[data-signature="founders"] .goal,
+html[data-signature="founders"] .overall {
+  border-radius: 4px;
+}
+
+html[data-signature="founders"] .course-list {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+html[data-signature="founders"] .course {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-signature="founders"] .course + .course {
+  border-top: 2px dashed var(--line);
+}
+
+/* ---- ink stamps ---- */
+
+/* The tab you are on is stamped, not filled. */
+html[data-signature="founders"] .rail-tabs button[aria-selected="true"] svg {
+  color: var(--f-red);
+  background: transparent;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.6px var(--f-red), 0 0 0 2px var(--surface), 0 0 0 3.2px color-mix(in srgb, var(--f-red) 55%, transparent);
+  transform: rotate(-8deg);
+  -webkit-mask: var(--f-ink-edge);
+  mask: var(--f-ink-edge);
+}
+
+html[data-signature="founders"] .rail-tabs button[aria-selected="true"] {
+  color: var(--f-red);
+}
+
+/* Small states are pressed on: Courier caps in an inked box, a little crooked. */
+html[data-signature="founders"] .chip,
+html[data-signature="founders"] .tag-vdl,
+html[data-signature="founders"] .fc-pill,
+html[data-signature="founders"] .fc-class-now {
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transform: rotate(-2deg);
+  -webkit-mask: var(--f-ink-edge);
+  mask: var(--f-ink-edge);
+}
+
+/* ---- notebook ---- */
+
+/* Highlighter over what needs you. */
+html[data-signature="founders"] .line.is-low,
+html[data-signature="founders"] .line.is-risk,
+html[data-signature="founders"] .tone-low .course-title {
+  padding: 0 2px;
+  background: linear-gradient(transparent 52%, var(--f-mark) 52%, var(--f-mark) 92%, transparent 92%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Washi tape on the overall card. */
+html[data-signature="founders"] .overall::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 54px;
+  height: 14px;
+  margin-left: -27px;
+  background: repeating-linear-gradient(45deg, rgb(226 184 75 / 55%) 0 6px, rgb(226 184 75 / 40%) 6px 12px);
+  transform: rotate(-3deg);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 6%);
+}
+
+html[data-signature="founders"] .overall {
+  position: relative;
+}
+
+/* The mark itself is the founders' stamp, as on the toolbar. */
+html[data-signature="founders"] .rail .mark,
+html[data-signature="founders"] .mark {
+  border-radius: 50%;
+  color: var(--f-red);
+  background: #f6f0e2;
+  box-shadow: inset 0 0 0 2.4px var(--f-red), inset 0 0 0 5px #f6f0e2, inset 0 0 0 6px color-mix(in srgb, var(--f-red) 70%, transparent);
+  transform: rotate(-6deg);
+  -webkit-mask: var(--f-ink-edge);
+  mask: var(--f-ink-edge);
+}

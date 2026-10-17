@@ -1,0 +1,231 @@
+/* ---- Founding 100 on CUIMS ----
+   The receipt, letterpress and notebook of founders.css, on the portal.
+   cuims-theme.js sets html[data-cc-signature="founders"] only while that
+   theme restyles CUIMS, so every other theme (and the switch off) is
+   untouched. Our own components get the full treatment; CUIMS's pages get
+   the paper, the serif titles and Courier table heads. */
+
+html[data-cc-signature="founders"] {
+  --f-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --f-mono: "Courier New", Courier, "Nimbus Mono PS", monospace;
+  --f-red: #b4322a;
+  --f-foil: linear-gradient(100deg, #6f4f10 0%, #a87d24 18%, #dcbb62 34%, #9c721c 50%, #caa449 68%, #7a5913 100%);
+  --f-mark: rgb(240 199 94 / 55%);
+  --f-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .32  0 0 0 0 .26  0 0 0 0 .16  0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --f-ink-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60'%3E%3Cfilter id='r'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 2.1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23r)'/%3E%3C/svg%3E");
+  --f-torn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='10' preserveAspectRatio='none'%3E%3Cpath d='M0 0H24V4L22 7L19 4L16 8L13 5L10 9L7 5L4 8L1 5L0 6Z'/%3E%3C/svg%3E");
+}
+
+/* The whole portal on receipt paper. */
+html[data-cc-signature="founders"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  background-image: var(--f-grain);
+  mix-blend-mode: multiply;
+}
+
+/* CUIMS's own page titles and table heads. */
+html[data-cc-signature="founders"] .inner-wrapper .form_header,
+html[data-cc-signature="founders"] .inner-wrapper h1,
+html[data-cc-signature="founders"] .inner-wrapper h2.page-title {
+  font-family: var(--f-serif) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+html[data-cc-signature="founders"] .inner-wrapper .form_header {
+  font-size: 27px !important;
+  border-bottom: 2px dashed var(--cc-line) !important;
+}
+
+html[data-cc-signature="founders"] .inner-wrapper table.table th {
+  font-family: var(--f-mono) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em;
+}
+
+/* ---- our components ---- */
+
+html[data-cc-signature="founders"] [data-cc-own] {
+  --o-display: var(--f-serif);
+}
+
+/* Titles in the book serif. */
+html[data-cc-signature="founders"] .cc-hero-title,
+html[data-cc-signature="founders"] .cc-ds-name,
+html[data-cc-signature="founders"] .cc-tt-week-title b,
+html[data-cc-signature="founders"] .cc-ds-head b,
+html[data-cc-signature="founders"] .cc-mk-subject-name b,
+html[data-cc-signature="founders"] .cc-mk-notes dd b {
+  font-family: var(--f-serif);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+html[data-cc-signature="founders"] .cc-hero-title {
+  font-size: 31px;
+}
+
+/* Labels, times and counts in receipt print. */
+html[data-cc-signature="founders"] .cc-hero-label,
+html[data-cc-signature="founders"] .cc-hero-clock-label,
+html[data-cc-signature="founders"] .cc-hero-meta b,
+html[data-cc-signature="founders"] .cc-stop-time,
+html[data-cc-signature="founders"] .cc-stop-gap span,
+html[data-cc-signature="founders"] .cc-tt-grid thead th,
+html[data-cc-signature="founders"] .cc-tt-start,
+html[data-cc-signature="founders"] .cc-tt-end,
+html[data-cc-signature="founders"] .cc-class-room,
+html[data-cc-signature="founders"] .cc-class-kind,
+html[data-cc-signature="founders"] .cc-tt-week-title span,
+html[data-cc-signature="founders"] .cc-ds-count,
+html[data-cc-signature="founders"] .cc-ds-day,
+html[data-cc-signature="founders"] .cc-ds-month,
+html[data-cc-signature="founders"] .cc-ds-run-head,
+html[data-cc-signature="founders"] .cc-mk-label,
+html[data-cc-signature="founders"] .cc-mk-notes dt,
+html[data-cc-signature="founders"] .cc-mk-subject-name span,
+html[data-cc-signature="founders"] .cc-score,
+html[data-cc-signature="founders"] .cc-hero-action {
+  font-family: var(--f-mono);
+  font-weight: 700;
+}
+
+html[data-cc-signature="founders"] .cc-hero-action {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 14%), inset 0 1px 0 rgb(255 255 255 / 45%);
+}
+
+/* Gold foil on the figures that matter. */
+html[data-cc-signature="founders"] .cc-hero-clock b,
+html[data-cc-signature="founders"] .cc-ds-exam.is-lead .cc-ds-date,
+html[data-cc-signature="founders"] .cc-mk-big b {
+  font-family: var(--f-serif);
+  color: transparent;
+  background: var(--f-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* The hero is a receipt slip: paper, square corners, a torn bottom edge,
+   a strip of tape in the subject's colour holding it on. */
+html[data-cc-signature="founders"] .cc-tt-hero {
+  border-radius: 3px 3px 0 0;
+  background: var(--o-surface);
+  box-shadow: inset 0 0 0 1px var(--o-line);
+  padding-bottom: 28px;
+  -webkit-mask: linear-gradient(#000, #000) top / 100% calc(100% - 9px) no-repeat, var(--f-torn) bottom / 24px 10px repeat-x;
+  mask: linear-gradient(#000, #000) top / 100% calc(100% - 9px) no-repeat, var(--f-torn) bottom / 24px 10px repeat-x;
+  overflow: visible;
+}
+
+html[data-cc-signature="founders"] .cc-tt-hero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 120px;
+  width: 92px;
+  height: 18px;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--cc-hue, #e2b84b) 46%, transparent) 0 7px, color-mix(in srgb, var(--cc-hue, #e2b84b) 32%, transparent) 7px 14px);
+  transform: rotate(-2.5deg);
+}
+
+html[data-cc-signature="founders"] .cc-hero-label {
+  color: var(--f-red);
+}
+
+html[data-cc-signature="founders"] .cc-hero-dot {
+  background: var(--f-red);
+}
+
+/* Highlighter over the room you are heading to. */
+html[data-cc-signature="founders"] .cc-hero-meta b {
+  padding: 0 3px;
+  background: linear-gradient(transparent 50%, var(--f-mark) 50%, var(--f-mark) 92%, transparent 92%);
+}
+
+html[data-cc-signature="founders"] .cc-line,
+html[data-cc-signature="founders"] .cc-tt-week-head {
+  border-top-style: dashed;
+  border-bottom-style: dashed;
+  border-width: 2px;
+}
+
+/* Stops are punched holes on the line. */
+html[data-cc-signature="founders"] .cc-stop-dot {
+  border-width: 2px;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 22%);
+}
+
+html[data-cc-signature="founders"] .cc-stop.is-now .cc-stop-dot {
+  background: var(--f-red);
+  border-color: var(--f-red);
+  box-shadow: 0 0 0 4px rgb(180 50 42 / 18%);
+}
+
+html[data-cc-signature="founders"] .cc-stop.is-next .cc-stop-name {
+  background: linear-gradient(transparent 50%, var(--f-mark) 50%, var(--f-mark) 92%, transparent 92%);
+}
+
+/* The week: paper cards with a strip of tape in the subject's colour. */
+html[data-cc-signature="founders"] .cc-tt-week {
+  border-radius: 3px;
+}
+
+html[data-cc-signature="founders"] .cc-tt-grid thead th.is-today .cc-tt-date {
+  color: var(--f-red);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.6px var(--f-red);
+  transform: rotate(-6deg);
+}
+
+html[data-cc-signature="founders"] .cc-class {
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--o-surface);
+  box-shadow: 0 1px 0 var(--o-line), 0 0 0 1px var(--o-line);
+}
+
+html[data-cc-signature="founders"] .cc-class::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  width: 46px;
+  height: 12px;
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--cc-hue) 55%, transparent) 0 5px, color-mix(in srgb, var(--cc-hue) 38%, transparent) 5px 10px);
+  transform: rotate(-3deg);
+}
+
+html[data-cc-signature="founders"] .cc-class:nth-of-type(even)::before {
+  left: auto;
+  right: 12px;
+  transform: rotate(2.5deg);
+}
+
+html[data-cc-signature="founders"] .cc-class-title {
+  font-family: var(--f-serif);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+/* "Now" is stamped on. */
+html[data-cc-signature="founders"] .cc-class-now {
+  color: var(--f-red);
+  background: transparent;
+  border: 1.5px solid var(--f-red);
+  border-radius: 3px;
+  font-family: var(--f-mono);
+  transform: rotate(-4deg);
+  -webkit-mask: var(--f-ink-edge);
+  mask: var(--f-ink-edge);
+}
+
+html[data-cc-signature="founders"] .cc-class.is-now {
+  box-shadow: 0 0 0 1.5px var(--f-red), 0 3px 0 rgb(180 50 42 / 12%);
+}

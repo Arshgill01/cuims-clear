@@ -602,6 +602,9 @@ input::placeholder,textarea::placeholder{color:${t.muted} !important;opacity:1}`
     unwatch();
     unpaintRoots();
     theme = next;
+    // A theme that changes more than colours (founders-cuims.css).
+    if (next?.signature) document.documentElement.dataset.ccSignature = next.signature;
+    else delete document.documentElement.dataset.ccSignature;
     if (!next) {
       style?.remove();
       release("paint");
