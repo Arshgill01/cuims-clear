@@ -15,5 +15,5 @@ No new dependencies, permissions or services are planned. Existing source remain
 checkout; main's public privacy-policy URL must reflect 1.0 before store review.
 
 Completed: see TESTING-1.0.0.md for exact commands, results, checksums and remaining
-manual publication checks. ZIP/source parity and all automated gates passed. Main
-merge/push and store submission remain with the publisher; no leave feature work added.
+manual publication checks. ZIP/source parity and all automated gates passed. The release was committed as `833483f` and fast-forwarded into main. Store
+submission remains with the publisher; no leave feature work added.

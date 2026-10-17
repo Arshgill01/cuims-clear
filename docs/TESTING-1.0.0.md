@@ -2,7 +2,9 @@
 
 Prepared in `/Users/arshdeepsingh/Developer/cuims-clear-1.0`, branch
 `feat/1.0-celebration`, based on `0c19d7b` plus the pending release-preparation edits.
-No store publishing, main merge, push, or authenticated CUIMS activity was performed.
+No store publishing or authenticated CUIMS activity was performed during validation.
+Integration: the prepared release was committed as `833483f` and fast-forwarded into
+main on 17 October 2026; the updated privacy policies are included in main.
 The deferred leave feature work is not included; the existing Duty Leave External-tab
 compatibility fix is retained.
 
@@ -43,16 +45,13 @@ The update harnesses now derive a future version from the package instead of see
 
 ## Remaining publication checks
 
-1. Merge/push the reviewed 1.0 branch so the public privacy-policy URL used by the
-   store listings contains the new 1.0 disclosures. Main is still 0.10.6. The ZIPs
-   already contain the updated policies.
-2. With your account, do one ordinary login, Attendance/Forecast refresh, LMS opening,
+1. With your account, do one ordinary login, Attendance/Forecast refresh, LMS opening,
    and timetable/date-sheet/marks check in each browser. Automated coverage uses
    mocked portal data, except the public login/update pages; no authenticated live
    check was performed during this release preparation. Import one generated ICS
    into your calendar if you want to verify app-specific behavior.
-3. Submit the ZIP for the matching store, using store/RELEASE-NOTES-1.0.0.md and
+2. Submit the ZIP for the matching store, using store/RELEASE-NOTES-1.0.0.md and
    store/chrome/listing.md; AMO reviewer copy is in the Firefox amo-metadata.json.
-4. After approval, verify an actual signed 0.10.x → 1.0.0 update preserves saved
+3. After approval, verify an actual signed 0.10.x → 1.0.0 update preserves saved
    login and unlocks founder themes. A fresh install must keep those themes locked.
    Store-delivered installation/restart cannot be proven with an unpacked build.

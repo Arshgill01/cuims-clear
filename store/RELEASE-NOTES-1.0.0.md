@@ -5,8 +5,8 @@ Packages (built from feat/1.0-celebration):
 - Firefox Add-ons: `outputs/dist/cuims-clear-firefox-1.0.0.zip`
 
 No new permissions or hosts since 0.10.6 (Chrome: `storage`, `tabs`; Firefox: `storage`, `activeTab`; both: `students.cuchd.in`, `lms.cuchd.in`).
-The privacy policy the listings link to (`main`'s `outputs/cuims-clear-chrome/PRIVACY.md`)
-must be pushed before review.
+The updated privacy policy is included in main at
+`outputs/cuims-clear-chrome/PRIVACY.md`, the path used by the store listing.
 
 ## Short version (for a post or the store's "what's new")
 
@@ -77,7 +77,7 @@ Both ZIPs were rebuilt and checked byte for byte against source. The full test s
 passed 367/367 with both browsers enabled; update, UX, Forecast and 1.0-tab checks
 passed in Chrome and Firefox. Checksums: `outputs/dist/SHA256SUMS-1.0.0.txt`.
 
-Before submitting, merge/push the 1.0 branch so the listings' public privacy-policy URL
-on main has these disclosures. Run the ordinary live-account checks listed in the
+The 1.0 release has been merged into main, including the public privacy-policy
+disclosures. Run the ordinary live-account checks listed in the
 testing document; signed store upgrades remain a post-approval check. No store
 submission or publishing was performed here.
