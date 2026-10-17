@@ -16,12 +16,14 @@ const T = loadThemes();
 const IDS = T.list.map((entry) => entry.id);
 
 test("the themes are the default plus a varied Omarchy set, with no near-duplicate whites", () => {
-  assert.deepEqual([...IDS], ["clear", "tokyo-night", "catppuccin", "gruvbox", "everforest", "kanagawa", "nord", "osaka-jade", "retro-82", "matte-black", "solitude", "ristretto", "ethereal", "lumon", "hackerman", "last-horizon", "miasma", "founders", "catppuccin-latte", "flexoki-light", "rose-pine"]);
+  assert.deepEqual([...IDS], ["clear", "tokyo-night", "catppuccin", "gruvbox", "everforest", "kanagawa", "nord", "osaka-jade", "retro-82", "matte-black", "solitude", "ristretto", "ethereal", "lumon", "hackerman", "last-horizon", "miasma", "founders", "founders-blueprint", "catppuccin-latte", "flexoki-light", "rose-pine"]);
   assert.equal(T.list.filter((entry) => entry.scheme === "light" && !entry.founders).length, 4);
 });
 
-test("Founding 100 is one founders-only light theme, and the picker locks it for everyone else", () => {
-  assert.equal(JSON.stringify(T.list.filter((entry) => entry.founders).map((entry) => [entry.id, entry.scheme])), JSON.stringify([["founders", "light"]]));
+test("Founding 100 is two founders-only themes, paper and blueprint, and the picker locks them for everyone else", () => {
+  assert.equal(JSON.stringify(T.list.filter((entry) => entry.founders).map((entry) => [entry.id, entry.scheme])), JSON.stringify([["founders", "light"], ["founders-blueprint", "dark"]]));
+  assert.equal(T.tokens("founders").signature, "founders");
+  assert.equal(T.tokens("founders-blueprint").signature, "blueprint");
   const popup = readFileSync(new URL("../outputs/cuims-clear-firefox/popup.js", import.meta.url), "utf8");
   assert.match(popup, /const locked = entry\.founders && !isFounder;/);
   assert.match(popup, /isFounder = stored\.founding\?\.founder === true;/);
@@ -213,4 +215,18 @@ test("the default theme leaves CUIMS exactly as it is", () => {
   assert.match(source, /id !== themes\.DEFAULT/);
   const manifest = JSON.parse(read("manifest.json"));
   assert.deepEqual(manifest.content_scripts[0].js, ["captcha-glyphs.js", "captcha-solver.js", "themes.js", "cuims-theme.js", "ledger.js", "content.js"]);
+});
+
+test("only the founders' themes mark the page with a signature, and switching away clears it", () => {
+  const el = { style: { setProperty() {} }, dataset: {} };
+  T.applyToPopup(el, "founders");
+  assert.equal(el.dataset.signature, "founders");
+  T.applyToPopup(el, "founders-blueprint");
+  assert.equal(el.dataset.signature, "blueprint");
+  T.applyToPopup(el, "clear");
+  assert.equal("signature" in el.dataset, false);
+  const theme = readFileSync(new URL("../outputs/cuims-clear-firefox/cuims-theme.js", import.meta.url), "utf8");
+  assert.match(theme, /dataset\.ccSignature = next\.signature/);
+  const lms = readFileSync(new URL("../outputs/cuims-clear-firefox/lms-boot.js", import.meta.url), "utf8");
+  assert.match(lms, /root\.dataset\.ccSignature = signature/);
 });

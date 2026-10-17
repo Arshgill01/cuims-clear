@@ -121,7 +121,8 @@ test('Firefox and Chrome include the same LMS implementation and narrow host acc
     assert.deepEqual(manifest.host_permissions, ['https://students.cuchd.in/*', 'https://lms.cuchd.in/*']);
     const boot = manifest.content_scripts.find((s) => s.js?.includes("lms-boot.js"));
     assert.equal(boot.run_at, "document_start");
-    assert.deepEqual(boot.css, ["lms.css"]);
+    // Founding 100's ledger styles ride along; they only apply under its signature.
+    assert.deepEqual(boot.css, ["lms.css", "founders-lms.css"]);
     assert.deepEqual(boot.js, ["themes.js", "lms-boot.js", "lms-model.js", "lms.js"]);
     assert.equal(manifest.content_scripts.filter((s) => s.js?.includes("lms.js")).length, 1);
     const wrap = manifest.content_scripts.find((s) => s.js?.includes("lms-open-wrap.js"));

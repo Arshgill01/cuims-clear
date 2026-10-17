@@ -122,6 +122,13 @@
       accent: "#e2b84b", good: "#4d7c2a", warn: "#b5651d", bad: "#b4322a", brandBg: "#23221f", brandInk: "#f0c75e",
     },
     {
+      // Founding 100, after dark: the plans CUIMS Clear was drawn from. A
+      // cyanotype sheet, white linework, red-pencil corrections.
+      id: "founders-blueprint", name: "Blueprint", scheme: "dark", founders: true, signature: "blueprint",
+      canvas: "#0d2846", surface: "#123358", ink: "#eaf1f8", muted: "#a3bad2", line: "#2b5480", lineStrong: "#5a83ad",
+      accent: "#eaf1f8", good: "#8fe0b0", warn: "#ffd27a", bad: "#ff7f6e", brandBg: "#0a2240", brandInk: "#eaf1f8",
+    },
+    {
       id: "catppuccin-latte", name: "Catppuccin Latte", scheme: "light",
       canvas: "#eff1f5", surface: "#ffffff", ink: "#4c4f69", muted: "#6c6f85", line: "#ccd0da", lineStrong: "#acb0be",
       accent: "#1e66f5", good: "#40a02b", warn: "#df8e1d", bad: "#d20f39", brandBg: "#4c4f69", brandInk: "#eff1f5",
@@ -330,12 +337,11 @@ html[data-cc-theme].cc-lms-pending{background:${t.canvas} !important}`;
 
   // Founding 100's icon: the mark pressed as a round rubber stamp, red ink
   // on receipt paper, a little crooked.
-  function drawStamp(size, t, Canvas) {
+  function drawStamp(size, t, Canvas, { paper = "#f6f0e2", ink = "#b4322a" } = {}) {
     const canvas = new Canvas(size, size);
     const ctx = canvas.getContext("2d");
     const c = size / 2;
-    const ink = "#b4322a";
-    ctx.fillStyle = "#f6f0e2";
+    ctx.fillStyle = paper;
     ctx.beginPath();
     ctx.arc(c, c, c - 0.5, 0, Math.PI * 2);
     ctx.fill();
@@ -372,6 +378,7 @@ html[data-cc-theme].cc-lms-pending{background:${t.canvas} !important}`;
   function drawIcon(size, id, Canvas = root.OffscreenCanvas) {
     const t = tokens(id);
     if (t.signature === "founders") return drawStamp(size, t, Canvas);
+    if (t.signature === "blueprint") return drawStamp(size, t, Canvas, { paper: "#0f2f52", ink: "#eaf1f8" });
     const canvas = new Canvas(size, size);
     const ctx = canvas.getContext("2d");
     const s = size / 96;

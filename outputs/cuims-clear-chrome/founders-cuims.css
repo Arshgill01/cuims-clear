@@ -229,3 +229,490 @@ html[data-cc-signature="founders"] .cc-class-now {
 html[data-cc-signature="founders"] .cc-class.is-now {
   box-shadow: 0 0 0 1.5px var(--f-red), 0 3px 0 rgb(180 50 42 / 12%);
 }
+
+/* ---- Datesheet ---- */
+
+html[data-cc-signature="founders"] .cc-ds-exam {
+  border-radius: 3px;
+}
+
+html[data-cc-signature="founders"] .cc-ds-when {
+  border-radius: 0 3px 3px 0;
+}
+
+html[data-cc-signature="founders"] .cc-ds-date {
+  font-family: var(--f-serif);
+}
+
+/* Today and tomorrow are stamped on. */
+html[data-cc-signature="founders"] .cc-ds-exam.is-soon .cc-ds-count {
+  justify-self: start;
+  padding: 2px 6px 1px;
+  border: 1.5px solid var(--f-red);
+  border-radius: 3px;
+  color: var(--f-red);
+  transform: rotate(-2.5deg);
+  -webkit-mask: var(--f-ink-edge);
+  mask: var(--f-ink-edge);
+}
+
+html[data-cc-signature="founders"] .cc-ds-exam.is-lead {
+  overflow: visible;
+}
+
+html[data-cc-signature="founders"] .cc-ds-exam.is-lead::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 30%;
+  width: 84px;
+  height: 16px;
+  background: repeating-linear-gradient(45deg, rgb(226 184 75 / 50%) 0 7px, rgb(226 184 75 / 34%) 7px 14px);
+  transform: rotate(-2deg);
+}
+
+html[data-cc-signature="founders"] .cc-ds-run,
+html[data-cc-signature="founders"] .cc-mk-hero,
+html[data-cc-signature="founders"] .cc-mk-subject {
+  border-radius: 3px;
+}
+
+html[data-cc-signature="founders"] .cc-ds-run-list b {
+  font-family: var(--f-serif);
+  font-size: 13px;
+}
+
+html[data-cc-signature="founders"] .is-done > .cc-ds-run-dot {
+  border-color: var(--f-red);
+  background: var(--f-red);
+}
+
+html[data-cc-signature="founders"] .cc-ds-run-list li.is-done::before {
+  background: var(--f-red);
+}
+
+/* ---- Marks ---- */
+
+@media (min-width: 761px) {
+  html[data-cc-signature="founders"] .cc-mk-notes > div {
+    border-left-style: dashed;
+    border-left-width: 2px;
+  }
+}
+
+@media (max-width: 760px) {
+  html[data-cc-signature="founders"] .cc-mk-notes > div {
+    border-top-style: dashed;
+  }
+}
+
+html[data-cc-signature="founders"] .cc-mk-meter i {
+  background: var(--f-red);
+}
+
+html[data-cc-signature="founders"] .cc-mk-subject-pct {
+  font-family: var(--f-serif);
+}
+
+html[data-cc-signature="founders"] .cc-mk-subject {
+  position: relative;
+  overflow: visible;
+}
+
+html[data-cc-signature="founders"] .cc-mk-subject::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 14px;
+  width: 40px;
+  height: 11px;
+  background: repeating-linear-gradient(45deg, rgb(226 184 75 / 50%) 0 5px, rgb(226 184 75 / 34%) 5px 10px);
+  transform: rotate(-3deg);
+}
+
+html[data-cc-signature="founders"] .cc-mk-subject:nth-child(even)::before {
+  left: auto;
+  right: 16px;
+  transform: rotate(2.5deg);
+}
+
+/* A subject below the line gets the highlighter. */
+html[data-cc-signature="founders"] .cc-mk-subject[data-band="low"] .cc-mk-subject-name b {
+  align-self: start;
+  padding: 0 2px;
+  background: linear-gradient(transparent 50%, var(--f-mark) 50%, var(--f-mark) 92%, transparent 92%);
+}
+
+html[data-cc-signature="founders"] #accordion > h3.ui-accordion-header {
+  font-family: var(--f-serif) !important;
+  font-weight: 700 !important;
+  border-radius: 3px !important;
+}
+
+/* Each subject's total is stamped on its header. */
+html[data-cc-signature="founders"] .cc-score {
+  border: 1.5px solid currentColor !important;
+  border-radius: 3px;
+  background: transparent !important;
+  transform: rotate(-2deg);
+  -webkit-mask: var(--f-ink-edge);
+  mask: var(--f-ink-edge);
+}
+
+/* ---- the portal around them ---- */
+
+/* Where you are, in the sidebar: highlighted, as in a notebook. */
+html[data-cc-signature="founders"] #menu-content a.cc-here {
+  background: linear-gradient(transparent 55%, var(--f-mark) 55%, var(--f-mark) 90%, transparent 90%) !important;
+}
+
+html[data-cc-signature="founders"] .inner-wrapper #short_links .shortLinks__item > a h6 {
+  font-family: var(--f-mono) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em;
+}
+
+/* ---- Founding 100 · Blueprint on CUIMS ----
+   The cyanotype sheet: drafting grid, white linework, technical lettering,
+   hollow numerals, dimension lines for free time, red-pencil revision
+   clouds round what is on now. */
+
+html[data-cc-signature="blueprint"] {
+  --b-tech: "DIN Condensed", "DIN Alternate", "Bahnschrift SemiCondensed", Bahnschrift, "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  --b-red: #ff7f6e;
+  --b-line: rgb(234 241 248 / 50%);
+  --b-faint: rgb(234 241 248 / 22%);
+  --b-tape: rgb(226 214 184 / 72%);
+  --b-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' fill='none' stroke='%23ff7f6e' stroke-width='1.7'%3E%3Cpath d='M0 6 a5 5 0 0 1 10 0 a5 5 0 0 1 10 0 a5 5 0 0 1 10 0 M24 0 a5 5 0 0 1 0 10 a5 5 0 0 1 0 10 a5 5 0 0 1 0 10 M30 24 a5 5 0 0 1 -10 0 a5 5 0 0 1 -10 0 a5 5 0 0 1 -10 0 M6 30 a5 5 0 0 1 0 -10 a5 5 0 0 1 0 -10 a5 5 0 0 1 0 -10'/%3E%3C/svg%3E");
+  --b-ring: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke='%23ff7f6e' stroke-width='1.6'%3E%3Cpath d='M16.00 3.80 A3.96 3.96 0 0 1 23.17 6.13 A3.96 3.96 0 0 1 27.60 12.23 A3.96 3.96 0 0 1 27.60 19.77 A3.96 3.96 0 0 1 23.17 25.87 A3.96 3.96 0 0 1 16.00 28.20 A3.96 3.96 0 0 1 8.83 25.87 A3.96 3.96 0 0 1 4.40 19.77 A3.96 3.96 0 0 1 4.40 12.23 A3.96 3.96 0 0 1 8.83 6.13 A3.96 3.96 0 0 1 16.00 3.80 Z'/%3E%3C/svg%3E");
+  --b-crop: linear-gradient(var(--b-line), var(--b-line)) left top / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) left top / 1px 12px,
+    linear-gradient(var(--b-line), var(--b-line)) right top / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) right top / 1px 12px,
+    linear-gradient(var(--b-line), var(--b-line)) left bottom / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) left bottom / 1px 12px,
+    linear-gradient(var(--b-line), var(--b-line)) right bottom / 12px 1px, linear-gradient(var(--b-line), var(--b-line)) right bottom / 1px 12px;
+  --b-hatch: repeating-linear-gradient(135deg, rgb(234 241 248 / 85%) 0 1.4px, transparent 1.4px 4px);
+}
+
+html[data-cc-signature="blueprint"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at 15% 0%, rgb(255 255 255 / 5%), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgb(0 0 0 / 22%), transparent 60%),
+    linear-gradient(rgb(234 241 248 / 6%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 241 248 / 6%) 1px, transparent 1px),
+    linear-gradient(rgb(234 241 248 / 3%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 241 248 / 3%) 1px, transparent 1px);
+  background-size: auto, auto, 60px 60px, 60px 60px, 12px 12px, 12px 12px;
+}
+
+html[data-cc-signature="blueprint"] .inner-wrapper .form_header {
+  font-family: var(--b-tech) !important;
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.1em !important;
+  text-transform: uppercase;
+}
+
+html[data-cc-signature="blueprint"] .inner-wrapper table.table th,
+html[data-cc-signature="blueprint"] .inner-wrapper #short_links .shortLinks__item > a h6 {
+  font-family: var(--b-tech) !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Lettering. */
+html[data-cc-signature="blueprint"] :is(.cc-hero-title, .cc-hero-label, .cc-hero-clock, .cc-hero-meta b, .cc-stop-time, .cc-stop-name, .cc-stop-gap span, .cc-tt-week-title, .cc-tt-grid thead th, .cc-tt-start, .cc-tt-end, .cc-class-title, .cc-class-room, .cc-class-kind, .cc-ds-head b, .cc-ds-name, .cc-ds-count, .cc-ds-when, .cc-ds-run-head, .cc-ds-run-list b, .cc-mk-label, .cc-mk-big, .cc-mk-notes dt, .cc-mk-notes dd b, .cc-mk-subject-name b, .cc-mk-subject-pct, .cc-score, .cc-hero-action) {
+  font-family: var(--b-tech);
+  letter-spacing: 0.04em;
+}
+
+html[data-cc-signature="blueprint"] :is(.cc-hero-label, .cc-hero-clock-label, .cc-tt-week-title b, .cc-ds-head b, .cc-ds-count, .cc-mk-label, .cc-mk-notes dt, .cc-hero-action, .cc-tt-grid thead th) {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+html[data-cc-signature="blueprint"] .cc-hero-title {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* Hollow numerals. */
+html[data-cc-signature="blueprint"] :is(.cc-hero-clock b, .cc-ds-exam.is-lead .cc-ds-date, .cc-mk-big b) {
+  color: transparent;
+  -webkit-text-stroke: 1.3px var(--o-ink);
+  letter-spacing: 0.03em;
+}
+
+html[data-cc-signature="blueprint"] .cc-hero-clock b {
+  font-size: 44px;
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-big b {
+  font-size: 64px;
+}
+
+/* Every card is linework on the sheet, with crop marks. */
+html[data-cc-signature="blueprint"] :is(.cc-tt-hero, .cc-tt-week, .cc-ds-run, .cc-mk-hero, .cc-mk-subject) {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--b-line);
+}
+
+html[data-cc-signature="blueprint"] :is(.cc-tt-hero, .cc-mk-hero)::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  background: var(--b-crop);
+  background-repeat: no-repeat;
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-hero {
+  position: relative;
+}
+
+/* The timetable hero is a sheet with its own title block. */
+html[data-cc-signature="blueprint"] .cc-tt-hero {
+  overflow: visible;
+  padding-bottom: 44px;
+}
+
+html[data-cc-signature="blueprint"] .cc-tt-hero[data-sheet]::before {
+  content: "SHEET  " attr(data-sheet) "   ·   DRAWN BY CUIMS CLEAR   ·   SCALE 1:1";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 5px 12px;
+  border-top: 1px solid var(--b-line);
+  border-left: 1px solid var(--b-line);
+  color: var(--o-muted);
+  font: 700 11px/1.2 var(--b-tech);
+  letter-spacing: 0.12em;
+  white-space: pre;
+}
+
+html[data-cc-signature="blueprint"] .cc-hero-label {
+  color: var(--b-red);
+}
+
+html[data-cc-signature="blueprint"] .cc-hero-dot {
+  background: var(--b-red);
+}
+
+html[data-cc-signature="blueprint"] .cc-hero-meta b {
+  text-decoration: underline wavy var(--b-red) 1.3px;
+  text-underline-offset: 4px;
+}
+
+/* The day: stops are ticks on a dimension line; free time is a dimension. */
+html[data-cc-signature="blueprint"] .cc-line {
+  border-top: 1px dashed var(--b-faint);
+}
+
+html[data-cc-signature="blueprint"] :is(.cc-stop, .cc-stop-gap)::before {
+  height: 1px;
+  top: 6px;
+  background: var(--b-line);
+}
+
+html[data-cc-signature="blueprint"] .cc-stop-dot {
+  width: 2px;
+  height: 14px;
+  margin: -1px 0 6px 5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--o-ink);
+  box-shadow: none;
+}
+
+html[data-cc-signature="blueprint"] .cc-stop.is-past .cc-stop-dot {
+  background: var(--b-faint);
+}
+
+html[data-cc-signature="blueprint"] .cc-stop.is-now .cc-stop-dot {
+  width: 22px;
+  height: 22px;
+  margin: -5px 0 0 -5px;
+  background: var(--b-ring) center / 100% 100% no-repeat;
+}
+
+html[data-cc-signature="blueprint"] .cc-stop-gap span {
+  background: var(--o-surface);
+  box-shadow: none;
+  border-radius: 0;
+  color: var(--o-ink);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+html[data-cc-signature="blueprint"] .cc-stop-gap span::before {
+  content: "\25C2  ";
+}
+
+html[data-cc-signature="blueprint"] .cc-stop-gap span::after {
+  content: "  \25B8";
+}
+
+/* The week: linework cards, a colour key per subject, a cloud round now. */
+html[data-cc-signature="blueprint"] .cc-tt-week-head {
+  border-bottom: 1px solid var(--b-line);
+}
+
+html[data-cc-signature="blueprint"] .cc-class {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--cc-hue), inset 0 0 0 1px var(--b-faint);
+}
+
+html[data-cc-signature="blueprint"] .cc-class-title {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+html[data-cc-signature="blueprint"] .cc-class.is-now {
+  background: transparent;
+  border: 9px solid transparent;
+  border-image: var(--b-cloud) 9 round;
+  box-shadow: inset 2px 0 0 var(--cc-hue);
+  padding: 0 4px 2px 7px;
+}
+
+html[data-cc-signature="blueprint"] .cc-class-now {
+  color: var(--b-red);
+  background: transparent;
+  border: 1px solid var(--b-red);
+  border-radius: 0;
+}
+
+html[data-cc-signature="blueprint"] .cc-tt-grid thead th.is-today .cc-tt-date {
+  color: var(--b-red);
+  background: var(--b-ring) center / 100% 100% no-repeat;
+  min-width: 32px;
+  height: 32px;
+}
+
+/* ---- Datesheet ---- */
+
+html[data-cc-signature="blueprint"] .cc-ds-exam {
+  --edge: var(--b-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-exam.is-lead {
+  --edge: var(--o-ink);
+  background: transparent;
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-when {
+  border-radius: 0;
+  background: transparent;
+  border-left: 1px dashed var(--b-line);
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-exam.is-lead .cc-ds-when {
+  background: transparent;
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-exam.is-soon .cc-ds-count {
+  color: var(--b-red);
+  text-decoration: underline wavy var(--b-red) 1.3px;
+  text-underline-offset: 4px;
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-date {
+  font-family: var(--b-tech);
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-run-list li::before {
+  height: 1px;
+  background: var(--b-line);
+}
+
+html[data-cc-signature="blueprint"] .cc-ds-run-dot {
+  border-radius: 0;
+  transform: rotate(45deg) scale(0.8);
+  background: transparent;
+  border-color: var(--o-ink);
+}
+
+html[data-cc-signature="blueprint"] .is-done > .cc-ds-run-dot {
+  background: var(--o-ink);
+}
+
+html[data-cc-signature="blueprint"] .is-done > .cc-ds-run-dot::after {
+  display: none;
+}
+
+html[data-cc-signature="blueprint"] .is-next > .cc-ds-run-dot {
+  background: var(--b-red);
+  border-color: var(--b-red);
+  box-shadow: none;
+}
+
+/* ---- Marks: hatching, as on a section drawing ---- */
+
+html[data-cc-signature="blueprint"] .cc-mk-meter {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--b-line);
+  height: 9px;
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-meter i {
+  border-radius: 0;
+  background: var(--b-hatch);
+}
+
+@media (min-width: 761px) {
+  html[data-cc-signature="blueprint"] .cc-mk-notes > div {
+    border-left: 1px dashed var(--b-line);
+  }
+}
+
+@media (max-width: 760px) {
+  html[data-cc-signature="blueprint"] .cc-mk-notes > div {
+    border-top: 1px dashed var(--b-line);
+  }
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-seg {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--b-faint);
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-seg i {
+  border-radius: 0;
+  background: var(--b-hatch);
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-seg[data-band="low"] i,
+html[data-cc-signature="blueprint"] .cc-mk-seg[data-band="absent"] {
+  background: repeating-linear-gradient(135deg, var(--b-red) 0 1.4px, transparent 1.4px 4px);
+}
+
+html[data-cc-signature="blueprint"] .cc-mk-subject[data-band="low"] .cc-mk-subject-name b {
+  text-decoration: underline wavy var(--b-red) 1.3px;
+  text-underline-offset: 4px;
+}
+
+html[data-cc-signature="blueprint"] .cc-score {
+  border-radius: 0;
+  background: transparent !important;
+}
+
+html[data-cc-signature="blueprint"] #accordion > h3.ui-accordion-header {
+  font-family: var(--b-tech) !important;
+  letter-spacing: 0.05em;
+  border-radius: 0 !important;
+}
+
+html[data-cc-signature="blueprint"] #menu-content a.cc-here {
+  text-decoration: underline wavy var(--b-red) 1.3px !important;
+  text-underline-offset: 4px;
+}

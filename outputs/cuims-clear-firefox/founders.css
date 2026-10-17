@@ -221,3 +221,193 @@ html[data-signature="founders"] .mark {
   -webkit-mask: var(--f-ink-edge);
   mask: var(--f-ink-edge);
 }
+
+/* ---- Founding 100 · Blueprint ----
+   The founders' theme after dark: the plans CUIMS Clear was drawn from.
+   A cyanotype sheet on a drafting grid, white linework with crop marks,
+   technical lettering, hollow drafting numerals, and red-pencil
+   corrections: revision clouds round what is happening now, wavy red
+   underlines under what needs you, masking tape holding the sheet down. */
+
+html[data-signature="blueprint"] {
+  --b-tech: "DIN Condensed", "DIN Alternate", "Bahnschrift SemiCondensed", Bahnschrift, "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  --b-red: #ff7f6e;
+  --b-line: rgb(234 241 248 / 50%);
+  --b-faint: rgb(234 241 248 / 22%);
+  --b-tape: rgb(226 214 184 / 72%);
+  --b-ring: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke='%23ff7f6e' stroke-width='1.6'%3E%3Cpath d='M16.00 3.80 A3.96 3.96 0 0 1 23.17 6.13 A3.96 3.96 0 0 1 27.60 12.23 A3.96 3.96 0 0 1 27.60 19.77 A3.96 3.96 0 0 1 23.17 25.87 A3.96 3.96 0 0 1 16.00 28.20 A3.96 3.96 0 0 1 8.83 25.87 A3.96 3.96 0 0 1 4.40 19.77 A3.96 3.96 0 0 1 4.40 12.23 A3.96 3.96 0 0 1 8.83 6.13 A3.96 3.96 0 0 1 16.00 3.80 Z'/%3E%3C/svg%3E");
+  --b-crop: linear-gradient(var(--b-line), var(--b-line)) left top / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) left top / 1px 9px,
+    linear-gradient(var(--b-line), var(--b-line)) right top / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) right top / 1px 9px,
+    linear-gradient(var(--b-line), var(--b-line)) left bottom / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) left bottom / 1px 9px,
+    linear-gradient(var(--b-line), var(--b-line)) right bottom / 9px 1px, linear-gradient(var(--b-line), var(--b-line)) right bottom / 1px 9px;
+}
+
+/* The drafting grid, over the whole sheet, with the cyanotype's uneven wash. */
+html[data-signature="blueprint"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgb(255 255 255 / 6%), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgb(0 0 0 / 22%), transparent 60%),
+    linear-gradient(rgb(234 241 248 / 7%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 241 248 / 7%) 1px, transparent 1px),
+    linear-gradient(rgb(234 241 248 / 3.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(234 241 248 / 3.5%) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px, 12px 12px, 12px 12px;
+}
+
+/* Technical lettering. */
+html[data-signature="blueprint"] :is(h1, .eyebrow, .section-label, .fc-eyebrow, .rail-tabs button, .chip, .counts, .goal button, .open-link, .version, .course-title, .course-pct, .overall-label, .overall-pct, .refresh-button, .receipt-button, .wrapped-kicker, .wrapped-headline, .fc-stats dt, .fc-stats dd) {
+  font-family: var(--b-tech);
+  letter-spacing: 0.04em;
+}
+
+html[data-signature="blueprint"] h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+html[data-signature="blueprint"] :is(.eyebrow, .section-label, .fc-eyebrow, .open-link, .goal button, .rail-tabs button, .overall-label) {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+html[data-signature="blueprint"] .rail-tabs button {
+  font-size: 11px;
+}
+
+html[data-signature="blueprint"] .course-title {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+html[data-signature="blueprint"] :is(.course-pct, .overall-pct) {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+html[data-signature="blueprint"] .overall-pct {
+  font-size: 22px;
+}
+
+/* Hollow drafting numerals for the figures that matter. */
+html[data-signature="blueprint"] .fc-big {
+  font-family: var(--b-tech);
+  font-size: 46px;
+  letter-spacing: 0.02em;
+  color: transparent;
+  -webkit-text-stroke: 1.3px var(--hero-ink);
+}
+
+html[data-signature="blueprint"] .fc-big :is(.fc-unit, .fc-approx) {
+  -webkit-text-stroke: 1px var(--hero-ink);
+}
+
+/* Linework instead of filled cards; crop marks at the corners. */
+html[data-signature="blueprint"] :is(.course-list, .fc-card, .club-card, .summary, .goal) {
+  border: 1px solid var(--b-line);
+  border-radius: 0;
+  background-color: transparent;
+}
+
+html[data-signature="blueprint"] :is(.fc-card, .club-card:not(.receipt-card):not(.wrapped-card), .summary) {
+  position: relative;
+}
+
+html[data-signature="blueprint"] :is(.fc-card, .club-card:not(.receipt-card):not(.wrapped-card), .summary)::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  pointer-events: none;
+  background: var(--b-crop);
+  background-repeat: no-repeat;
+}
+
+html[data-signature="blueprint"] .course-list {
+  display: grid;
+  gap: 0;
+}
+
+html[data-signature="blueprint"] .course {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Hidden-line dashes between rows, as on a drawing. */
+html[data-signature="blueprint"] .course + .course {
+  border-top: 1px dashed var(--b-faint);
+}
+
+html[data-signature="blueprint"] .overall {
+  position: relative;
+  border-radius: 0;
+}
+
+/* Masking tape holding the sheet to the board. */
+html[data-signature="blueprint"] .overall::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: -10px;
+  width: 58px;
+  height: 16px;
+  background: var(--b-tape);
+  transform: rotate(-24deg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+}
+
+html[data-signature="blueprint"] .overall::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  right: -9px;
+  width: 44px;
+  height: 16px;
+  background: var(--b-tape);
+  transform: rotate(-24deg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+}
+
+/* The tab you are on gets a red-pencil revision cloud. */
+html[data-signature="blueprint"] .rail-tabs button[aria-selected="true"] {
+  color: var(--b-red);
+}
+
+html[data-signature="blueprint"] .rail-tabs button[aria-selected="true"] svg {
+  color: var(--b-red);
+  background: var(--b-ring) center / 100% 100% no-repeat;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* Small states are dimension tags: square, ruled, lettered. */
+html[data-signature="blueprint"] :is(.chip, .tag-vdl, .fc-pill) {
+  border: 1px solid currentColor;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-transform: uppercase;
+}
+
+/* Red pencil under what needs you. */
+html[data-signature="blueprint"] :is(.line.is-low, .line.is-risk, .tone-low .course-title) {
+  text-decoration: underline wavy var(--b-red) 1.4px;
+  text-underline-offset: 4px;
+}
+
+html[data-signature="blueprint"] .open-link {
+  border-radius: 0;
+}
+
+html[data-signature="blueprint"] .mark {
+  border-radius: 50%;
+  color: var(--ink);
+  background: #0f2f52;
+  box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 4.5px #0f2f52, inset 0 0 0 5.5px var(--b-line);
+}

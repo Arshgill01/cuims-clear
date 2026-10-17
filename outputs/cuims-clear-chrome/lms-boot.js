@@ -15,6 +15,10 @@
     if (!themes) return;
     let style = document.getElementById("cc-theme");
     const css = themes.lmsCss(id);
+    // A theme that changes more than colours (founders-lms.css).
+    const signature = themes.tokens(id).signature;
+    if (css && signature) root.dataset.ccSignature = signature;
+    else delete root.dataset.ccSignature;
     if (!css) {
       style?.remove();
       delete root.dataset.ccTheme;

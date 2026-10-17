@@ -92,7 +92,8 @@
         "lms.js"
       ],
       "css": [
-        "lms.css"
+        "lms.css",
+        "founders-lms.css"
       ],
       "run_at": "document_start"
     },
