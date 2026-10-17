@@ -7,9 +7,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { launchBrowser } from "./browser-launch.mjs";
 
 const packageDir = path.resolve(process.argv[2] || "outputs/cuims-clear-chrome");
+const version = JSON.parse(readFileSync(path.join(packageDir, "manifest.json"), "utf8")).version;
+const futureVersion = `${Number(version.split(".")[0]) + 1}.0.0`;
 const out = path.resolve("work/e2e/results");
 mkdirSync(out, { recursive: true });
 const temp = mkdtempSync(path.join(tmpdir(), "cc-updates-chrome-"));
@@ -38,11 +41,11 @@ try {
   report.checks.push(`Check now: "${report.checkNow.state}"`);
 
   // A newer version: the banner and Update now.
-  await seed({ updateInfo: { latest: "0.10.7", checkedAt: Date.now(), ready: false, error: "" }, popupView: "attendance" });
+  await seed({ updateInfo: { latest: futureVersion, checkedAt: Date.now(), ready: false, error: "" }, popupView: "attendance" });
   await page.reload();
   await page.waitForFunction(() => !document.querySelector("#update-banner").hidden);
   report.banner = await page.$eval("#update-banner", (node) => node.innerText);
-  assert.match(report.banner, /0\.10\.7 is out/);
+  assert.ok(report.banner.includes(`${futureVersion} is out`));
   await settle(400);
   await page.screenshot({ path: path.join(out, "chrome-updates-banner.png") });
   await page.click("#update-now");
@@ -51,7 +54,7 @@ try {
   report.checks.push(`Update now with no store copy: "${report.updateNow}"`);
 
   // The bar on CUIMS: a button, not a link.
-  await seed({ updateInfo: { latest: "0.10.7", checkedAt: Date.now(), ready: false, error: "" }, updateSnoozeUntil: 0 });
+  await seed({ updateInfo: { latest: futureVersion, checkedAt: Date.now(), ready: false, error: "" }, updateSnoozeUntil: 0 });
   const cuims = await browser.newPage();
   await cuims.setViewport({ width: 900, height: 680, deviceScaleFactor: 1 });
   await cuims.goto("https://students.cuchd.in/", { waitUntil: "domcontentloaded", timeout: 45_000 });

@@ -4,8 +4,8 @@ Same CUIMS login helper as the Firefox build: optional saved UID/password fillin
 CAPTCHA solving, quiet mode for event/feedback overlays, a cleaner LMS course
 directory that pairs syllabus materials with semester work, and an **Attendance**
 tab that reads your attendance and safe-skip counts without opening CUIMS, a **Forecast**
-tab that projects each subject to the last day of classes and plans skips, and twenty
-colour themes that restyle the popup, LMS pages, CUIMS itself and the toolbar icon together.
+tab that projects each subject to the last day of classes and plans skips, and twenty-two
+colour themes (including two reserved for pre-1.0 users) that restyle the popup, LMS pages, CUIMS itself and the toolbar icon together.
 
 Chrome cannot load the Firefox folder. This package is the Chrome MV3 build.
 
@@ -43,52 +43,35 @@ Unpacked extensions stay installed. If Chrome disabled it, open
 
 ## Chrome Web Store release
 
-Version 0.6.3 restores the login behavior from before 0.6.2: saved UID/password
-fields, automatic filling, on-device CAPTCHA filling, and the original optional
-auto-submit timing. The Chrome password-manager-only change in 0.6.2 is reverted.
-If 0.6.2 removed your saved extension login, enter and save it once more;
-those deleted values cannot be recovered. Chrome's own saved passwords are unaffected.
-
-Version 0.6.2 is published. Version 0.6.3 is being prepared for store review.
+Version 1.0.0 is prepared for manual store submission. Release notes and the
+publication checklist are in `store/RELEASE-NOTES-1.0.0.md` in the repository.
 
 `scripts/sync-chrome-build.sh` synchronizes the shared login, popup, solver,
 and LMS files from the Firefox build. Chrome manifest and service-worker files
 remain Chrome-specific.
 
+## New in 1.0
+
+The **1.0** tab includes a semester receipt, day-by-day attendance, Semester Wrapped,
+a time capsule and Proxy Run. Existing users receive the Founding 100 stamp and the
+Founding 100 and Black Card themes. Timetable, Datesheet and Marks View have new layouts;
+classes and exams can be exported as local .ics calendar files. No new permissions.
+
 ## Conservative CUIMS reads
 
-CUIMS throttles an account for 10+ minutes after a few of its inner pages
-(attendance, timetable, duty and medical leave) load close together; the
-attendance report calls and StudentHome do not count. So a Refresh is
-normally the report calls alone, and loads at most one inner page: the
-attendance page only when its report ids are missing, otherwise the timetable
-once a day or a leave page every three hours, and only when neither the
-extension nor a CUIMS tab has loaded an inner page in the last five minutes.
-The first timetable, which the Forecast tab needs, waits only one minute, and
-the popup reads again by itself then. A leave read never signs in. A duty-leave approval still shows on the next
-Refresh, from the report calls (the subject's counts move and the absent mark
-becomes a leave mark); a refusal shows when the leave page is next read.
-Opening a leave page on CUIMS updates the list for free.
+Opening Attendance or Forecast reads again when saved data is over two minutes old;
+Refresh reads on demand, with a minimum 30-second gap. No periodic background polling.
+Attendance report calls and session/page requests have separate local limits (60 report
+calls and 10 session requests per ten minutes). These are extension safeguards, not
+CUIMS's published quotas.
 
-When CUIMS limits the account's page loads anyway (its pages redirect to
-`error.html`, and CUIMS's own sidebar comes up empty), the extension loads no
-CUIMS page and never signs in for 15 minutes (30, then 60, if it happens
-again soon after). Attendance keeps updating from the report calls, which the
-limit does not touch, and Open CUIMS and Open LMS still work. A CUIMS tab that
-lands on the error page counts too. A redirected page is never taken for a
-signed-out session until StudentHome confirms it, so the limit never sets off
-a sign-in.
+Optional timetable, date-sheet and leave pages are spaced and cached. A leave read never
+signs in. Opening a supported CUIMS page supplies its data without a background fetch.
+Duty Leave history is read from CUIMS's External tab when it is missing on Internal.
 
-Background attendance, session checks and LMS SSO also share a rolling budget
-of 25 requests per 10 minutes, and manual refreshes wait at least 60 seconds.
-These are extension safeguards, not CUIMS's published limits; portal tabs and
-browser-followed redirects add their own traffic.
-
-HTTP 429/503, or an error page from the report calls or StudentHome, pauses
-background reads for at least five minutes, increasing after repeated failures and honoring a longer
-`Retry-After`. Optional attendance detail also stops on a refusal. Cached
-attendance stays visible, with a disabled refresh button showing when it is
-ready again. The countdown sends no requests.
+When CUIMS refuses page loads, optional pages pause while cached attendance remains
+visible and report calls can continue. HTTP 429/503 honors Retry-After. The popup's
+countdown makes no requests. See PRIVACY.md for the data stored and used.
 
 ## Privacy
 

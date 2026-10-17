@@ -9,8 +9,11 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 const packageDir = path.resolve(process.argv[2] || "outputs/cuims-clear-firefox");
+const version = JSON.parse(readFileSync(path.join(packageDir, "manifest.json"), "utf8")).version;
+const futureVersion = `${Number(version.split(".")[0]) + 1}.0.0`;
 const out = path.resolve("work/e2e/results");
 mkdirSync(out, { recursive: true });
 const PORT = 28000 + Math.floor(Math.random() * 900);
@@ -135,11 +138,11 @@ try {
   await shot("ff-updates-settings.png", ref(await send("WebDriver:FindElement", { using: "css selector", value: ".app" })));
 
   // 2. A newer version: the banner.
-  await storageSet({ updateInfo: { latest: "0.10.7", checkedAt: Date.now(), ready: false, error: "" }, popupView: "attendance" });
+  await storageSet({ updateInfo: { latest: futureVersion, checkedAt: Date.now(), ready: false, error: "" }, popupView: "attendance" });
   await send("WebDriver:Navigate", { url: popup });
   await waitFor("return !document.querySelector('#update-banner').hidden", "update banner");
   report.banner = await run("return document.querySelector('#update-banner').innerText");
-  assert.match(report.banner, /0\.10\.7 is out/);
+  assert.ok(report.banner.includes(`${futureVersion} is out`));
   assert.match(report.banner, /Allow, then Add/);
   assert.equal(await run("return document.querySelector('#rate-nudge').hidden"), true, "one notice at a time");
   await shot("ff-updates-banner.png", ref(await send("WebDriver:FindElement", { using: "css selector", value: ".app" })));
@@ -159,7 +162,7 @@ try {
 
   // 4. Update now opens CUIMS with the bar, and the bar's link starts
   // Firefox's install prompt.
-  await storageSet({ updateInfo: { latest: "0.10.7", checkedAt: Date.now() }, updateSnoozeUntil: Date.now() + 3_600_000 });
+  await storageSet({ updateInfo: { latest: futureVersion, checkedAt: Date.now() }, updateSnoozeUntil: Date.now() + 3_600_000 });
   await send("WebDriver:Navigate", { url: popup });
   await waitFor("return !document.querySelector('#update-banner').hidden", "update banner again");
   const handlesOf = (r) => (Array.isArray(r) ? r : r?.value || []);

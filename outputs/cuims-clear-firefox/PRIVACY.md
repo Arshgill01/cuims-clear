@@ -61,7 +61,7 @@ event and feedback dialogs it hid, and how many attendance reads it made. It als
 whether you used it before 1.0 (the Founding 100 stamp, decided by the browser's own
 install event), your best Proxy Run score, and, if you write one, your time-capsule note.
 Semester Wrapped and the day-by-day attendance grid on the 1.0 tab are worked out on the
-device from the attendance it already stores. Founders also get a Founding 100 theme.
+device from the attendance it already stores. Founders also get two themes, Founding 100 and Black Card.
 None of this is sent anywhere. Saving or copying the receipt or a Wrapped card makes an
 image on your device; sharing it is up to you. Uninstalling the extension removes all of it.
 
