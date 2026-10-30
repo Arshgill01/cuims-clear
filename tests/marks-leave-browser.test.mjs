@@ -195,3 +195,76 @@ browserTest("Duty Leave: a lecture CUIMS will not take is reported, and the rest
     await browser.close();
   }
 });
+
+browserTest("popup: the Marks tab shows the same figures, switches session, shares the skills switch, and asks for a read", async () => {
+  mkdirSync(shots, { recursive: true });
+  const { browser, worker } = await launch();
+  try {
+    const current = M.parseMarksPage(fixture("marks-current.html"));
+    const previous = M.parseMarksPage(fixture("marks-previous.html"));
+    const savedAt = Date.now() - 2 * 60 * 60 * 1000;
+    const examMarks = {
+      current: "26271",
+      savedAt,
+      triedAt: savedAt,
+      sessions: {
+        26271: { label: current.session.label, subjects: JSON.parse(JSON.stringify(current.subjects)), savedAt },
+        25262: { label: previous.session.label, subjects: JSON.parse(JSON.stringify(previous.subjects)), savedAt: savedAt - 1000 },
+      },
+    };
+    await worker.evaluate((examMarks) => chrome.storage.local.set({ uid: "24BCS00000", password: "x", popupView: "marks", rateNudge: { done: true }, attendanceExamMarks: examMarks, marksIncludeSkills: true, attendanceLastAttemptAt: Date.now() }), examMarks);
+    const id = new URL(worker.url()).host;
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.setViewport({ width: 440, height: 720, deviceScaleFactor: 2 });
+    await page.goto(`chrome-extension://${id}/popup.html`);
+    await page.waitForSelector("#view-marks .fc-big");
+    const read = () => page.evaluate(() => ({
+      selected: document.querySelector("#tab-marks").getAttribute("aria-selected"),
+      big: document.querySelector("#view-marks .fc-big").textContent,
+      raw: document.querySelector("#view-marks .mk-raw strong")?.textContent,
+      sessions: [...document.querySelectorAll("[data-marks-session]")].map((button) => [button.textContent, button.getAttribute("aria-checked")]),
+      courses: document.querySelectorAll("#view-marks .mk-course").length,
+      out: [...document.querySelectorAll("#view-marks .mk-course.is-out .course-title")].map((node) => node.textContent),
+      note: document.querySelector("#view-marks .attendance-note").textContent,
+    }));
+    const all = M.summarize(current.subjects);
+    let view = await read();
+    assert.equal(view.selected, "true");
+    assert.equal(view.big, `${M.formatPercent(all.average)}%`);
+    assert.equal(view.raw, `${M.formatPercent(all.raw.percent)}%`);
+    assert.deepEqual(view.sessions, [["Current session", "true"], ["Previous session", "false"]]);
+    assert.equal(view.courses, 8);
+    assert.match(view.note, /^Read 2 h ago from Marks View/);
+    await page.screenshot({ path: new URL("popup-marks.png", shots).pathname, fullPage: true });
+
+    // The earlier session: a graded course and an attendance-only one wait.
+    await page.click('[data-marks-session="25262"]');
+    view = await read();
+    assert.equal(view.big, `${M.formatPercent(M.summarize(previous.subjects).average)}%`);
+    assert.deepEqual(view.out, ["Introduction to Machine Learning (Through SWAYAM)", "Semester Mini Project"]);
+
+    // The switch is shared with Marks View on CUIMS.
+    await page.click('[data-marks-session="26271"]');
+    await page.click("[data-marks-skills]");
+    await page.waitForFunction((expected) => document.querySelector("#view-marks .fc-big")?.textContent === expected, {}, `${M.formatPercent(M.summarize(current.subjects, { includeSkills: false }).average)}%`);
+    assert.equal(await worker.evaluate(() => chrome.storage.local.get("marksIncludeSkills").then((value) => value.marksIncludeSkills)), false);
+    view = await read();
+    assert.deepEqual(view.out, ["Aptitude-III", "Soft Skills-III"]);
+    await page.evaluate(() => document.querySelector(".mk-kinds")?.setAttribute("open", ""));
+    await page.screenshot({ path: new URL("popup-marks-skills-off.png", shots).pathname, fullPage: true });
+
+    // Refresh marks: the ask is saved before the read.
+    await worker.evaluate(() => chrome.storage.local.set({ attendanceLastAttemptAt: 0 }));
+    await page.waitForSelector("[data-marks-refresh]:not([disabled])", { timeout: 40_000 });
+    const before = Date.now();
+    await page.click("[data-marks-refresh]");
+    await page.waitForFunction(() => true);
+    const wanted = await worker.evaluate(() => new Promise((resolve) => setTimeout(() => chrome.storage.local.get("marksWantedAt").then((value) => resolve(value.marksWantedAt)), 300)));
+    assert.ok(wanted >= before, "marksWantedAt set by Refresh marks");
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+  }
+});
