@@ -24,14 +24,18 @@ When the student opens the Attendance or Forecast tab and the last read is more 
 minutes old, or presses Refresh, the extension signs in to `students.cuchd.in` with the
 saved UID and password in the background, the same way the login page does, and reads the
 student's own attendance report, class-by-class attendance record, timetable, date sheet,
-and duty and medical leave applications (to show pending leave). It uses the browser's
+and duty and medical leave applications (to show pending leave). When the student asks on
+the Marks tab, it also reads their own Marks View page (assessment marks), and opening
+Marks View on CUIMS hands the same page over without a request. It uses the browser's
 existing CUIMS session when one is open. Nothing runs on a timer in the background. The
 attendance figures, class record, timetable (with rooms and teachers) and date sheet are
 stored only in local extension storage, and the Forecast tab's projections are worked out
 on the device from them. Nothing is sent anywhere else.
 
 On My Time Table, Datesheet and Marks View, the extension redraws the page's own data in a
-clearer layout, on the page itself. Add to calendar, on those pages or on the 1.0 tab,
+clearer layout, on the page itself. On the Duty Leave page it selects the External tab and,
+when the student presses Fill CUIMS's form, fills CUIMS's own form fields from the saved
+attendance record; it never presses Save or uploads anything. Add to calendar, on those pages or on the 1.0 tab,
 builds an .ics calendar file on the device from what the page or the saved attendance
 shows, and hands it to Firefox's own download. The file is not sent anywhere.
 

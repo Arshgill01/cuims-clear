@@ -36,8 +36,12 @@ A Firefox Manifest V3 extension for `https://students.cuchd.in/` and
 - tidies CUIMS's own pages: shows them as soon as they are ready instead of a second later, the
   time table in time order with today and the class in progress marked, upcoming exams with a
   countdown on the datesheet, each subject's attendance read against your goal, coloured
-  class-by-class marks, running totals on the marks page, and the current page marked in the
-  sidebar (Settings → CUIMS pages → Tidier pages);
+  class-by-class marks, Marks View weighted the way CU counts internal marks, and the current
+  page marked in the sidebar (Settings → CUIMS pages → Tidier pages);
+- shows your marks on a **Marks** tab in the popup, with the same weighting, and lets you say
+  whether Aptitude and Soft Skills count towards your result;
+- takes CUIMS's Duty Leave page straight to its External tab and fills its form from the
+  classes you were marked absent in; you add the reason and proof, then Save;
 - keeps every automation and quiet-mode switch on one **Settings** tab, where each switch
   saves as you flip it;
 - lets you erase the saved UID, password, and attendance from the popup at any time.
@@ -102,6 +106,30 @@ The **1.0** tab includes a semester receipt, day-by-day attendance, Semester Wra
 a time capsule and Proxy Run. Existing users receive the Founding 100 stamp and the
 Founding 100 and Black Card themes. Timetable, Datesheet and Marks View have new layouts;
 classes and exams can be exported as local .ics calendar files. No new permissions.
+
+## Marks and duty leave
+
+CUIMS lists each assessment at the marks it was conducted for (a surprise test out of 12,
+each MST out of 20, each experiment out of 30), but CU gives each kind of assessment a
+fixed share of the internal marks and splits it between repeats. Adding the raw rows, as
+earlier versions did, over-weights MSTs, surprise tests and experiments. Marks View on
+CUIMS and the **Marks** tab now weigh each kind by its CU share (`marks-model.js`); a theory
+course comes out exactly as CU's internal 40 (assignment 10, surprise test 4, quiz 4, MSTs
+20, attendance 2). The headline is the average of the subjects that count, each counted
+equally; the raw total of every listed mark is shown beside it. ABSENT counts as zero.
+Aptitude and Soft Skills (TDT/TDP courses) are graded in some programmes and not in others,
+so one switch, shared by the page and the popup, decides whether they count. Courses with
+only attendance marked, and graded courses, are shown but left out of the average.
+
+The Marks tab reads Marks View only when asked (Refresh marks, or opening the tab with
+nothing read in 12 hours), as one paced page; opening Marks View on CUIMS updates it for free.
+
+CUIMS's Duty Leave page opens on Internal (events); CUIMS Clear takes it straight to
+External unless you pick Internal in that tab. A **File duty leave** card lists the days
+CUIMS still accepts (today and the three before), with the classes you were marked absent
+in already ticked, and **Fill CUIMS's form** walks CUIMS's own form in the order it
+requires: type, category, date, lectures, count, Next Step. The reason, the declaration,
+the proof and Save stay with you; nothing is submitted for you.
 
 ## Conservative CUIMS reads
 

@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <!-- Duty Leave (frmStudentApplyDutyLeave.aspx) as CUIMS behaves in October 2026,
      rebuilt from captured markup with the student's details removed. The page
-     opens on Internal; External holds the form. Every control in the "upd"
-     UpdatePanel redraws it through a partial postback (here: a short delay,
-     then the panel's HTML replaced, posted values kept), as ASP.NET AJAX
-     does. A date before a category is refused with CUIMS's SweetAlert. The
-     server log is window.__posts. -->
+     opens on Internal; External holds the form. Type and Next Step redraw the
+     "upd" UpdatePanel through a partial postback (a short delay, then the
+     panel's HTML replaced, posted values kept), as ASP.NET AJAX does. The date
+     boxes have fixed ids (txtDate, txtFromDate), so on live CUIMS a date is a
+     full page postback: here the page reloads, its posted state carried in
+     sessionStorage like view state. A date before a category is refused with
+     CUIMS's SweetAlert. The server log is window.__posts, kept across reloads. -->
 <html>
 <head><title>Chandigarh University Management System</title></head>
 <body>
@@ -24,8 +26,16 @@
     ["2:30 - 3:20 PM", "24CSH-301", "Project Based Learning in Java", true],
   ];
   const CATEGORIES = [["0", "Select"], ["4", "NSS"], ["20", "Departmental Society Activities"], ["32", "Co-Curricular Activity (Centralized)"]];
-  const state = { tab: new URLSearchParams(location.search).get("tab") === "external" ? "External" : "Internal", type: "--Select--", category: "0", count: "", date: "", from: "", lectures: false, picked: [] };
-  window.__posts = [];
+  const carried = JSON.parse(sessionStorage.getItem("mockServer") || "null");
+  sessionStorage.removeItem("mockServer");
+  const state = carried?.state || { tab: new URLSearchParams(location.search).get("tab") === "external" ? "External" : "Internal", type: "--Select--", category: "0", count: "", date: "", from: "", lectures: false, picked: [] };
+  window.__posts = carried?.posts || [];
+  // A full postback: the server's answer is this page again, with its state.
+  const fullPostback = (after) => {
+    after();
+    sessionStorage.setItem("mockServer", JSON.stringify({ state, posts: window.__posts }));
+    setTimeout(() => location.reload(), 200);
+  };
   const esc = (v) => String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
   function swal(text) {
@@ -94,17 +104,25 @@
       setTimeout(() => location.replace(location.pathname), 200);
       return;
     }
+    if (/txtDate$/.test(target)) {
+      if (state.category === "0") {
+        state.date = "";
+        draw();
+        swal("Please Select DL Category First.");
+        return;
+      }
+      fullPostback(() => {
+        state.lectures = /^\d{2}\/\d{2}\/\d{4}$/.test(state.date);
+        state.picked = [];
+      });
+      return;
+    }
+    if (/txtFromDate$/.test(target)) {
+      fullPostback(() => {});
+      return;
+    }
     setTimeout(() => {
       if (/ddlTypeNew$/.test(target)) Object.assign(state, { lectures: false, picked: [], date: "", from: "" });
-      if (/txtDate$/.test(target)) {
-        if (state.category === "0") {
-          state.date = "";
-          draw();
-          swal("Please Select DL Category First.");
-          return;
-        }
-        state.lectures = /^\d{2}\/\d{2}\/\d{4}$/.test(state.date);
-      }
       draw();
     }, 300);
   };

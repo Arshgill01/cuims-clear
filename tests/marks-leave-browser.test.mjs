@@ -268,3 +268,28 @@ browserTest("popup: the Marks tab shows the same figures, switches session, shar
     await browser.close();
   }
 });
+
+browserTest("Duty Leave: a whole day sets the type and the date through CUIMS's full-page postback", async () => {
+  const { browser, worker } = await launch();
+  try {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const twoBack = new Date(Date.parse(`${today}T00:00:00Z`) - 2 * 86400000).toISOString().slice(0, 10);
+    await worker.evaluate(() => chrome.storage.local.set({ attendanceHistory: null, attendanceTimetable: null, dlLastCategory: "4" }));
+    const page = await browser.newPage();
+    await servePortal(page, { "/frmStudentApplyDutyLeave.aspx": fixture("duty-leave-mock.html") });
+    await page.goto(`${ORIGIN}/frmStudentApplyDutyLeave.aspx?tab=external`);
+    await page.waitForSelector(".cc-dl-day");
+    await page.evaluate(() => document.querySelectorAll(".cc-dl-day")[2].click());
+    await page.evaluate(() => [...document.querySelectorAll(".cc-dl-mode")].find((button) => button.textContent === "Whole day").click());
+    await page.click(".cc-dl-go");
+    await page.waitForSelector('.cc-dl-status[data-tone="good"]', { timeout: 20_000 });
+    const after = await page.evaluate(() => ({ posts: window.__posts.map((post) => post.target), from: document.getElementById("txtFromDate")?.value, type: document.getElementById("ContentPlaceHolder1_ddlTypeNew").value, category: document.getElementById("ContentPlaceHolder1_ddlDLSource").value, status: document.querySelector(".cc-dl-status").textContent }));
+    assert.deepEqual(after.posts, ["ctl00$ContentPlaceHolder1$ddlTypeNew", "ctl00$ContentPlaceHolder1$txtFromDate"]);
+    assert.equal(after.from, `${twoBack.slice(5, 7)}/${twoBack.slice(8, 10)}/${twoBack.slice(0, 4)}`);
+    assert.equal(after.type, "D");
+    assert.equal(after.category, "4");
+    assert.match(after.status, /^Filled for .+\. Now write the reason/);
+  } finally {
+    await browser.close();
+  }
+});

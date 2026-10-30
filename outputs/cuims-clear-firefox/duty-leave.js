@@ -97,7 +97,8 @@
     const hour = Math.floor(minutes / 60) % 24;
     return `${hour % 12 || 12}:${String(minutes % 60).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
   };
-  const dayLabel = (day) => (day.back === 0 ? "Today" : day.back === 1 ? "Yesterday" : new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${day.key}T00:00:00Z`)));
+  // A planned day ({ key, back }) or a job ({ day, back }).
+  const dayLabel = (day) => (day.back === 0 ? "Today" : day.back === 1 ? "Yesterday" : new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${day.key || day.day}T00:00:00Z`)));
 
   // ---- straight to External ----
 
@@ -119,8 +120,31 @@
   }
 
   // ---- walking CUIMS's form ----
+  //
+  // Type and Next Step redraw the form in place (UpdatePanel partial
+  // postbacks), but the date boxes have fixed ids (txtDate, txtFromDate),
+  // which ASP.NET AJAX cannot match to their panel, so a date reloads the
+  // whole page. Filling is therefore a job kept in sessionStorage: each step
+  // is chosen from what the form shows now, and a reload picks the job up
+  // where it left off.
 
+  const JOB_KEY = "ccDlJob";
+  const JOB_MAX_MS = 3 * 60 * 1000;
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+
+  function readJob() {
+    try {
+      const job = JSON.parse(sessionStorage.getItem(JOB_KEY) || "null");
+      return job && Date.now() - job.at < JOB_MAX_MS ? job : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveJob(job) {
+    if (job) sessionStorage.setItem(JOB_KEY, JSON.stringify(job));
+    else sessionStorage.removeItem(JOB_KEY);
+  }
 
   // CUIMS's warnings are SweetAlert modals; one showing means the step failed.
   function alertText() {
@@ -128,8 +152,9 @@
     return shown ? shown.textContent.trim() : "";
   }
 
-  // Runs one step that makes CUIMS redraw its form (an UpdatePanel partial
-  // postback): done once the old form is gone and the new one has `ready`.
+  // One step that redraws the form: done once the old form is gone and the
+  // new one is `ready`. A step that reloads the page never returns here; the
+  // job carries on after the reload.
   async function step(trigger, ready, timeoutMs = 30_000) {
     const before = $(ids.type);
     trigger();
@@ -165,21 +190,52 @@
     }).filter((entry) => entry.box);
   }
 
-  async function fillLectures(day, starts, category, report) {
-    if ($(ids.type).value !== "L") {
-      report("Choosing lecture-based…");
-      await step(() => setValue($(ids.type), "L", true), () => Boolean($(ids.date)));
+  const pickedCourses = () => [...new Set([...($(ids.picked)?.querySelectorAll("[id*=lblCourseName]") || [])].map((node) => node.textContent.trim()).filter(Boolean))];
+
+  // A date step that came back to the same form twice is not going anywhere.
+  function tried(job, stage) {
+    job.tries = { ...(job.tries || {}), [stage]: (job.tries?.[stage] || 0) + 1 };
+    saveJob(job);
+    if (job.tries[stage] > 2) throw new Error("CUIMS did not take the date. Pick it in CUIMS's form below.");
+  }
+
+  // Moves the job on from wherever the form is. Answers the outcome once
+  // CUIMS's form is filled.
+  async function advance(job, report) {
+    const date = pickerDate(job.day);
+    const warning = alertText();
+    if (warning) throw new Error(warning);
+    if ($(ids.type).value !== job.mode) {
+      report(job.mode === "L" ? "Choosing lecture-based…" : "Choosing a whole day…");
+      await step(() => setValue($(ids.type), job.mode, true), () => Boolean($(job.mode === "L" ? ids.date : ids.from)));
     }
-    setValue($(ids.category), category);
-    report(`Opening ${dayLabel(day)}'s lectures…`);
-    await step(() => setValue($(ids.date), pickerDate(day.key), true), () => offeredLectures().length > 0);
+    if ($(ids.category).value !== job.category) setValue($(ids.category), job.category);
+
+    if (job.mode === "D") {
+      if ($(ids.from)?.value !== date) {
+        tried(job, "date");
+        report(`Setting ${dayLabel(job)}…`);
+        await step(() => setValue($(ids.from), date, true), () => $(ids.from)?.value === date);
+      }
+      return { count: 0, courses: [], notes: [] };
+    }
+
+    if ($(ids.date)?.value !== date || !offeredLectures().length) {
+      tried(job, "date");
+      report(`Opening ${dayLabel(job)}'s lectures…`);
+      await step(() => setValue($(ids.date), date, true), () => $(ids.date)?.value === date && offeredLectures().length > 0);
+    }
     const offered = offeredLectures();
     // Nothing known for the day: CUIMS's own list is open for the student.
-    if (!starts.length) return { count: 0, courses: [], notes: [], open: offered.filter((entry) => entry.open).length };
-    const wanted = new Set(starts);
+    if (!job.starts.length) return { count: 0, courses: [], notes: [] };
+    const wanted = new Set(job.starts);
     const taken = offered.filter((entry) => entry.open && wanted.has(entry.start));
     const refused = offered.filter((entry) => !entry.open && wanted.has(entry.start));
-    const missing = starts.filter((start) => !offered.some((entry) => entry.start === start));
+    const missing = job.starts.filter((start) => !offered.some((entry) => entry.start === start));
+    const notes = [];
+    if (refused.length) notes.push(`${refused.length} not allowed by CUIMS (${refused[0].note || "already applied"})`);
+    if (missing.length) notes.push(`${missing.length} not listed by CUIMS`);
+    if (pickedCourses().length) return { count: $(ids.picked).querySelectorAll("tr + tr").length, courses: pickedCourses(), notes };
     if (!taken.length) {
       const why = refused[0]?.note || "CUIMS does not list those lectures for that day";
       throw new Error(`${why}. Pick the lectures in CUIMS's list below.`);
@@ -188,22 +244,7 @@
     setValue($(ids.count), String(taken.length));
     report("Adding the lectures…");
     await step(() => $(ids.next).click(), () => Boolean($(ids.picked)?.querySelector("tr + tr")));
-    const courses = [...$(ids.picked).querySelectorAll("[id*=lblCourseName]")].map((node) => node.textContent.trim()).filter(Boolean);
-    const notes = [];
-    if (refused.length) notes.push(`${refused.length} not allowed by CUIMS (${refused[0].note || "already applied"})`);
-    if (missing.length) notes.push(`${missing.length} not listed by CUIMS`);
-    return { count: taken.length, courses: [...new Set(courses)], notes };
-  }
-
-  async function fillDay(day, category, report) {
-    if ($(ids.type).value !== "D") {
-      report("Choosing a whole day…");
-      await step(() => setValue($(ids.type), "D", true), () => Boolean($(ids.from)));
-    }
-    setValue($(ids.category), category);
-    report(`Setting ${dayLabel(day)}…`);
-    await step(() => setValue($(ids.from), pickerDate(day.key), true), () => $(ids.from)?.value === pickerDate(day.key));
-    return { count: 0, courses: [], notes: [] };
+    return { count: taken.length, courses: pickedCourses(), notes };
   }
 
   // ---- the card ----
@@ -344,26 +385,36 @@
     else host.before(card);
   }
 
-  async function fill(day, starts, category) {
+  function fill(day, starts, category) {
     if (state.busy) return;
-    Object.assign(state, { busy: true, message: "", tone: "" });
+    const job = { day: day.key, back: day.back, mode: state.mode, starts: state.mode === "L" ? starts : [], category, at: Date.now() };
+    saveJob(job);
+    run(job);
+  }
+
+  async function run(job) {
+    Object.assign(state, { busy: true, message: "", tone: "", dayKey: job.day, mode: job.mode });
+    if (job.mode === "L") state.starts = new Set(job.starts);
     const report = (message) => {
       state.message = message;
       render();
     };
-    render();
+    report(state.message || "Filling CUIMS's form…");
     try {
-      const done = state.mode === "L" ? await fillLectures(day, starts, category, report) : await fillDay(day, category, report);
-      const what = state.mode === "L" && done.count ? `${done.count} ${done.count === 1 ? "lecture" : "lectures"}${done.courses.length ? ` (${done.courses.join(", ")})` : ""}` : dayLabel(day);
+      const done = await advance(job, report);
+      saveJob(null);
+      const label = dayLabel(job);
+      const what = job.mode === "L" && done.count ? `${done.count} ${done.count === 1 ? "lecture" : "lectures"}${done.courses.length ? ` (${done.courses.join(", ")})` : ""}` : label;
       const rest = "write the reason, tick the declaration, attach the proof (PDF or JPEG, under 1 MB) and Save.";
-      const message = state.mode === "L" && !done.count
-        ? `${dayLabel(day)} is open in CUIMS's form: tick the lectures in its list, type how many, press Next Step, then ${rest}`
+      const message = job.mode === "L" && !done.count
+        ? `${label} is open in CUIMS's form: tick the lectures in its list, type how many, press Next Step, then ${rest}`
         : `Filled for ${what}.${done.notes.length ? ` ${done.notes.join("; ")}.` : ""} Now ${rest}`;
       Object.assign(state, { tone: "good", message });
       const purpose = $(ids.purpose);
       purpose?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       purpose?.focus({ preventScroll: true });
     } catch (error) {
+      saveJob(null);
       Object.assign(state, { tone: "bad", message: String(error?.message || error) });
     } finally {
       state.busy = false;
@@ -379,6 +430,12 @@
     if (goExternal()) return;
     if ($(ids.type) && !document.querySelector(".cc-dl")) render();
     if (!$(ids.type)) document.querySelector(".cc-dl")?.remove();
+    // A fill that reloaded the page (a date step) carries on.
+    const job = !state.busy && $(ids.type) ? readJob() : null;
+    if (job) {
+      state.message = "Carrying on…";
+      run(job);
+    }
   }
 
   function start() {
