@@ -1054,6 +1054,7 @@ function scanPage() {
     shareLeavePage();
     shareTimetablePage();
     shareDateSheetPage();
+    shareMarksPage();
   }
 
   if (TEST_PAGE_RE.test(location.pathname)) return;
@@ -1125,6 +1126,22 @@ function shareDateSheetPage() {
   dateSheetShared = grid.textContent;
   try {
     chrome.runtime.sendMessage({ type: "cuims-clear:datesheet-page", html: grid.outerHTML });
+  } catch {}
+}
+
+// Opening Marks View on CUIMS hands the session's marks to the Marks tab.
+// The session dropdown goes along, so the tab knows which session it is.
+let marksShared = null;
+function shareMarksPage() {
+  if (!isTopFrame() || !/frmStudentMarksView\.aspx$/i.test(location.pathname)) return;
+  const accordion = document.getElementById("accordion");
+  const select = document.querySelector("select[name$='ddlCAndPSession']");
+  if (!accordion || !accordion.querySelector("h3")) return;
+  const text = `${select?.value || ""}|${accordion.textContent}`;
+  if (text === marksShared) return;
+  marksShared = text;
+  try {
+    chrome.runtime.sendMessage({ type: "cuims-clear:marks-page", html: (select ? select.outerHTML : "") + accordion.outerHTML });
   } catch {}
 }
 

@@ -135,3 +135,108 @@ test("both builds ship the same marks model", () => {
   const firefox = readFileSync(new URL("../outputs/cuims-clear-firefox/marks-model.js", import.meta.url), "utf8");
   assert.equal(chrome, firefox);
 });
+
+// ---- the background: Marks View for the popup ----
+
+import { fakeCuims, memoryStorage, TIMETABLE_HTML } from "./fake-cuims.mjs";
+
+const BACKGROUND = ["attendance-parse.js", "academic-calendar.js", "attendance-model.js", "marks-model.js", "attendance-client.js", "attendance-daemon.js"];
+
+function loadBackground() {
+  const sandbox = vm.createContext({ URL, URLSearchParams, Headers, AbortSignal, TextEncoder, Intl, Date, Math, JSON, console, setTimeout });
+  for (const name of BACKGROUND) vm.runInContext(readFileSync(new URL(`../outputs/cuims-clear-firefox/${name}`, import.meta.url), "utf8"), sandbox, { filename: name });
+  return sandbox.CuimsAttendance;
+}
+
+const A = loadBackground();
+const clock = Date.parse("2026-10-28T11:00:00+05:30");
+const META = { reportId: "RID+/=", sessionId: "26271" };
+const quiet = (when) => ({
+  attendanceMeta: META,
+  attendanceTimetable: { slots: A.parseTimetable(TIMETABLE_HTML), savedAt: when, session: "26271" },
+  attendanceLeaves: { v: A.LEAVES_VERSION, apps: { dl: [], ml: [] }, pending: {}, dlAt: when, mlAt: when, checkedAt: when },
+});
+
+function daemon(server, storage) {
+  let time = clock;
+  const instance = A.createDaemon({ storage, fetchImpl: server.fetchImpl, solveCaptcha: async () => "Ab12", now: () => time, sleep: async (ms) => { time += ms; } });
+  return { ...instance, advance: (ms) => (time += ms), now: () => time };
+}
+
+test("Marks View costs no request until the student asks for it", async () => {
+  const server = fakeCuims({ signedIn: true, marksView: fixture("marks-current.html") });
+  const storage = memoryStorage({ uid: "24BCS00000", password: "secret", ...quiet(clock) });
+  const result = await daemon(server, storage).refresh();
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(server.state.marksLoads, 0);
+  assert.equal(storage.data.attendanceExamMarks, undefined);
+});
+
+test("asked for on the Marks tab, Marks View is read once with the next refresh and kept by session", async () => {
+  const server = fakeCuims({ signedIn: true, marksView: fixture("marks-current.html") });
+  const storage = memoryStorage({ uid: "24BCS00000", password: "secret", ...quiet(clock), marksWantedAt: clock - 1000 });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh();
+  assert.equal(result.error, undefined, result.error);
+  assert.equal(server.state.marksLoads, 1);
+  const saved = storage.data.attendanceExamMarks;
+  assert.equal(saved.current, "26271");
+  assert.equal(saved.sessions["26271"].subjects.length, 8);
+  assert.equal(saved.sessions["26271"].label, "CurrentSession-26271");
+  // Read: no second load for the same ask.
+  bg.advance(60_000);
+  await bg.refresh();
+  assert.equal(server.state.marksLoads, 1);
+  // A new ask, a new read.
+  storage.data.marksWantedAt = bg.now();
+  bg.advance(60_000);
+  await bg.refresh();
+  assert.equal(server.state.marksLoads, 2);
+});
+
+test("a refused Marks View waits for the next ask, and the attendance read still stands", async () => {
+  const server = fakeCuims({ signedIn: true, marksView: "<html><body>Something else</body></html>" });
+  const storage = memoryStorage({ uid: "24BCS00000", password: "secret", ...quiet(clock), marksWantedAt: clock - 1000 });
+  const bg = daemon(server, storage);
+  const result = await bg.refresh();
+  assert.equal(result.error, undefined);
+  assert.ok(result.snapshot.subjects.length);
+  assert.equal(server.state.marksLoads, 1);
+  assert.ok(storage.data.attendanceExamMarks.triedAt > 0);
+  bg.advance(60_000);
+  await bg.refresh();
+  assert.equal(server.state.marksLoads, 1, "not again for the same ask");
+});
+
+test("opening Marks View on CUIMS hands it over for free, each session apart", async () => {
+  const server = fakeCuims({ signedIn: true });
+  const storage = memoryStorage({ uid: "24BCS00000", password: "secret" });
+  const bg = daemon(server, storage);
+  await bg.checkStudent();
+  await bg.ingestMarksPage(fixture("marks-current.html"));
+  bg.advance(1000);
+  await bg.ingestMarksPage(fixture("marks-previous.html"));
+  const saved = storage.data.attendanceExamMarks;
+  assert.deepEqual(Object.keys(saved.sessions).sort(), ["25262", "26271"]);
+  // The previous session's page still names the current one in its dropdown.
+  assert.equal(saved.current, "26271");
+  assert.equal(saved.sessions["25262"].subjects.length, 10);
+  assert.equal(server.state.requests.length, 0, "no request of its own");
+  // Another student's UID drops it.
+  storage.data.uid = "24BCS99999";
+  await bg.checkStudent();
+  assert.equal(storage.data.attendanceExamMarks, null);
+});
+
+test("a CUIMS tab hands Marks View over, and the background accepts it", () => {
+  const content = readFileSync(new URL("../outputs/cuims-clear-firefox/content.js", import.meta.url), "utf8");
+  assert.match(content, /type: "cuims-clear:marks-page"/);
+  assert.match(content, /shareMarksPage\(\);/);
+  const bg = readFileSync(new URL("../outputs/cuims-clear-firefox/attendance-bg.js", import.meta.url), "utf8");
+  assert.match(bg, /cuims-clear:marks-page.*ingestMarksPage/);
+  for (const build of ["firefox", "chrome"]) {
+    const manifest = JSON.parse(readFileSync(new URL(`../outputs/cuims-clear-${build}/manifest.json`, import.meta.url), "utf8"));
+    const scripts = build === "firefox" ? manifest.background.scripts : readFileSync(new URL("../outputs/cuims-clear-chrome/service-worker.js", import.meta.url), "utf8").match(/"[\w-]+\.js"/g).map((name) => name.slice(1, -1));
+    assert.ok(scripts.indexOf("marks-model.js") >= 0 && scripts.indexOf("marks-model.js") < scripts.indexOf("attendance-client.js"), build);
+  }
+});

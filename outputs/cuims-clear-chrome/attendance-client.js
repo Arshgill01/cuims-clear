@@ -10,6 +10,7 @@
   const ATTENDANCE_QUERY = "?type=etgkYfqBdH1fSfc255iYGw==";
   const TIMETABLE = "/frmMyTimeTable.aspx";
   const DATESHEET = "/frmStudentDatesheet.aspx";
+  const MARKS_VIEW = "/frmStudentMarksView.aspx";
   // CUIMS finishes a login in the browser: LandingPage.aspx calls this, and
   // until it runs the session has no menu rights, so every inner page
   // (attendance, timetable) redirects to error.html.
@@ -305,6 +306,16 @@
     return api.parseDateSheet(page.html);
   }
 
+  // Marks View opens on the current session: every subject's assessments
+  // in one GET (marks-model.js reads them).
+  async function readExamMarks(request) {
+    const page = await optionalPage(request, url(MARKS_VIEW));
+    if (!root.CuimsMarks) throw coded("report-shape");
+    const read = root.CuimsMarks.parseMarksPage(page.html);
+    if (!read.session && !/\bid\s*=\s*["']accordion["']/i.test(page.html)) throw coded("report-shape", null, describe(page));
+    return read;
+  }
+
   const LEAVE_PAGES = { dl: "/frmStudentApplyDutyLeave.aspx", ml: "/frmStudentMedicalLeaveApply.aspx" };
 
   // Since October 2026 the Duty Leave page opens on its Internal (events)
@@ -417,6 +428,7 @@
   api.readTimetable = readTimetable;
   api.readLeavePage = readLeavePage;
   api.readDateSheet = readDateSheet;
+  api.readExamMarks = readExamMarks;
   api.LEAVE_PAGES = LEAVE_PAGES;
   api.hasEmptyMenu = hasEmptyMenu;
   api.loginOutcome = loginOutcome;

@@ -97,6 +97,8 @@
   // at most daily, until it lists the student's papers for that test.
   const DATESHEET_LEAD_DAYS = 10;
   const DATESHEET_RETRY_MS = 24 * HOUR;
+  // Marks View is read only when the student asks for it (the popup's Marks
+  // tab sets marksWantedAt), and taken for free whenever they open it.
   // Report ids read before a semester began are read again from the
   // attendance page, and once more a week in (CUIMS may switch late): the
   // old ones may keep answering with last semester's attendance.
@@ -113,6 +115,8 @@
     attendanceCourses: null,
     attendanceHistory: null,
     attendanceDateSheet: null,
+    attendanceExamMarks: null,
+    marksWantedAt: 0,
     academicCalendar: "auto",
     attendanceRequests: [],
     attendanceSessionRequests: [],
@@ -140,7 +144,7 @@
   const PAGE_KEYS = { tabPageAt: 0, tabMenuOkAt: 0, pagesPausedUntil: 0, pagesPausedAt: 0, tabLimitedAt: 0 };
 
   // Everything read for one student. A different saved UID starts over.
-  const STUDENT_KEYS = ["attendanceSnapshot", "attendanceTimetable", "attendanceLeaves", "attendanceCourses", "attendanceHistory", "attendanceDateSheet", "attendanceMeta", "attendanceStatus"];
+  const STUDENT_KEYS = ["attendanceSnapshot", "attendanceTimetable", "attendanceLeaves", "attendanceCourses", "attendanceHistory", "attendanceDateSheet", "attendanceExamMarks", "attendanceMeta", "attendanceStatus"];
 
   // A refusal the background met (pagesPausedUntil) or a CUIMS tab met
   // (tabLimitedAt: error.html or an empty menu) holds pages, unless a CUIMS
@@ -762,6 +766,52 @@
       return all;
     }
 
+    // ---- exam marks (Marks View) ----
+
+    // Asked for since the last read and the last try.
+    function examMarksDue(state) {
+      const saved = state.attendanceExamMarks || {};
+      const wanted = Number(state.marksWantedAt || 0);
+      return wanted > Number(saved.savedAt || 0) && wanted > Number(saved.triedAt || 0);
+    }
+
+    // Each session apart: CUIMS offers the current one and the one before.
+    async function saveExamMarks(state, page, tried) {
+      const saved = state.attendanceExamMarks || {};
+      const key = String(page.session?.value || "current");
+      const sessions = { ...(saved.sessions || {}), [key]: { label: page.session?.label || "", subjects: page.subjects, savedAt: now() } };
+      const kept = Object.entries(sessions).sort((left, right) => right[1].savedAt - left[1].savedAt).slice(0, 3);
+      const current = page.sessions?.find((entry) => /^current/i.test(entry.label))?.value || page.sessions?.[0]?.value || saved.current || key;
+      const next = { sessions: Object.fromEntries(kept), current: String(current), savedAt: now(), triedAt: tried ? now() : Number(saved.triedAt || 0) };
+      state.attendanceExamMarks = next;
+      await storage.set({ attendanceExamMarks: next });
+      return next;
+    }
+
+    async function readExamMarksPage(state, request, onStep) {
+      await onStep("Reading your marks…");
+      try {
+        const page = await client.readExamMarks(request);
+        await markPageServed(state);
+        return { examMarks: await saveExamMarks(state, page, true), outcome: "ok" };
+      } catch (error) {
+        if (error.code === "portal-busy") throw error;
+        const outcome = await optionalOutcome(state, error);
+        if (outcome === "failed") {
+          state.attendanceExamMarks = { ...(state.attendanceExamMarks || {}), triedAt: now() };
+          await storage.set({ attendanceExamMarks: state.attendanceExamMarks });
+        }
+        return { examMarks: state.attendanceExamMarks, outcome };
+      }
+    }
+
+    // The student opened Marks View on CUIMS: keep it, with no request.
+    async function readExamMarksUpdate(html) {
+      const page = root.CuimsMarks?.parseMarksPage(html);
+      if (!page || (!page.session && !page.subjects.length)) return null;
+      return saveExamMarks(await storage.get(DEFAULTS), page, false);
+    }
+
     // ---- optional pages ----
 
     // The session was last seen signed out, and no CUIMS tab has shown its
@@ -797,6 +847,8 @@
     // timetable refresh.
     function nextOptional(state, meta, campus, done) {
       if (!done.has("timetable") && !timetableOf(state).slots.length && timetableDue(state, meta)) return "first-timetable";
+      // Asked for on the Marks tab, so it goes ahead of the routine pages.
+      if (!done.has("marks") && examMarksDue(state)) return "marks";
       const leave = dueLeave(currentLeaves(state));
       if (leave && !done.has(leave)) return leave;
       const other = leave === "dl" ? "ml" : leave === "ml" ? "dl" : "";
@@ -816,6 +868,10 @@
       if (which === "datesheet") {
         const { exams, outcome } = await readDateSheetPage(state, paced, onStep);
         return { outcome, found: { exams } };
+      }
+      if (which === "marks") {
+        const { examMarks, outcome } = await readExamMarksPage(state, paced, onStep);
+        return { outcome, found: { examMarks } };
       }
       const { leaves, outcome } = await readLeave(state, paced, which, onStep);
       return { outcome, found: { leaves } };
@@ -839,10 +895,13 @@
         const which = nextOptional(state, meta, campus, done);
         if (!which) break;
         done.add(which === "first-timetable" ? "timetable" : which);
-        const gap = which === "first-timetable" ? FIRST_TIMETABLE_GAP_MS : PAGE_GAP_MS;
+        // Pages the student is waiting on (a first timetable, marks they
+        // asked for) keep a minute from a tab's last page, not five.
+        const waitedOn = which === "first-timetable" || which === "marks";
+        const gap = waitedOn ? FIRST_TIMETABLE_GAP_MS : PAGE_GAP_MS;
         // The first page also keeps five minutes from the background's own
         // last page (not after a sign-in of this read); later ones six seconds.
-        const ownGap = pages || which === "first-timetable" ? 0 : gap;
+        const ownGap = pages || waitedOn ? 0 : gap;
         if (pages && budget.pagesTaken() >= READ_PAGE_CEILING) break;
         if (!(await budget.pageFree(gap, ownGap))) break;
         if (!signedIn && (await sessionKnownGone())) {
@@ -1145,6 +1204,10 @@
       return exclusive(() => readDateSheetUpdate(html));
     }
 
+    function ingestMarksPage(html) {
+      return exclusive(() => readExamMarksUpdate(html));
+    }
+
     // The saved UID changed: drop the last student's reads right away.
     function checkStudent() {
       return exclusive(async () => {
@@ -1152,7 +1215,7 @@
       });
     }
 
-    return { refresh, afterTabSignIn, ingestLeavePage, ingestTimetablePage, ingestDateSheetPage, noteTabPage, checkStudent };
+    return { refresh, afterTabSignIn, ingestLeavePage, ingestTimetablePage, ingestDateSheetPage, ingestMarksPage, noteTabPage, checkStudent };
   }
 
   api.DAEMON_DEFAULTS = DEFAULTS;
