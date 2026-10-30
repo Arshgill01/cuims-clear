@@ -1137,11 +1137,16 @@ function shareMarksPage() {
   const accordion = document.getElementById("accordion");
   const select = document.querySelector("select[name$='ddlCAndPSession']");
   if (!accordion || !accordion.querySelector("h3")) return;
-  const text = `${select?.value || ""}|${accordion.textContent}`;
+  // CUIMS's own markup: the tidy layer's chips and bars out, the course code
+  // it set apart back in its brackets.
+  const copy = accordion.cloneNode(true);
+  copy.querySelectorAll(".cc-score, .cc-mk-bar").forEach((node) => node.remove());
+  copy.querySelectorAll(".cc-code").forEach((node) => node.replaceWith(document.createTextNode(`(${node.textContent})`)));
+  const text = `${select?.value || ""}|${copy.textContent}`;
   if (text === marksShared) return;
   marksShared = text;
   try {
-    chrome.runtime.sendMessage({ type: "cuims-clear:marks-page", html: (select ? select.outerHTML : "") + accordion.outerHTML });
+    chrome.runtime.sendMessage({ type: "cuims-clear:marks-page", html: (select ? select.outerHTML : "") + copy.outerHTML });
   } catch {}
 }
 

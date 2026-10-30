@@ -97,8 +97,6 @@
   // at most daily, until it lists the student's papers for that test.
   const DATESHEET_LEAD_DAYS = 10;
   const DATESHEET_RETRY_MS = 24 * HOUR;
-  // Marks View is read only when the student asks for it (the popup's Marks
-  // tab sets marksWantedAt), and taken for free whenever they open it.
   // Report ids read before a semester began are read again from the
   // attendance page, and once more a week in (CUIMS may switch late): the
   // old ones may keep answering with last semester's attendance.
@@ -768,7 +766,9 @@
 
     // ---- exam marks (Marks View) ----
 
-    // Asked for since the last read and the last try.
+    // Marks View is read only when the student asks for it (the popup's
+    // Marks tab sets marksWantedAt), and taken for free whenever they open
+    // it: due when asked since the last read and the last try.
     function examMarksDue(state) {
       const saved = state.attendanceExamMarks || {};
       const wanted = Number(state.marksWantedAt || 0);

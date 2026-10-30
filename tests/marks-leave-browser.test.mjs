@@ -10,6 +10,7 @@ import vm from "node:vm";
 const CHROME = process.env.CHROME_BIN;
 const browserTest = CHROME && existsSync(CHROME) ? test : test.skip;
 const ORIGIN = "https://students.cuchd.in";
+const plain = (value) => JSON.parse(JSON.stringify(value));
 const fixture = (name) => readFileSync(new URL(`./fixtures/cuims/${name}`, import.meta.url), "utf8");
 const shots = new URL("../work/e2e/results/marks-leave/", import.meta.url);
 
@@ -78,6 +79,21 @@ browserTest("Marks View: the average weighs like CU, the raw total sits beside i
     assert.deepEqual(view.chips, [...all.subjects].map((subject) => `${M.formatPercent(subject.percent)}%`));
     assert.equal(view.switchOn, true);
     await page.screenshot({ path: new URL("marks-view.png", shots).pathname, fullPage: true });
+
+    // The tidied page hands CUIMS's own rows to the popup: titles and codes
+    // as CUIMS wrote them, no chips or bars mixed in.
+    await page.evaluate(() => document.getElementById("accordion").append(document.createComment("nudge")));
+    const handed = await worker.evaluate(async () => {
+      for (let i = 0; i < 50; i += 1) {
+        const { attendanceExamMarks } = await chrome.storage.local.get("attendanceExamMarks");
+        if (attendanceExamMarks) return attendanceExamMarks;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return null;
+    });
+    const kept = handed?.sessions?.["26271"]?.subjects || [];
+    assert.deepEqual(plain(kept.map((subject) => [subject.title, subject.code])), plain(subjects.map((subject) => [subject.title, subject.code])));
+    assert.deepEqual(plain(kept.map((subject) => subject.items.length)), plain(subjects.map((subject) => subject.items.length)));
 
     await page.click("[data-cc-skills]");
     await page.waitForFunction((expected) => document.querySelector(".cc-mk-big b")?.textContent === expected, {}, M.formatPercent(without.average));
