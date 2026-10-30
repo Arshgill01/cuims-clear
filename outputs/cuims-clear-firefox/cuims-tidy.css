@@ -1489,6 +1489,60 @@ html:not(.cc-tidy) .cc-mk-bar {
   font-size: 12.5px;
 }
 
+/* The raw total, secondary: a quieter line under the average. */
+.cc-mk-alt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-top: 10px !important;
+  padding-top: 10px;
+  border-top: 1px solid var(--o-line);
+  color: var(--o-muted);
+  font-size: 12.5px;
+}
+
+.cc-mk-alt b {
+  color: var(--o-ink);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-mk-switch {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0 !important;
+  color: var(--o-ink);
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+}
+
+.cc-mk-switch input {
+  width: 16px;
+  height: 16px;
+  margin: 0 !important;
+  accent-color: var(--o-ink);
+  cursor: pointer;
+}
+
+/* Left out of the average: present, but quieter, and saying why. */
+.cc-mk-subject.is-out {
+  background: color-mix(in srgb, var(--o-soft) 55%, var(--o-surface));
+}
+
+.cc-mk-subject.is-out .cc-mk-subject-pct {
+  color: var(--o-muted);
+}
+
+.cc-mk-flag {
+  color: var(--o-muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
 /* Three facts side by side, split by hairlines. */
 .cc-mk-notes {
   display: grid;
@@ -1889,5 +1943,235 @@ html:not(.cc-tidy) .cc-score {
   }
   .cc-tt-grid thead th {
     position: static;
+  }
+}
+
+/* ---- Duty Leave: the "File duty leave" card (duty-leave.js) ----
+   Above CUIMS's own form, outside its UpdatePanel, so it stays put while
+   the form redraws. Not tied to the tidy switch: it is a shortcut, not a
+   restyle. */
+
+.cc-dl {
+  display: grid;
+  gap: 14px;
+  margin: 12px 0 18px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  background: var(--o-surface);
+  box-shadow: inset 0 0 0 1px var(--o-line);
+  color: var(--o-ink);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.cc-dl-title {
+  margin: 0 !important;
+  color: var(--o-ink) !important;
+  font: 700 17px/1.2 var(--o-font) !important;
+  letter-spacing: -0.01em;
+}
+
+.cc-dl-lede {
+  margin: 4px 0 0 !important;
+  color: var(--o-muted);
+  font-size: 13px;
+}
+
+.cc-dl-days,
+.cc-dl-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cc-dl-day,
+.cc-dl-mode {
+  appearance: none;
+  display: grid;
+  gap: 1px;
+  min-height: 44px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--o-soft);
+  box-shadow: inset 0 0 0 1px var(--o-line);
+  color: var(--o-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cc-dl-day b {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.cc-dl-day span {
+  color: var(--o-muted);
+  font-size: 11.5px;
+}
+
+.cc-dl-mode {
+  align-content: center;
+  min-height: 36px;
+  font-weight: 600;
+}
+
+.cc-dl-day.is-on,
+.cc-dl-mode.is-on {
+  background: var(--o-surface);
+  box-shadow: inset 0 0 0 2px var(--o-ink);
+}
+
+.cc-dl-day:focus-visible,
+.cc-dl-mode:focus-visible,
+.cc-dl-go:focus-visible,
+.cc-dl select:focus-visible,
+.cc-dl-lecture input:focus-visible {
+  outline: 2px solid var(--o-focus);
+  outline-offset: 2px;
+}
+
+.cc-dl-lectures {
+  display: grid;
+  gap: 2px;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none;
+}
+
+.cc-dl-lecture {
+  display: grid !important;
+  grid-template-columns: 18px 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 !important;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--o-ink);
+  font-weight: 400 !important;
+  cursor: pointer;
+}
+
+.cc-dl-lecture:hover {
+  background: var(--o-soft);
+}
+
+.cc-dl-lecture input {
+  width: 16px;
+  height: 16px;
+  margin: 0 !important;
+  accent-color: var(--o-ink);
+}
+
+.cc-dl-lecture b {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-dl-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc-dl-state {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.cc-dl-state.is-absent {
+  background: var(--o-bad-bg);
+  color: var(--o-bad-ink);
+}
+
+.cc-dl-state.is-unmarked {
+  background: var(--o-soft);
+  color: var(--o-muted);
+}
+
+.cc-dl-none {
+  padding: 8px 10px;
+  color: var(--o-muted);
+}
+
+.cc-dl-field {
+  display: grid !important;
+  gap: 6px;
+  max-width: 420px;
+  margin: 0 !important;
+  font-weight: 400 !important;
+}
+
+.cc-dl-field span {
+  color: var(--o-muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cc-dl-field select {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--o-line-strong);
+  border-radius: 8px;
+  background: var(--o-surface);
+  color: var(--o-ink);
+  font: inherit;
+}
+
+.cc-dl-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.cc-dl-go {
+  appearance: none;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--o-accent);
+  color: var(--o-accent-ink);
+  font: 700 14px/1 var(--o-font);
+  cursor: pointer;
+}
+
+.cc-dl-go:disabled {
+  background: var(--o-soft);
+  color: var(--o-muted);
+  cursor: default;
+}
+
+.cc-dl-status {
+  flex: 1 1 260px;
+  margin: 0 !important;
+  color: var(--o-muted);
+  font-size: 13px;
+}
+
+.cc-dl-status[data-tone="good"] {
+  color: var(--o-good-ink);
+}
+
+.cc-dl-status[data-tone="bad"] {
+  color: var(--o-bad-ink);
+}
+
+@media (max-width: 640px) {
+  .cc-dl {
+    padding: 16px;
+  }
+  .cc-dl-lecture {
+    grid-template-columns: 18px 64px minmax(0, 1fr);
+  }
+  .cc-dl-state {
+    grid-column: 3;
+    justify-self: start;
   }
 }

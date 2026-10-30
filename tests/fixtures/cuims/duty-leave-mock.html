@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<!-- Duty Leave (frmStudentApplyDutyLeave.aspx) as CUIMS behaves in October 2026,
+     rebuilt from captured markup with the student's details removed. The page
+     opens on Internal; External holds the form. Every control in the "upd"
+     UpdatePanel redraws it through a partial postback (here: a short delay,
+     then the panel's HTML replaced, posted values kept), as ASP.NET AJAX
+     does. A date before a category is refused with CUIMS's SweetAlert. The
+     server log is window.__posts. -->
+<html>
+<head><title>Chandigarh University Management System</title></head>
+<body>
+<form method="post" action="./frmStudentApplyDutyLeave.aspx" id="form1">
+<ul id="menu-content"><li><a href="StudentHome.aspx">Home</a></li></ul>
+<div class="form_header">Duty Leave</div>
+<span id="ContentPlaceHolder1_rblType" class="type-radio-list"><input id="ContentPlaceHolder1_rblType_0" type="radio" name="ctl00$ContentPlaceHolder1$rblType" value="Internal" checked="checked" onclick="javascript:setTimeout('__doPostBack(\'ctl00$ContentPlaceHolder1$rblType$0\',\'\')', 0)" /><label for="ContentPlaceHolder1_rblType_0">Internal</label><input id="ContentPlaceHolder1_rblType_1" type="radio" name="ctl00$ContentPlaceHolder1$rblType" value="External" onclick="javascript:setTimeout('__doPostBack(\'ctl00$ContentPlaceHolder1$rblType$1\',\'\')', 0)" /><label for="ContentPlaceHolder1_rblType_1">External</label></span>
+<div id="host"></div>
+</form>
+<script>
+  const LECTURES = [
+    ["09:30 - 10:20 AM", "24TDT-312", "Aptitude-III", true],
+    ["1:40 - 2:30 PM", "24SMT-341", "Probability and Statistics", true],
+    ["10:20 - 11:10 AM", "24CST-302", "Computer Networks", true],
+    ["11:10 - 12:00 PM", "24CSP-305", "Competitive Coding-II", false],
+    ["2:30 - 3:20 PM", "24CSH-301", "Project Based Learning in Java", true],
+  ];
+  const CATEGORIES = [["0", "Select"], ["4", "NSS"], ["20", "Departmental Society Activities"], ["32", "Co-Curricular Activity (Centralized)"]];
+  const state = { tab: new URLSearchParams(location.search).get("tab") === "external" ? "External" : "Internal", type: "--Select--", category: "0", count: "", date: "", from: "", lectures: false, picked: [] };
+  window.__posts = [];
+  const esc = (v) => String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+  function swal(text) {
+    const overlay = document.createElement("div");
+    overlay.className = "swal-overlay swal-overlay--show-modal";
+    overlay.innerHTML = `<div class="swal-modal"><div class="swal-title">Warning!</div><div class="swal-text">${esc(text)}</div><button class="swal-button" type="button" onclick="this.closest('.swal-overlay').remove()">OK</button></div>`;
+    document.body.append(overlay);
+  }
+
+  function form() {
+    const option = (value, label, chosen) => `<option value="${value}"${value === chosen ? ' selected="selected"' : ""}>${label}</option>`;
+    let rows = "";
+    if (state.type === "L") {
+      rows += `<tr id="ContentPlaceHolder1_trTotalLLNew"><td>Total Lecture Leave*</td><td><input name="ctl00$ContentPlaceHolder1$txtLectureLeave" type="text" maxlength="2" id="ContentPlaceHolder1_txtLectureLeave" value="${esc(state.count)}"></td>
+        <td>Date*</td><td><input name="ctl00$ContentPlaceHolder1$txtDate" type="text" id="txtDate" value="${esc(state.date)}" onchange="javascript:setTimeout('__doPostBack(\\'ctl00$ContentPlaceHolder1$txtDate\\',\\'\\')', 0)" class="hasDatepicker"></td></tr>
+        <tr id="ContentPlaceHolder1_RowTimeNew"><td></td><td colspan="3"><div id="rcbTime" class="RadComboBox"><input id="rcbTime_Input" type="text" value=""><div id="rcbTime_DropDown" style="display:none"><ul class="rcbList">${state.lectures ? LECTURES.map(([time, , , open], i) => `<li class="rcbItem rcbTemplate"><table><tr><td>${open ? `<input id="chkTime" type="checkbox" name="ctl00$ContentPlaceHolder1$rcbTime$i${i}$chkTime">` : `<span class="aspNetDisabled"><input id="chkTime" type="checkbox" name="ctl00$ContentPlaceHolder1$rcbTime$i${i}$chkTime" disabled="disabled"></span>`}</td><td><span id="lblTime">${time}</span> <span id="lblMsg">${open ? "" : "Sorry, Can not apply for more DL"}</span></td></tr></table></li>`).join("") : ""}</ul></div></div>
+        &nbsp;<input type="submit" name="ctl00$ContentPlaceHolder1$b" value="Next Step" id="ContentPlaceHolder1_b"></td></tr>`;
+    }
+    if (state.type === "D") {
+      rows += `<tr id="ContentPlaceHolder1_RowDateNew"><td>Select Date*</td><td><input name="ctl00$ContentPlaceHolder1$txtFromDate" type="text" id="txtFromDate" value="${esc(state.from)}" onchange="javascript:setTimeout('__doPostBack(\\'ctl00$ContentPlaceHolder1$txtFromDate\\',\\'\\')', 0)" class="hasDatepicker"></td><td>To Date*</td><td><input type="text" id="txtToDate" disabled="disabled" value="${esc(state.from)}"></td></tr>`;
+    }
+    const picked = state.picked.length
+      ? `<table id="ContentPlaceHolder1_gvSelectedTimes"><tr><th>Sr.No</th><th>Time</th><th>CourseCode</th><th>CourseName</th><th>Pending Leaves</th></tr>${state.picked.map((i, n) => `<tr><td>${n + 1}.</td><td>${LECTURES[i][0]}</td><td>${LECTURES[i][1]}</td><td><span id="ContentPlaceHolder1_gvSelectedTimes_lblCourseName_${n}">${LECTURES[i][2]}</span></td><td>4</td></tr>`).join("")}</table>`
+      : "";
+    return `<div id="ContentPlaceHolder1_pnlExternal"><div class="tp-btns">Leave policy links</div>
+      <div id="ContentPlaceHolder1_upd"><table style="width:100%">
+        <tr><td>Type*</td><td><select name="ctl00$ContentPlaceHolder1$ddlTypeNew" id="ContentPlaceHolder1_ddlTypeNew" onchange="javascript:setTimeout('__doPostBack(\\'ctl00$ContentPlaceHolder1$ddlTypeNew\\',\\'\\')', 0)">${option("--Select--", "--Select--", state.type)}${option("D", "Day Bases", state.type)}${option("L", "Lecture Bases", state.type)}</select></td>
+        <td>Category</td><td><select name="ctl00$ContentPlaceHolder1$ddlDLSource" id="ContentPlaceHolder1_ddlDLSource">${CATEGORIES.map(([v, l]) => option(v, l, state.category)).join("")}</select></td></tr>
+        ${rows}
+        <tr><td></td><td colspan="3"><div>${picked}</div></td></tr>
+        <tr><td>Purpose of Duty Leave*</td><td colspan="4"><textarea id="ContentPlaceHolder1_txtPurposeofDL"></textarea></td></tr>
+        <tr><td></td><td colspan="3"><input id="ContentPlaceHolder1_cbcheckfinal" type="checkbox"> Declaration <input type="file" id="FuFileName"> <input type="submit" id="ContentPlaceHolder1_btnSave" value="Save"></td></tr>
+      </table></div>
+      <div id="Tab3"><table id="gvHistory"><tr><th>DL_No</th><th>Timing</th><th>Category</th><th>File Name</th><th>Leave_Type</th><th>Dated</th><th>Status</th><th>Remarks</th></tr></table></div></div>`;
+  }
+
+  function internal() {
+    return `<div id="ContentPlaceHolder1_pnlInternal">Register for academic events here.</div>`;
+  }
+
+  function draw() {
+    document.getElementById("ContentPlaceHolder1_rblType_0").checked = state.tab === "Internal";
+    document.getElementById("ContentPlaceHolder1_rblType_1").checked = state.tab === "External";
+    document.getElementById("host").innerHTML = state.tab === "External" ? form() : internal();
+  }
+
+  // What the form posts back, read the way the server would.
+  function readPosted() {
+    const value = (id) => document.getElementById(id)?.value;
+    if (value("ContentPlaceHolder1_ddlTypeNew") != null) state.type = value("ContentPlaceHolder1_ddlTypeNew");
+    if (value("ContentPlaceHolder1_ddlDLSource") != null) state.category = value("ContentPlaceHolder1_ddlDLSource");
+    if (value("ContentPlaceHolder1_txtLectureLeave") != null) state.count = value("ContentPlaceHolder1_txtLectureLeave");
+    if (value("txtDate") != null) state.date = value("txtDate");
+    if (value("txtFromDate") != null) state.from = value("txtFromDate");
+  }
+
+  window.__doPostBack = (target) => {
+    readPosted();
+    window.__posts.push({ target, state: JSON.parse(JSON.stringify(state)) });
+    if (/rblType\$1$/.test(target)) {
+      // A full postback: the whole page comes back on External.
+      setTimeout(() => location.replace(`${location.pathname}?tab=external`), 200);
+      return;
+    }
+    if (/rblType\$0$/.test(target)) {
+      setTimeout(() => location.replace(location.pathname), 200);
+      return;
+    }
+    setTimeout(() => {
+      if (/ddlTypeNew$/.test(target)) Object.assign(state, { lectures: false, picked: [], date: "", from: "" });
+      if (/txtDate$/.test(target)) {
+        if (state.category === "0") {
+          state.date = "";
+          draw();
+          swal("Please Select DL Category First.");
+          return;
+        }
+        state.lectures = /^\d{2}\/\d{2}\/\d{4}$/.test(state.date);
+      }
+      draw();
+    }, 300);
+  };
+
+  // Next Step: a submit inside the UpdatePanel, so an async postback too.
+  document.getElementById("form1").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    if (button?.id !== "ContentPlaceHolder1_b") {
+      window.__posts.push({ target: button?.id || "submit", saved: true });
+      return;
+    }
+    readPosted();
+    const ticked = [...document.querySelectorAll("#rcbTime_DropDown input[type=checkbox]")].map((box, i) => (box.checked && !box.disabled ? i : -1)).filter((i) => i >= 0);
+    window.__posts.push({ target: "Next Step", ticked, count: state.count });
+    setTimeout(() => {
+      if (String(ticked.length) !== String(state.count)) {
+        draw();
+        swal("Total Lecture Leave does not match the lectures selected.");
+        return;
+      }
+      state.picked = ticked;
+      draw();
+    }, 300);
+  });
+
+  draw();
+</script>
+</body>
+</html>

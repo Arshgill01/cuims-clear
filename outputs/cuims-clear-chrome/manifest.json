@@ -53,7 +53,9 @@
         "attendance-model.js",
         "academic-calendar.js",
         "calendar-export.js",
-        "cuims-tidy.js"
+        "marks-model.js",
+        "cuims-tidy.js",
+        "duty-leave.js"
       ],
       "css": [
         "cuims-tidy.css",
