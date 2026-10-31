@@ -129,7 +129,8 @@ External unless you pick Internal in that tab. A **File duty leave** card lists 
 CUIMS still accepts (today and the three before), with the classes you were marked absent
 in already ticked, and **Fill CUIMS's form** walks CUIMS's own form in the order it
 requires: type, category, date, lectures, count, Next Step. The reason, the declaration,
-the proof and Save stay with you; nothing is submitted for you.
+the proof and Save stay with you; nothing is submitted for you. A **Reason** box (with your past
+reasons from CUIMS's own history one click away) is written into CUIMS's Purpose of Duty Leave.
 
 ## Conservative CUIMS reads
 

@@ -152,10 +152,16 @@ browserTest("Duty Leave: straight to External, and one button walks CUIMS's lect
     assert.deepEqual(card.lectures, [["9:30 AM", "Aptitude-III", true], ["10:20 AM", "Computer Networks", true]]);
     assert.equal(card.go, true, "a category comes first");
 
+    // Past reasons from CUIMS's own history, once each, newest first.
+    const past = await page.$$eval(".cc-dl-past-chip", (chips) => chips.map((chip) => chip.textContent));
+    assert.deepEqual(past, ["Volunteer at the Tech Fest 2026", "Organised the society workshop on cloud basics"]);
     await page.select(".cc-dl-field select", "20");
+    await page.click(".cc-dl-past-chip");
+    assert.equal(await page.$eval(".cc-dl-reason textarea", (node) => node.value), "Volunteer at the Tech Fest 2026");
     await page.click(".cc-dl-go");
     await page.waitForSelector('.cc-dl-status[data-tone="good"]', { timeout: 20_000 });
     const after = await page.evaluate(() => ({
+      purpose: document.getElementById("ContentPlaceHolder1_txtPurposeofDL").value,
       status: document.querySelector(".cc-dl-status").textContent,
       posts: window.__posts,
       picked: [...document.querySelectorAll("#ContentPlaceHolder1_gvSelectedTimes [id*=lblCourseName]")].map((node) => node.textContent),
@@ -169,7 +175,9 @@ browserTest("Duty Leave: straight to External, and one button walks CUIMS's lect
     assert.equal(after.posts[2].count, "2");
     assert.ok(!after.posts.some((post) => post.saved), "Save stays with the student");
     assert.deepEqual(after.picked, ["Aptitude-III", "Computer Networks"]);
-    assert.match(after.status, /^Filled for 2 lectures \(Aptitude-III, Computer Networks\)\. Now write the reason/);
+    // The reason went into CUIMS's Purpose field, across the date reload.
+    assert.equal(after.purpose, "Volunteer at the Tech Fest 2026");
+    assert.match(after.status, /^Filled for 2 lectures \(Aptitude-III, Computer Networks\)\. Now check the reason, tick the declaration/);
     assert.equal(after.focused, "ContentPlaceHolder1_txtPurposeofDL");
     assert.equal(await worker.evaluate(() => chrome.storage.local.get("dlLastCategory").then((value) => value.dlLastCategory)), "20");
     await page.screenshot({ path: new URL("duty-leave.png", shots).pathname, fullPage: true });
@@ -327,9 +335,11 @@ firefoxTest("Firefox: Duty Leave goes to External and the card fills CUIMS's for
     await page.waitForFunction(() => location.search === "?tab=external" && document.querySelector(".cc-dl"), { timeout: 15_000 });
     // No attendance read in this profile: the day opens in CUIMS's own list.
     await page.select(".cc-dl-field select", "20");
+    await page.type(".cc-dl-reason textarea", "Attended the robotics meet");
     await page.click(".cc-dl-go");
     await page.waitForSelector('.cc-dl-status[data-tone="good"]', { timeout: 20_000 });
-    const after = await page.evaluate(() => ({ posts: window.__posts.map((post) => post.target), status: document.querySelector(".cc-dl-status").textContent, offered: document.querySelectorAll("#rcbTime_DropDown li").length }));
+    const after = await page.evaluate(() => ({ posts: window.__posts.map((post) => post.target), status: document.querySelector(".cc-dl-status").textContent, offered: document.querySelectorAll("#rcbTime_DropDown li").length, purpose: document.getElementById("ContentPlaceHolder1_txtPurposeofDL").value }));
+    assert.equal(after.purpose, "Attended the robotics meet");
     assert.deepEqual(after.posts, ["ctl00$ContentPlaceHolder1$ddlTypeNew", "ctl00$ContentPlaceHolder1$txtDate"]);
     assert.equal(after.offered, 5);
     assert.match(after.status, /is open in CUIMS's form: tick the lectures/);

@@ -2123,6 +2123,73 @@ html:not(.cc-tidy) .cc-score {
   font: inherit;
 }
 
+.cc-dl-reason {
+  max-width: 640px;
+}
+
+.cc-dl-reason textarea {
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--o-line-strong);
+  border-radius: 8px;
+  background: var(--o-surface);
+  color: var(--o-ink);
+  font: inherit;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.cc-dl-reason textarea:focus-visible {
+  outline: 2px solid var(--o-focus);
+  outline-offset: 2px;
+}
+
+.cc-dl-reason small {
+  color: var(--o-muted);
+  font-size: 12px;
+}
+
+.cc-dl-past {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: -6px;
+}
+
+.cc-dl-past > span {
+  margin-right: 2px;
+  color: var(--o-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cc-dl-past-chip {
+  appearance: none;
+  max-width: 100%;
+  padding: 5px 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--o-soft);
+  box-shadow: inset 0 0 0 1px var(--o-line);
+  color: var(--o-ink);
+  font: inherit;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cc-dl-past-chip:hover {
+  box-shadow: inset 0 0 0 1px var(--o-ink);
+}
+
+.cc-dl-past-chip:focus-visible {
+  outline: 2px solid var(--o-focus);
+  outline-offset: 2px;
+}
+
 .cc-dl-foot {
   display: flex;
   flex-wrap: wrap;
