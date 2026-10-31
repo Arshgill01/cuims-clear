@@ -11,12 +11,10 @@
 //   in this tab.
 // - A "File duty leave" card above CUIMS's form lists the days CUIMS still
 //   accepts, with the classes the student was marked absent in (from the
-//   extension's attendance history and timetable) already ticked, and a
-//   reason box with the student's past reasons from CUIMS's own history one
-//   click away. One button walks CUIMS's own form through those steps, the
-//   way the student would, and writes the reason into its Purpose field.
-//   The declaration, the proof and Save stay with the student: nothing is
-//   submitted for them.
+//   extension's attendance history and timetable) already ticked. One button
+//   walks CUIMS's own form through those steps, the way the student would.
+//   The reason, the declaration, the proof and Save stay with the student:
+//   nothing is submitted for them.
 
 (function (root) {
   const api = root.CuimsAttendance;
@@ -254,22 +252,7 @@
   // ---- the card ----
 
   let stored = { attendanceHistory: null, attendanceTimetable: null, attendanceSnapshot: null, dlLastCategory: "" };
-  const state = { dayKey: "", mode: "L", starts: new Set(), busy: false, purpose: "" };
-
-  // The student's own past reasons, from CUIMS's Duty Leave history on this
-  // page (newest first): one event often covers several days.
-  function pastReasons() {
-    const seen = new Set();
-    const reasons = [];
-    for (const node of document.querySelectorAll("#gvHistory [id$=lblSubjectRemarks]")) {
-      const text = node.textContent.replace(/\s+/g, " ").trim();
-      if (!text || seen.has(text.toLowerCase())) continue;
-      seen.add(text.toLowerCase());
-      reasons.push(text);
-      if (reasons.length === 4) break;
-    }
-    return reasons;
-  }
+  const state = { dayKey: "", mode: "L", starts: new Set(), busy: false };
 
   function categories() {
     return [...($(ids.category)?.options || [])].filter((option) => option.value && option.value !== "0").map((option) => [option.value, option.textContent.trim()]);
@@ -307,7 +290,7 @@
     card.setAttribute("aria-label", "File duty leave");
     const head = el("div", "cc-dl-head");
     const titles = el("div");
-    titles.append(el("h2", "cc-dl-title", "File duty leave"), el("p", "cc-dl-lede", "Pick the day, classes and reason. CUIMS Clear fills CUIMS's form below; you tick the declaration, attach the proof, then Save."));
+    titles.append(el("h2", "cc-dl-title", "File duty leave"), el("p", "cc-dl-lede", "Pick the day and classes. CUIMS Clear fills CUIMS's form below; you add the reason and proof, then Save."));
     head.append(titles);
     card.append(head);
 
@@ -384,37 +367,6 @@
     field.append(select);
     card.append(field);
 
-    // Reason, written into CUIMS's "Purpose of Duty Leave"
-    const reason = el("label", "cc-dl-field cc-dl-reason");
-    reason.append(el("span", "", "Reason"));
-    const text = el("textarea");
-    text.rows = 2;
-    text.value = state.purpose;
-    text.placeholder = "What the leave was for, e.g. Attended the Code Yudh hackathon on 28 Oct, 9 AM to 4:30 PM";
-    text.addEventListener("input", () => {
-      state.purpose = text.value;
-    });
-    reason.append(text, el("small", "", "Goes into CUIMS's Purpose of Duty Leave. You can still edit it there before saving."));
-    card.append(reason);
-    const past = pastReasons();
-    if (past.length) {
-      const chips = el("div", "cc-dl-past");
-      chips.setAttribute("aria-label", "Your past reasons");
-      chips.append(el("span", "", "Used before"));
-      for (const entry of past) {
-        const chip = el("button", "cc-dl-past-chip", entry.length > 70 ? `${entry.slice(0, 68)}…` : entry);
-        chip.type = "button";
-        chip.title = entry;
-        chip.addEventListener("click", () => {
-          state.purpose = entry;
-          render();
-          document.querySelector(".cc-dl-reason textarea")?.focus({ preventScroll: true });
-        });
-        chips.append(chip);
-      }
-      card.append(chips);
-    }
-
     const foot = el("div", "cc-dl-foot");
     const action = el("button", "cc-dl-go", state.busy ? "Filling…" : "Fill CUIMS's form");
     action.type = "button";
@@ -437,13 +389,13 @@
 
   function fill(day, starts, category) {
     if (state.busy) return;
-    const job = { day: day.key, back: day.back, mode: state.mode, starts: state.mode === "L" ? starts : [], category, purpose: state.purpose.trim(), at: Date.now() };
+    const job = { day: day.key, back: day.back, mode: state.mode, starts: state.mode === "L" ? starts : [], category, at: Date.now() };
     saveJob(job);
     run(job);
   }
 
   async function run(job) {
-    Object.assign(state, { busy: true, message: "", tone: "", dayKey: job.day, mode: job.mode, purpose: job.purpose || state.purpose });
+    Object.assign(state, { busy: true, message: "", tone: "", dayKey: job.day, mode: job.mode });
     if (job.mode === "L") state.starts = new Set(job.starts);
     const report = (message) => {
       state.message = message;
@@ -453,20 +405,14 @@
     try {
       const done = await advance(job, report);
       saveJob(null);
-      // Last, once CUIMS has stopped redrawing its form.
-      const purpose = $(ids.purpose);
-      if (purpose && job.purpose) {
-        purpose.value = job.purpose;
-        purpose.dispatchEvent(new Event("input", { bubbles: true }));
-      }
       const label = dayLabel(job);
       const what = job.mode === "L" && done.count ? `${done.count} ${done.count === 1 ? "lecture" : "lectures"}${done.courses.length ? ` (${done.courses.join(", ")})` : ""}` : label;
-      const proof = "tick the declaration, attach the proof (PDF or JPEG, under 1 MB) and Save.";
-      const rest = job.purpose && purpose ? `check the reason, ${proof}` : `write the reason, ${proof}`;
+      const rest = "write the reason, tick the declaration, attach the proof (PDF or JPEG, under 1 MB) and Save.";
       const message = job.mode === "L" && !done.count
         ? `${label} is open in CUIMS's form: tick the lectures in its list, type how many, press Next Step, then ${rest}`
         : `Filled for ${what}.${done.notes.length ? ` ${done.notes.join("; ")}.` : ""} Now ${rest}`;
       Object.assign(state, { tone: "good", message });
+      const purpose = $(ids.purpose);
       purpose?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
       purpose?.focus({ preventScroll: true });
     } catch (error) {
