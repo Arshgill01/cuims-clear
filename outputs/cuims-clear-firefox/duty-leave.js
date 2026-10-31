@@ -68,7 +68,9 @@
 
   root.CuimsDutyLeave = { planDays, pickerDate, startOf, shiftKey, WINDOW_DAYS };
 
-  if (typeof document === "undefined" || root.top !== root || !/\/frmStudentApplyDutyLeave\.aspx$/i.test(root.location?.pathname || "")) return;
+  // `window`, not `root`: in Firefox a content script's globalThis is its
+  // sandbox, which is never the top window.
+  if (typeof window === "undefined" || window.top !== window || !/\/frmStudentApplyDutyLeave\.aspx$/i.test(location.pathname)) return;
 
   const INTERNAL_KEY = "ccDlInternal";
   const $ = (id) => document.getElementById(id);

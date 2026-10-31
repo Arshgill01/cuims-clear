@@ -309,3 +309,31 @@ browserTest("Duty Leave: a whole day sets the type and the date through CUIMS's 
     await browser.close();
   }
 });
+
+// Firefox runs content scripts in a sandbox whose globalThis is not the
+// window; the Duty Leave card once checked the wrong one and never ran there.
+const FIREFOX = process.env.FIREFOX_BIN;
+const firefoxTest = FIREFOX && existsSync(FIREFOX) ? test : test.skip;
+
+firefoxTest("Firefox: Duty Leave goes to External and the card fills CUIMS's form across the date reload", async () => {
+  const { default: puppeteer } = await import("puppeteer-core");
+  const browser = await puppeteer.launch({ browser: "firefox", executablePath: FIREFOX, headless: true, enableExtensions: true });
+  try {
+    const page = (await browser.pages())[0] || (await browser.newPage());
+    await browser.installExtension(path.resolve("outputs/cuims-clear-firefox"));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await servePortal(page, { "/frmStudentApplyDutyLeave.aspx": fixture("duty-leave-mock.html") });
+    await page.goto(`${ORIGIN}/frmStudentApplyDutyLeave.aspx`);
+    await page.waitForFunction(() => location.search === "?tab=external" && document.querySelector(".cc-dl"), { timeout: 15_000 });
+    // No attendance read in this profile: the day opens in CUIMS's own list.
+    await page.select(".cc-dl-field select", "20");
+    await page.click(".cc-dl-go");
+    await page.waitForSelector('.cc-dl-status[data-tone="good"]', { timeout: 20_000 });
+    const after = await page.evaluate(() => ({ posts: window.__posts.map((post) => post.target), status: document.querySelector(".cc-dl-status").textContent, offered: document.querySelectorAll("#rcbTime_DropDown li").length }));
+    assert.deepEqual(after.posts, ["ctl00$ContentPlaceHolder1$ddlTypeNew", "ctl00$ContentPlaceHolder1$txtDate"]);
+    assert.equal(after.offered, 5);
+    assert.match(after.status, /is open in CUIMS's form: tick the lectures/);
+  } finally {
+    await browser.close();
+  }
+});
