@@ -104,11 +104,14 @@
 
   // ---- straight to External ----
 
-  // The student's own choice of tab sticks for this tab's session.
+  // The student's own choice of tab sticks for this tab's session: a click
+  // on the radio or on its label (CUIMS draws them as buttons).
   document.addEventListener("click", (event) => {
     if (!event.isTrusted) return;
-    if (event.target?.id === ids.internal) sessionStorage.setItem(INTERNAL_KEY, "1");
-    if (event.target?.id === ids.external) sessionStorage.removeItem(INTERNAL_KEY);
+    const target = event.target?.closest?.("input, label");
+    const chosen = target?.tagName === "LABEL" ? target.htmlFor : target?.id;
+    if (chosen === ids.internal) sessionStorage.setItem(INTERNAL_KEY, "1");
+    if (chosen === ids.external) sessionStorage.removeItem(INTERNAL_KEY);
   }, true);
 
   let switched = false;

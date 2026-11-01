@@ -33,6 +33,11 @@
   // What the What's new card lists, by version. A version with no entry
   // shows no card.
   const NOTES = {
+    "1.1.0": [
+      "Marks are now weighted the way CU counts internal marks, so your percentages match CU's. A new Marks tab shows them without opening CUIMS.",
+      "Say whether Aptitude and Soft Skills count towards your result: one switch, on the Marks tab and on Marks View.",
+      "Duty Leave opens straight on External, and one button fills CUIMS's form from the classes you missed. You add the reason and proof, then Save.",
+    ],
     "1.0.0": [
       "CUIMS Clear is 1.0: 100 students on the Chrome Web Store. Thank you.",
       "A new 1.0 tab: your semester receipt, every class day by day, Proxy Run, a time capsule, and Semester Wrapped on the last day of classes.",

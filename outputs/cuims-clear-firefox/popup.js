@@ -37,6 +37,10 @@ const STALE_MS = 2 * 60 * 1000;
 // Refresh comes back this long after the last read (the background's
 // MANUAL_GAP_MS), or when CUIMS's own pushback ends.
 const REFRESH_GAP_MS = 30 * 1000;
+// The tabs drawn from the background's reads.
+const DATA_VIEWS = new Set(["attendance", "forecast", "marks"]);
+// The Marks tab asks for Marks View once when its last read is this old.
+const MARKS_STALE_MS = 12 * 60 * 60 * 1000;
 let autoRead = false;
 // With no timetable saved, the background says when it can read one
 // (snapshot.timetableDueAt, a minute after the attendance page); the popup
@@ -622,10 +626,6 @@ function fetchAttendance() {
 }
 
 // ---- views ----
-
-// The tabs drawn from the background's reads.
-const DATA_VIEWS = new Set(["attendance", "forecast", "marks"]);
-const MARKS_STALE_MS = 12 * 60 * 60 * 1000;
 
 function showView(name, { remember = true } = {}) {
   if (!views[name]) name = "login";

@@ -175,7 +175,8 @@ browserTest("Duty Leave: straight to External, and one button walks CUIMS's lect
     await page.screenshot({ path: new URL("duty-leave.png", shots).pathname, fullPage: true });
 
     // Choosing Internal sticks for the tab: no bounce back to External.
-    await page.click("#ContentPlaceHolder1_rblType_0");
+    // Clicked on its label, as CUIMS draws the radios as buttons.
+    await page.click('label[for="ContentPlaceHolder1_rblType_0"]');
     await page.waitForFunction(() => location.search === "" && document.getElementById("ContentPlaceHolder1_pnlInternal"), { timeout: 10_000 });
     await new Promise((resolve) => setTimeout(resolve, 800));
     assert.equal(await page.evaluate(() => location.search), "");
