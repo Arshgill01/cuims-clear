@@ -61,6 +61,20 @@ Offline (mocked CUIMS, no account needed):
 - `node probe-themes.mjs <chrome package dir>`: toolbar icon per theme, live theme switching.
 - `node cuims-login-themes.mjs <chrome package dir> <out.png>`: the public CUIMS login page in several themes.
 
+Marks View and Duty Leave, live with the `.env` login in a disposable profile
+(read-only: nothing is saved on CUIMS; pages at least eight seconds apart):
+
+- `OUT=/tmp/dir [ONLY=marks|dl|dlform] node work/e2e/capture-marks-leave.mjs`: saves
+  the server HTML of Marks View (current and previous session) and Duty Leave
+  (Internal, External, each Type, a date's lecture list, Next Step) for building
+  fixtures. Raw pages hold personal data: keep `OUT` outside the repository, and
+  replace every obtained mark and identity before committing a fixture.
+- `DL_DATE=YYYY-MM-DD DL_START=570 node work/e2e/live-marks-leave.mjs`: the packaged
+  Chrome build on real CUIMS. Checks the Marks View summary and its hand-over to the
+  popup, then the Duty Leave card going to External and filling CUIMS's lecture form
+  for `DL_DATE` (one of the last three days) up to Next Step. Save is never pressed.
+  Screenshots land in the ignored `results/live-marks-leave/`; delete them after.
+
 Live (a separate debug Chrome on port 9333 with its own profile; you save your
 login in that window's popup once): `load.mjs` loads the Chrome package,
 `record.mjs <log>` records every cuchd.in request and the extension's state,

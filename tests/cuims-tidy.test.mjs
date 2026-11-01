@@ -75,8 +75,10 @@ test("both manifests load the tidy layer on CUIMS, after the model it uses", () 
     const entry = manifest.content_scripts.find((script) => script.js.includes("cuims-tidy.js"));
     assert.ok(entry, build);
     assert.deepEqual(entry.matches, ["https://students.cuchd.in/*"]);
-    // The calendar (holidays, last teaching day) and the .ics export come before the layer that uses them.
-    assert.deepEqual(entry.js, ["attendance-model.js", "academic-calendar.js", "calendar-export.js", "cuims-tidy.js"]);
+    // The calendar (holidays, last teaching day), the .ics export and the
+    // marks model come before the layer that uses them; the Duty Leave card
+    // after it, on the same models.
+    assert.deepEqual(entry.js, ["attendance-model.js", "academic-calendar.js", "calendar-export.js", "marks-model.js", "cuims-tidy.js", "duty-leave.js"]);
     // Founding 100's portal styles ride along; they only apply under its signature.
     assert.deepEqual(entry.css, ["cuims-tidy.css", "founders-cuims.css"]);
     assert.equal(entry.all_frames, undefined, `${build}: top frame only`);
@@ -171,6 +173,7 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
     </ul></div><div id="loader-wrapper"></div>`;
     await page.setContent(`<html><head><style>${read("cuims-tidy.css")}</style></head><body>${SIDEBAR}<div class="inner-wrapper">${NEW_TIMETABLE}${MARKS}</div></body></html>`);
     await page.evaluate(read("attendance-model.js"));
+    await page.evaluate(read("marks-model.js"));
     // The timetable is only rebuilt on its own page; hand the script that URL.
     await page.evaluate((source) => new Function("location", source)(new URL("https://students.cuchd.in/frmMyTimeTable.aspx")), read("cuims-tidy.js"));
 
@@ -221,9 +224,11 @@ browserTest(`${label}: the tidy layer orders the week, marks today and now, tota
     assert.equal(view.exportIn, true, "Add to calendar sits on the week");
     assert.equal(view.originalHidden, true);
     assert.equal(view.spilled, 0);
-    // Unposted marks are left out of the total; a subject with none has no chip.
-    // An ABSENT is a zero out of its marks, not a test left out.
-    assert.deepEqual(view.scores, ["22.5 / 25", "14 / 45"]);
+    // Each chip is its subject weighted the way CU counts internal marks.
+    // Unposted marks are left out; a subject with none has no chip. An
+    // ABSENT is a zero for its whole kind (experiments, worth 40 to the lab
+    // test's 15), not a test left out.
+    assert.deepEqual(view.scores, ["90.0%", "25.5%"]);
     assert.equal(view.code, "24CST-302");
     assert.deepEqual(view.low, ["72.5"]);
     assert.deepEqual(view.ok, ["91"]);

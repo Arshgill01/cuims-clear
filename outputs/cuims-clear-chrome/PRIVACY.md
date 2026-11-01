@@ -46,7 +46,9 @@ When you open the Attendance or Forecast tab and the last read is more than two 
 old, or when you press Refresh, the extension reads your own attendance report,
 class-by-class attendance record, timetable, date sheet, and duty and medical leave
 applications from CUIMS with your browser's CUIMS session, signing in with your saved UID
-and password in the background when needed. Nothing runs on a timer in the background.
+and password in the background when needed. When you ask on the Marks tab, it also reads
+your own Marks View page (assessment marks); opening Marks View on CUIMS hands the same
+page over without a request. Nothing runs on a timer in the background.
 Attendance figures, the class record, the timetable (with rooms and teachers) and the date
 sheet are stored only in chrome.storage.local on this device and are removed by Clear
 login. The Forecast tab's projections are calculated on the device from them.
@@ -54,7 +56,9 @@ login. The Forecast tab's projections are calculated on the device from them.
 ## CUIMS pages and calendar files
 
 On My Time Table, Datesheet and Marks View, the extension redraws the page's own data in a
-clearer layout, on the page itself. Add to calendar, on those pages or on the 1.0 tab,
+clearer layout, on the page itself. On the Duty Leave page it selects the External tab and,
+when you press Fill CUIMS's form, fills CUIMS's own form fields from the saved attendance
+record; it never presses Save or uploads anything. Add to calendar, on those pages or on the 1.0 tab,
 builds an .ics calendar file on your device from what the page or the saved attendance
 shows, and hands it to the browser's own download. The file is not sent anywhere; adding
 it to a calendar app is up to you.

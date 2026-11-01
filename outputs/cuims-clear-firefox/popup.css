@@ -869,7 +869,9 @@ input[role="switch"]:disabled {
 
 /* ---- attendance ---- */
 
-.attendance {
+/* The Marks tab's subject cards are attendance cards too. */
+.attendance,
+.marks {
   --tone-high: var(--good);
   --tone-high-ink: var(--good-ink);
   --tone-ok: var(--neutral);
@@ -1297,6 +1299,12 @@ input[role="switch"]:disabled {
   color: var(--muted);
 }
 
+.leave-file {
+  display: inline-block;
+  margin-top: 6px;
+  text-decoration: none;
+}
+
 .tag {
   flex: 0 0 auto;
   padding: 1px 7px;
@@ -1662,8 +1670,102 @@ input[role="switch"]:disabled {
   stroke-dasharray: 1.6 2.2;
 }
 
-.forecast {
+.forecast,
+.marks {
   padding-top: 12px;
+}
+
+/* ---- Marks ----
+   The Forecast's hero for the average, the attendance cards for subjects. */
+
+.mk-raw {
+  max-width: 140px;
+}
+
+.mk-raw-label {
+  color: var(--h-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.mk-raw strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.mk-skills {
+  margin: 0 0 8px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+/* Left out of the average: the card goes quiet and says why. */
+.mk-course.tone-none::before,
+.mk-course.tone-none .meter-fill {
+  background: var(--line-strong);
+}
+
+.mk-course.is-out .course-pct {
+  color: var(--muted);
+}
+
+.mk-out,
+.mk-quiet {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.mk-kinds {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.mk-kinds summary {
+  width: max-content;
+  color: var(--muted);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.mk-kinds summary:hover {
+  color: var(--ink);
+}
+
+.mk-kinds ul {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mk-kinds li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-kind-marks {
+  color: var(--muted);
+}
+
+.mk-kind-share {
+  min-width: 64px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.mk-kinds-raw {
+  margin: 6px 0 0;
+  color: var(--muted);
 }
 
 .fc-hero {

@@ -4,7 +4,7 @@
 
 const ORIGIN = "https://students.cuchd.in";
 // Selected pages refused by this fixture, not a measured CUIMS quota.
-const INNER_PAGES = new Set(["/frmstudentcoursewiseattendancesummary.aspx", "/frmmytimetable.aspx", "/frmstudentapplydutyleave.aspx", "/frmstudentmedicalleaveapply.aspx", "/frmstudentdatesheet.aspx"]);
+const INNER_PAGES = new Set(["/frmstudentcoursewiseattendancesummary.aspx", "/frmmytimetable.aspx", "/frmstudentapplydutyleave.aspx", "/frmstudentmedicalleaveapply.aspx", "/frmstudentdatesheet.aspx", "/frmstudentmarksview.aspx"]);
 
 export const SUMMARY = [
   { Code: "24CSP-305", Title: "Competitive Coding-II", Total_Delv: "32", Total_Attd: "26", EligibilityDelivered: "32", EligibilityAttended: "26", EncryptCode: "enc305" },
@@ -109,13 +109,14 @@ export function fakeCuims({
   dutyLeaves = [],
   medicalLeaves = [],
   dateSheet = [],
+  marksView = "",
 } = {}) {
   // `landed`: CUIMS gives a session menu rights only once the browser's
   // LandingPage step has called ShowLandingPage. Before that, every inner page
   // redirects to error.html.
   // `summary` is GetReport's answer; tests move its counts the way CUIMS
   // does when a mark is posted or a leave is decided.
-  const state = { landed, limited, limitedHits: 0, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, dateSheetLoads: 0, dateSheet, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
+  const state = { landed, limited, limitedHits: 0, landingCalls: 0, cookiedReports: 0, leavePageLoads: 0, dateSheetLoads: 0, dateSheet, marksLoads: 0, marksView, signedIn, requests: [], uidPosts: 0, loginPosts: 0, captchaReads: 0, attendanceLoads: 0, loginPageLoads: 0, reportId, summary: SUMMARY.map((row) => ({ ...row })) };
 
   async function fetchImpl(target, options = {}) {
     const url = new URL(target);
@@ -212,6 +213,10 @@ export function fakeCuims({
     if (path === "/frmstudentdatesheet.aspx") {
       state.dateSheetLoads += 1;
       return response(url.href, 200, dateSheetPage(state.dateSheet));
+    }
+    if (path === "/frmstudentmarksview.aspx") {
+      state.marksLoads += 1;
+      return response(url.href, 200, state.marksView);
     }
     return response(url.href, 404, "not found");
   }

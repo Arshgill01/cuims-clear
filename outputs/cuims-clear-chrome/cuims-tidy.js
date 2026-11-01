@@ -8,7 +8,9 @@
 // - My Attendance: each subject's eligible percentage read against the
 //   student's goal, so a subject under it stands out; a subject's
 //   class-by-class list gets coloured marks and a tally.
-// - Marks: each subject's header carries its running total.
+// - Marks: each subject weighted the way CU counts internal marks
+//   (marks-model.js), their average and the raw total above the accordion,
+//   and each header carrying its subject's percentage.
 // - Datesheet: the exams still to come, in date order with a countdown,
 //   above the table; past exams dimmed, and columns that say nothing
 //   (the student's own UID on every row, empty columns) hidden.
@@ -23,7 +25,7 @@
 (() => {
   if (window.top !== window) return;
   const api = globalThis.CuimsAttendance;
-  if (!api) return;
+  if (!api || !globalThis.CuimsMarks) return;
   const KEY = "cuimsTidy";
   const root = document.documentElement;
   const KIND = { L: "Lecture", P: "Lab", T: "Tutorial" };
@@ -823,10 +825,12 @@
 
   // ---- marks ----
 
-  function number(text) {
-    const value = Number.parseFloat(clean(text));
-    return Number.isFinite(value) ? value : null;
-  }
+  // Weighting, averaging and the Aptitude / Soft Skills choice live in
+  // marks-model.js, shared with the popup's Marks tab.
+  const marks = globalThis.CuimsMarks;
+  let includeSkills = true;
+  const fmt = (value) => marks.formatPercent(value);
+  const round2 = (value) => marks.round2(value);
 
   // "Computer Networks (24CST-302)": the code in a quieter span.
   function mutedCode(header) {
@@ -838,44 +842,29 @@
     text.after(el("span", "cc-code", match[2]));
   }
 
-  const round2 = (value) => String(Math.round(value * 100) / 100);
-  const pct = (got, max) => (max > 0 ? (got / max) * 100 : null);
-  // Good, fair or low, for a share of marks.
-  const band = (share) => (share == null ? "" : share >= 80 ? "good" : share >= 55 ? "fair" : "low");
-
-  // One subject's assessments from its accordion panel. An ABSENT counts as
-  // zero of its marks; anything else unposted ("Not posted", blank) is left out.
+  // One subject's rows from its accordion panel, each item keeping its row
+  // and cell for the bar beside the mark.
   function readSubject(header) {
     const panel = header.nextElementSibling;
     const items = [];
+    let grade = "";
     for (const row of panel?.querySelectorAll("tbody tr") || []) {
       const cells = [...row.cells];
       if (cells.length < 3) continue;
-      const outOf = number(cells[cells.length - 2].textContent);
-      const raw = clean(cells[cells.length - 1].textContent);
-      const absent = /^ab(sent)?$/i.test(raw);
-      const scored = absent ? 0 : number(raw);
-      if (outOf == null || outOf <= 0 || scored == null) continue;
-      items.push({ row, cell: cells[cells.length - 1], name: clean(cells[0].textContent), max: outOf, got: scored, absent });
+      const cell = cells[cells.length - 1];
+      const read = marks.readRow(cells[0].textContent, cells[cells.length - 2].textContent, cell.textContent);
+      if (read?.grade) grade = read.grade;
+      else if (read) items.push({ ...read, row, cell });
     }
     const codeNode = header.querySelector(".cc-code");
-    const text = clean([...header.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" "));
-    const match = text.match(/^([\s\S]*?)\s*\(([A-Z0-9-]{2,})\)\s*$/i);
-    return {
-      header,
-      items,
-      title: match ? match[1] : text,
-      code: codeNode?.textContent || match?.[2] || "",
-      max: items.reduce((sum, item) => sum + item.max, 0),
-      got: items.reduce((sum, item) => sum + item.got, 0),
-      absent: items.filter((item) => item.absent).length,
-    };
+    const named = marks.splitTitle([...header.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join(" "));
+    return { header, items, grade, title: named.title, code: codeNode?.textContent || named.code };
   }
 
   // A row's mark as a short bar beside the number.
   function markBar(item) {
     let bar = item.cell.querySelector(".cc-mk-bar");
-    const share = pct(item.got, item.max);
+    const share = (item.got / item.max) * 100;
     const width = `${Math.max(0, Math.min(100, share)).toFixed(1)}%`;
     if (!bar) {
       bar = el("span", "cc-mk-bar");
@@ -883,51 +872,72 @@
       bar.append(el("i"));
       item.cell.append(bar);
     }
-    bar.dataset.band = item.absent ? "absent" : band(share);
+    bar.dataset.band = item.absent ? "absent" : marks.band(share);
     if (bar.firstChild.style.width !== width) bar.firstChild.style.width = width;
     item.row.classList.toggle("cc-mk-absent", item.absent);
   }
 
+  // Each kind of assessment a segment as wide as its share of the internal
+  // marks, filled as far as scored.
   function segments(subject) {
     const bar = el("span", "cc-mk-segments");
     bar.setAttribute("aria-hidden", "true");
-    for (const item of subject.items) {
-      const share = pct(item.got, item.max);
+    for (const kind of subject.kinds) {
       const seg = el("span", "cc-mk-seg");
-      seg.dataset.band = item.absent ? "absent" : band(share);
-      seg.style.flexGrow = String(item.max);
-      seg.title = `${item.name}: ${item.absent ? "absent" : `${round2(item.got)} / ${round2(item.max)}`}`;
+      seg.dataset.band = kind.items.every((item) => item.absent) ? "absent" : marks.band(kind.percent);
+      seg.style.flexGrow = String(kind.weight);
+      seg.title = `${kind.label}: ${round2(kind.got)} / ${round2(kind.max)}, worth ${round2(kind.weight)}`;
       const fill = el("i");
-      fill.style.width = `${Math.max(0, Math.min(100, share)).toFixed(1)}%`;
+      fill.style.width = `${Math.max(0, Math.min(100, kind.percent)).toFixed(1)}%`;
       seg.append(fill);
       bar.append(seg);
     }
     return bar;
   }
 
-  // Above the accordion: everything marked so far, every subject at a
-  // glance, and where the marks went.
-  function marksSummary(subjects) {
-    const marked = subjects.filter((subject) => subject.items.length);
-    if (!marked.length) return null;
+  const LEFT_OUT = {
+    "attendance-only": "Only attendance marked, not in the average yet",
+    "skill-off": "Not in the average: Aptitude & Soft Skills are off",
+    graded: "Graded course, not in the average",
+    empty: "Nothing marked yet",
+  };
+
+  // Above the accordion: the average of the subjects that count, the raw
+  // total beside it, each subject at a glance, and where the marks went.
+  function marksSummary(summary) {
     const wrap = el("section", "cc-mk");
     wrap.dataset.ccOwn = "";
     wrap.setAttribute("aria-label", "Marks so far");
-    const max = marked.reduce((sum, subject) => sum + subject.max, 0);
-    const got = marked.reduce((sum, subject) => sum + subject.got, 0);
-    const count = marked.reduce((sum, subject) => sum + subject.items.length, 0);
+    const counted = summary.subjects.filter((subject) => subject.counts);
 
     const hero = el("div", "cc-mk-hero");
     const total = el("div", "cc-mk-total");
-    total.append(el("p", "cc-mk-label", "Marked so far"));
+    total.append(el("p", "cc-mk-label", "Average so far"));
     const big = el("p", "cc-mk-big");
-    big.append(el("b", "", (Math.floor(pct(got, max) * 10) / 10).toFixed(1)), el("span", "", "%"));
+    big.append(el("b", "", fmt(summary.average)), el("span", "", summary.average == null ? "" : "%"));
     const meter = el("span", "cc-mk-meter");
     meter.setAttribute("aria-hidden", "true");
     const fill = el("i");
-    fill.style.width = `${Math.max(0, Math.min(100, pct(got, max))).toFixed(1)}%`;
+    fill.style.width = `${Math.max(0, Math.min(100, summary.average ?? 0)).toFixed(1)}%`;
     meter.append(fill);
-    total.append(big, meter, el("p", "cc-mk-sub", `${round2(got)} of ${round2(max)} marks · ${count} assessments · ${marked.length} ${marked.length === 1 ? "subject" : "subjects"}`));
+    total.append(big, meter);
+    total.append(el("p", "cc-mk-sub", summary.counted ? `${summary.counted} ${summary.counted === 1 ? "subject" : "subjects"}, each counted equally, weighted like CU's internal marks` : "No subject has marks to average yet"));
+    if (summary.raw.max > 0) {
+      const alt = el("p", "cc-mk-alt");
+      alt.append(el("span", "", "All marks added up"), el("b", "", `${fmt(summary.raw.percent)}%`), el("span", "", `${round2(summary.raw.got)} of ${round2(summary.raw.max)}`));
+      alt.title = "Every listed mark added up as CUIMS shows it. CU does not count marks this way, so it reads differently from the average.";
+      total.append(alt);
+    }
+    if (summary.skills) {
+      const label = el("label", "cc-mk-switch");
+      const box = el("input");
+      box.type = "checkbox";
+      box.checked = includeSkills;
+      box.dataset.ccSkills = "";
+      label.append(box, el("span", "", "Count Aptitude & Soft Skills"));
+      label.title = "Some programmes grade Aptitude and Soft Skills, others do not. This choice is shared with the extension's Marks tab.";
+      total.append(label);
+    }
     hero.append(total);
 
     const notes = el("dl", "cc-mk-notes");
@@ -940,38 +950,47 @@
       row.append(dd);
       notes.append(row);
     };
-    const ranked = [...marked].sort((a, b) => pct(b.got, b.max) - pct(a.got, a.max));
-    note("Strongest", ranked[0].title, `${Math.round(pct(ranked[0].got, ranked[0].max))}%`, "good");
-    if (ranked.length > 1) {
-      const weakest = ranked[ranked.length - 1];
-      note("Needs the most", weakest.title, `${Math.round(pct(weakest.got, weakest.max))}%`, band(pct(weakest.got, weakest.max)) === "low" ? "low" : "");
+    if (counted.length) {
+      const ranked = [...counted].sort((a, b) => b.percent - a.percent);
+      note("Strongest", ranked[0].title, `${fmt(ranked[0].percent)}%`, "good");
+      if (ranked.length > 1) {
+        const weakest = ranked[ranked.length - 1];
+        note("Needs the most", weakest.title, `${fmt(weakest.percent)}%`, marks.band(weakest.percent) === "low" ? "low" : "");
+      }
+      // The single assessment that cost the most of its subject's share.
+      const dropped = counted
+        .flatMap((subject) => subject.kinds.flatMap((kind) => kind.items.map((item) => ({ ...item, subject, lost: ((item.max - item.got) / kind.max) * kind.weight }))))
+        .sort((a, b) => b.lost - a.lost)[0];
+      if (dropped && dropped.lost > 0) {
+        note("Most marks dropped", `${dropped.subject.title} · ${dropped.name}`, dropped.absent ? `absent, ${round2(dropped.max)} marks` : `${round2(dropped.max - dropped.got)} of ${round2(dropped.max)} lost`, dropped.absent ? "low" : "");
+      }
     }
-    // The single assessment that cost the most marks.
-    const dropped = marked.flatMap((subject) => subject.items.map((item) => ({ ...item, subject }))).sort((a, b) => b.max - b.got - (a.max - a.got))[0];
-    if (dropped && dropped.max - dropped.got > 0) {
-      note("Most marks dropped", `${dropped.subject.title} · ${dropped.name}`, dropped.absent ? `absent, ${round2(dropped.max)} marks` : `${round2(dropped.max - dropped.got)} of ${round2(dropped.max)} lost`, dropped.absent ? "low" : "");
-    }
-    hero.append(notes);
+    if (notes.childElementCount) hero.append(notes);
     wrap.append(hero);
 
     const grid = el("div", "cc-mk-grid");
-    subjects.forEach((subject, index) => {
-      const share = pct(subject.got, subject.max);
-      const tile = el("button", `cc-mk-subject${subject.items.length ? "" : " is-empty"}`);
+    summary.subjects.forEach((subject, index) => {
+      const tile = el("button", `cc-mk-subject${subject.items.length ? "" : " is-empty"}${subject.counts ? "" : " is-out"}`);
       tile.type = "button";
       tile.dataset.ccOpen = String(index);
-      tile.dataset.band = band(share);
+      tile.dataset.band = subject.counts ? marks.band(subject.percent) : "";
       const head = el("span", "cc-mk-subject-head");
       const name = el("span", "cc-mk-subject-name");
       name.append(el("b", "", subject.title.replace(/-/g, "‑")), el("span", "", subject.code));
-      head.append(name, el("span", "cc-mk-subject-pct", share == null ? "—" : `${Math.round(share)}%`));
+      const figure = subject.grade && !subject.items.length ? subject.grade : subject.percent == null ? "—" : `${fmt(subject.percent)}%`;
+      head.append(name, el("span", "cc-mk-subject-pct", figure));
       tile.append(head);
       if (subject.items.length) tile.append(segments(subject));
       const foot = el("span", "cc-mk-subject-foot");
-      foot.append(el("span", "", subject.items.length ? `${round2(subject.got)} / ${round2(subject.max)}` : "Nothing marked yet"));
-      if (subject.items.length) foot.append(el("span", "", `${subject.items.length} ${subject.items.length === 1 ? "assessment" : "assessments"}${subject.absent ? ` · ${subject.absent} absent` : ""}`));
+      if (subject.items.length) {
+        const weighed = el("span", "", `${round2(subject.points)} / ${round2(subject.outOf)}`);
+        weighed.title = `Weighted like CU's internal marks. As listed: ${round2(subject.raw.got)} of ${round2(subject.raw.max)}.`;
+        foot.append(weighed, el("span", "", `${subject.items.length} ${subject.items.length === 1 ? "assessment" : "assessments"}${subject.absent ? ` · ${subject.absent} absent` : ""}`));
+      } else foot.append(el("span", "", LEFT_OUT[subject.reason] || ""));
       tile.append(foot);
-      tile.setAttribute("aria-label", `${subject.title}: ${share == null ? "nothing marked yet" : `${Math.round(share)} percent, ${round2(subject.got)} of ${round2(subject.max)}`}. Show its marks.`);
+      if (!subject.counts && subject.items.length) tile.append(el("span", "cc-mk-flag", LEFT_OUT[subject.reason]));
+      const spoken = subject.grade && !subject.items.length ? `graded ${subject.grade}` : subject.percent == null ? "nothing marked yet" : `${fmt(subject.percent)} percent, ${round2(subject.points)} of ${round2(subject.outOf)} weighted`;
+      tile.setAttribute("aria-label", `${subject.title}: ${spoken}${subject.counts || !subject.items.length ? "" : `. ${LEFT_OUT[subject.reason]}`}. Show its marks.`);
       grid.append(tile);
     });
     wrap.append(grid);
@@ -985,39 +1004,38 @@
     for (const header of headers) {
       if (!header.nextElementSibling) continue;
       mutedCode(header);
-      const subject = readSubject(header);
-      subjects.push(subject);
+      subjects.push(readSubject(header));
+    }
+    const summary = marks.summarize(subjects, { includeSkills });
+    summary.subjects.forEach((subject, index) => {
+      const header = subjects[index].header;
       let chip = header.querySelector(".cc-score");
       if (!subject.items.length) {
         chip?.remove();
-        continue;
+        return;
       }
       for (const item of subject.items) markBar(item);
-      const text = `${round2(subject.got)} / ${round2(subject.max)}`;
+      const text = `${fmt(subject.percent)}%`;
       if (!chip) {
         chip = el("span", "cc-score");
         header.append(chip);
       }
       if (chip.textContent !== text) chip.textContent = text;
-      chip.dataset.band = band(pct(subject.got, subject.max));
-      chip.title = `${subject.items.length} assessment${subject.items.length === 1 ? "" : "s"} marked so far${subject.absent ? `, ${subject.absent} absent (counted as 0)` : ""}`;
+      chip.dataset.band = subject.counts ? marks.band(subject.percent) : "";
+      chip.title = `${round2(subject.points)} of ${round2(subject.outOf)} weighted like CU's internal marks; ${round2(subject.raw.got)} of ${round2(subject.raw.max)} as listed${subject.absent ? `, ${subject.absent} absent (counted as 0)` : ""}`;
       header.classList.add("cc-marks-head");
-    }
-    let summary = accordion?.previousElementSibling?.classList.contains("cc-mk") ? accordion.previousElementSibling : document.querySelector(".cc-mk");
+    });
+    let shown = accordion?.previousElementSibling?.classList.contains("cc-mk") ? accordion.previousElementSibling : document.querySelector(".cc-mk");
     // The summary belongs to Marks View alone; other pages' accordions only get chips.
     if (!accordion || !subjects.length || !/frmStudentMarksView/i.test(location.pathname)) {
-      summary?.remove();
+      shown?.remove();
       return;
     }
-    const signature = JSON.stringify(subjects.map((subject) => [subject.title, subject.code, subject.items.map((item) => [item.name, item.max, item.got, item.absent])]));
-    if (summary?.dataset.signature === signature && summary.nextElementSibling === accordion) return;
-    const fresh = marksSummary(subjects);
-    if (!fresh) {
-      summary?.remove();
-      return;
-    }
+    const signature = JSON.stringify([includeSkills, subjects.map((subject) => [subject.title, subject.code, subject.grade, subject.items.map((item) => [item.name, item.max, item.got, item.absent])])]);
+    if (shown?.dataset.signature === signature && shown.nextElementSibling === accordion) return;
+    const fresh = marksSummary(summary);
     fresh.dataset.signature = signature;
-    if (summary) summary.remove();
+    if (shown) shown.remove();
     accordion.before(fresh);
   }
 
@@ -1029,6 +1047,14 @@
     if (!header) return;
     if (!header.classList.contains("ui-accordion-header-active")) header.click();
     header.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
+
+  // The Aptitude & Soft Skills switch, saved for the popup's Marks tab too.
+  document.addEventListener("change", (event) => {
+    if (!event.target.matches?.("[data-cc-skills]")) return;
+    includeSkills = event.target.checked;
+    chrome.storage.local.set({ marksIncludeSkills: includeSkills });
+    run();
   });
 
   // ---- lifecycle ----
@@ -1094,7 +1120,8 @@
     calendarContext.exams = Array.isArray(exams) ? exams : [];
   }
 
-  chrome.storage.local.get({ [KEY]: true, attendanceGoal: "standard", academicCalendar: "auto", uid: "", attendanceSnapshot: null }, (stored) => {
+  chrome.storage.local.get({ [KEY]: true, attendanceGoal: "standard", academicCalendar: "auto", uid: "", attendanceSnapshot: null, marksIncludeSkills: true }, (stored) => {
+    includeSkills = stored.marksIncludeSkills !== false;
     subjectMin = (api.GOALS[stored.attendanceGoal] || api.GOALS.standard).subject;
     readCalendar(stored);
     setEnabled(stored[KEY]);
@@ -1110,7 +1137,8 @@
         run();
       });
     }
+    if (changes.marksIncludeSkills) includeSkills = changes.marksIncludeSkills.newValue !== false;
     if (changes[KEY]) setEnabled(changes[KEY].newValue);
-    else if (changes.attendanceGoal) run();
+    else if (changes.attendanceGoal || changes.marksIncludeSkills) run();
   });
 })();

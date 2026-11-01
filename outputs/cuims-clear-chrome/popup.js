@@ -37,6 +37,10 @@ const STALE_MS = 2 * 60 * 1000;
 // Refresh comes back this long after the last read (the background's
 // MANUAL_GAP_MS), or when CUIMS's own pushback ends.
 const REFRESH_GAP_MS = 30 * 1000;
+// The tabs drawn from the background's reads.
+const DATA_VIEWS = new Set(["attendance", "forecast", "marks"]);
+// The Marks tab asks for Marks View once when its last read is this old.
+const MARKS_STALE_MS = 12 * 60 * 60 * 1000;
 let autoRead = false;
 // With no timetable saved, the background says when it can read one
 // (snapshot.timetableDueAt, a minute after the attendance page); the popup
@@ -64,6 +68,7 @@ const switches = [...document.querySelectorAll('input[role="switch"][data-key]')
 const tabs = {
   attendance: document.querySelector("#tab-attendance"),
   forecast: document.querySelector("#tab-forecast"),
+  marks: document.querySelector("#tab-marks"),
   login: document.querySelector("#tab-login"),
   theme: document.querySelector("#tab-theme"),
   settings: document.querySelector("#tab-settings"),
@@ -72,6 +77,7 @@ const tabs = {
 const views = {
   attendance: document.querySelector("#view-attendance"),
   forecast: document.querySelector("#view-forecast"),
+  marks: document.querySelector("#view-marks"),
   login: document.querySelector("#view-login"),
   theme: document.querySelector("#view-theme"),
   settings: document.querySelector("#view-settings"),
@@ -98,6 +104,11 @@ let prefs = { goal: "standard", plan: [], end: "", calendar: "auto" };
 // Which day the planner shows and which subject is open, for this popup only.
 let lastForecast = null;
 let forecastUi = { day: "", expanded: "", calendar: { open: false, month: "", focus: "" } };
+// Marks View as the background keeps it (attendanceExamMarks), when the
+// student last asked for it, and the Aptitude & Soft Skills switch.
+let marks = { saved: null, wantedAt: 0, includeSkills: true };
+let marksUi = { session: "" };
+let autoMarksRead = false;
 // "", "ask" or "confirm", decided once per popup open (rate-nudge.js).
 let rateShow = "";
 
@@ -397,7 +408,7 @@ copyDiagnostics?.addEventListener("click", () => {
 function focusKey(node, view = views.attendance) {
   if (!node || node === view || !view.contains?.(node)) return "";
   if (node.id) return `#${CSS.escape(node.id)}`;
-  for (const name of ["planKey", "planDay", "planClear", "planWhole", "goal", "goto", "subject", "endStep", "endReset", "calToggle", "calDay", "calMonth", "calClose", "action", "chart"]) {
+  for (const name of ["marksSession", "marksRefresh", "marksSkills", "planKey", "planDay", "planClear", "planWhole", "goal", "goto", "subject", "endStep", "endReset", "calToggle", "calDay", "calMonth", "calClose", "action", "chart"]) {
     const value = node.dataset?.[name];
     if (value != null && name in (node.dataset || {})) return `[data-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}="${CSS.escape(value)}"]`;
   }
@@ -414,7 +425,7 @@ let refreshReadyTimer;
 function scheduleRefreshReady() {
   window.clearTimeout(refreshReadyTimer);
   const remaining = Number(attendance.nextRefreshAt || 0) - Date.now();
-  if (remaining > 0 && (currentView === "attendance" || currentView === "forecast")) refreshReadyTimer = window.setTimeout(paintData, remaining);
+  if (remaining > 0 && DATA_VIEWS.has(currentView)) refreshReadyTimer = window.setTimeout(paintData, remaining);
   scheduleTimetableRead();
 }
 
@@ -553,10 +564,43 @@ function paintForecast({ force = true } = {}) {
   return working;
 }
 
+// Asked for and not read yet: the background waits out the page gap.
+function marksWaiting() {
+  const saved = marks.saved || {};
+  const wanted = Number(marks.wantedAt || 0);
+  return wanted > Number(saved.savedAt || 0) && wanted > Number(saved.triedAt || 0) && Date.now() - wanted < 10 * 60 * 1000;
+}
+
+function paintMarks() {
+  const status = attendance.status || {};
+  const working = readWorking();
+  repaint(views.marks, CuimsAttendance.renderMarks(marks.saved, {
+    working,
+    phase: status.phase,
+    nextRefreshAt: attendance.nextRefreshAt,
+    session: marksUi.session,
+    includeSkills: marks.includeSkills,
+    waiting: marksWaiting(),
+    error: working ? "" : attendance.error || status.error || "",
+    code: working ? "" : attendance.code || status.code || "",
+  }));
+  scheduleRefreshReady();
+  return working;
+}
+
 function paintData() {
   if (currentView === "attendance") return paintAttendance();
   if (currentView === "forecast") return paintForecast();
+  if (currentView === "marks") return paintMarks();
   return readWorking();
+}
+
+// A refresh that also reads Marks View: the ask goes first, so the read
+// that follows sees it.
+function fetchMarks() {
+  if (Date.now() < Number(attendance.nextRefreshAt || 0)) return;
+  marks.wantedAt = Date.now();
+  chrome.storage.local.set({ marksWantedAt: marks.wantedAt }, fetchAttendance);
 }
 
 function fetchAttendance() {
@@ -603,7 +647,18 @@ function showView(name, { remember = true } = {}) {
     clubDot.hidden = true;
   } else club.hide();
   if (name === "theme") renderThemes();
-  if (name !== "attendance" && name !== "forecast") return;
+  if (!DATA_VIEWS.has(name)) return;
+  if (name === "marks") {
+    const working = paintData();
+    // Opened with nothing read, or a read from over 12 hours ago: one ask.
+    const savedAt = Number(marks.saved?.savedAt || 0);
+    if (!autoMarksRead && !working && hasLogin() && Date.now() - savedAt > MARKS_STALE_MS && !marksWaiting()) {
+      autoMarksRead = true;
+      fetchMarks();
+    }
+    repaintTimer = window.setInterval(paintMarks, 30_000);
+    return;
+  }
   // A normal read is the report calls alone, outside CUIMS's page limit; the
   // background spaces out any page it needs (attendance-daemon.js).
   const working = paintData();
@@ -680,6 +735,25 @@ function shiftDay(key, days) {
   const number = CuimsAttendance.dayNumber(key);
   return number == null ? "" : CuimsAttendance.dayKeyOf(number + days);
 }
+
+views.marks.addEventListener("click", (event) => {
+  if (event.target.closest("[data-marks-refresh]")) {
+    fetchMarks();
+    return;
+  }
+  const session = event.target.closest("[data-marks-session]");
+  if (session) {
+    marksUi.session = session.dataset.marksSession;
+    paintMarks();
+  }
+});
+
+views.marks.addEventListener("change", (event) => {
+  if (!event.target.matches("[data-marks-skills]")) return;
+  marks.includeSkills = event.target.checked;
+  chrome.storage.local.set({ marksIncludeSkills: marks.includeSkills });
+  paintMarks();
+});
 
 views.forecast.addEventListener("click", (event) => {
   const target = event.target;
@@ -854,7 +928,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
     attendance.code = "";
   }
   if (changes.attendanceHistory) attendance.history = changes.attendanceHistory.newValue || null;
-  if (changes.attendanceSnapshot || changes.attendanceStatus || changes.attendanceHistory || changes.attendanceLastAttemptAt || changes.attendanceBackoffUntil) paintData();
+  if (changes.attendanceExamMarks) marks.saved = changes.attendanceExamMarks.newValue || null;
+  if (changes.marksWantedAt) marks.wantedAt = Number(changes.marksWantedAt.newValue || 0);
+  if (changes.marksIncludeSkills) marks.includeSkills = changes.marksIncludeSkills.newValue !== false;
+  if (changes.attendanceSnapshot || changes.attendanceStatus || changes.attendanceHistory || changes.attendanceLastAttemptAt || changes.attendanceBackoffUntil || changes.attendanceExamMarks || changes.marksIncludeSkills) paintData();
   // A switch flipped elsewhere (the LMS page's own Original view button).
   let flipped = false;
   for (const key of Object.keys(SWITCH_DEFAULTS)) {
@@ -1264,6 +1341,9 @@ chrome.storage.local.get(
     attendanceGoal: "standard",
     attendancePlan: null,
     attendanceHistory: null,
+    attendanceExamMarks: null,
+    marksWantedAt: 0,
+    marksIncludeSkills: true,
     forecastEnd: "",
     academicCalendar: "auto",
     rateNudge: null,
@@ -1284,6 +1364,7 @@ chrome.storage.local.get(
     attendance.snapshot = stored.attendanceSnapshot;
     attendance.status = stored.attendanceStatus;
     attendance.history = stored.attendanceHistory;
+    marks = { saved: stored.attendanceExamMarks, wantedAt: Number(stored.marksWantedAt || 0), includeSkills: stored.marksIncludeSkills !== false };
     attendance.lastAttemptAt = stored.attendanceLastAttemptAt;
     attendance.backoffUntil = stored.attendanceBackoffUntil;
     attendance.nextRefreshAt = refreshAt(stored.attendanceLastAttemptAt, stored.attendanceBackoffUntil);

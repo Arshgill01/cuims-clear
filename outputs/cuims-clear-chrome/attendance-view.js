@@ -13,6 +13,9 @@
   };
   const STATE_GLYPH = { present: "✓", absent: "✕", leave: "L", pending: "…", now: "●", next: "" };
   const KIND = { P: "lab", T: "tutorial" };
+  // CUIMS's Duty Leave page; duty-leave.js takes it to External and fills
+  // the form from the days the student was absent.
+  const DUTY_LEAVE_URL = "https://students.cuchd.in/frmStudentApplyDutyLeave.aspx";
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -124,6 +127,7 @@
       ${projection}
       <p class="leave-approved">Approved so far: ${escapeHtml(counted)}</p>
       ${low ? `<p class="leave-approved">${api.VDL_PER_SUBJECT} VDL per subject each semester · fewest left: ${escapeHtml(low.title)} (${low.leave.vdlLeft})</p>` : ""}
+      <a class="text-button leave-file" href="${DUTY_LEAVE_URL}" target="_blank" rel="noreferrer">File duty leave<span aria-hidden="true"> ↗</span></a>
     </section>`;
   }
 

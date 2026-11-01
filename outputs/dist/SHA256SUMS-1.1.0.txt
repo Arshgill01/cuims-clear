@@ -1,0 +1,2 @@
+4cf5df32f1c2eac1eb2c9f72cabc94eebce5316618f48446b4f0a64f72bd7d60  outputs/dist/cuims-clear-chrome-1.1.0.zip
+60fac213b54db179cab2af973900252fa849dd3e0164735e2f3abf1c744f30d6  outputs/dist/cuims-clear-firefox-1.1.0.zip

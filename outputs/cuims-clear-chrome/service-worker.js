@@ -8,6 +8,7 @@ importScripts(
   "attendance-parse.js",
   "academic-calendar.js",
   "attendance-model.js",
+  "marks-model.js",
   "attendance-client.js",
   "ledger.js",
   "attendance-daemon.js",
